@@ -204,6 +204,27 @@ Public Class SetupForm
             Return
         End If
 
+        '受保护目录提醒：即使管理员能装，普通用户运行启动器时也写不了游戏与设置数据
+        If Installer.IsProtectedPath(Target) Then
+            Dim UserDir As String = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "YuanQi Launcher")
+            Dim Choice = MessageBox.Show(Me,
+                "这个位置受系统保护：" & vbCrLf & Target & vbCrLf & vbCrLf &
+                "装到这里的启动器在普通权限下可能无法写入游戏与设置数据，需要每次以管理员身份运行。" & vbCrLf & vbCrLf &
+                "【是】改为安装到推荐目录：" & vbCrLf & UserDir & vbCrLf &
+                "【否】仍然安装到当前目录（需要管理员权限）" & vbCrLf &
+                "【取消】返回重新选择",
+                "不推荐的安装位置", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning)
+            If Choice = DialogResult.Cancel Then Return
+            If Choice = DialogResult.Yes Then
+                Target = UserDir
+                TxtPath.Text = UserDir
+                IsUpdating = Installer.IsInstalled(Target)
+                RefreshMode()
+                LabStatus.ForeColor = Color.FromArgb(107, 114, 128)
+                RefreshPermissionHint()
+            End If
+        End If
+
         '写入权限预检：装在用户目录不需要管理员，装在 Program Files 之类的位置才需要
         If Not Installer.CanWriteTo(Target) Then
             If Installer.IsElevated Then

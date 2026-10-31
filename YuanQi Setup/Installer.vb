@@ -180,6 +180,36 @@ Public Module Installer
         End Try
     End Function
 
+    ''' <summary>
+    ''' 目标是否位于系统保护目录（Program Files、Windows、盘符根目录等）。
+    ''' 这类位置即使管理员能装，普通用户运行启动器时也无法写入游戏与设置数据。
+    ''' </summary>
+    Public Function IsProtectedPath(Target As String) As Boolean
+        Try
+            Dim Full As String = Path.GetFullPath(Target).TrimEnd("\"c)
+            '盘符根目录
+            If Full.Length <= 3 Then Return True
+            Dim ProtectedDirs As New List(Of String)
+            For Each Special In {Environment.SpecialFolder.ProgramFiles,
+                                 Environment.SpecialFolder.ProgramFilesX86,
+                                 Environment.SpecialFolder.Windows,
+                                 Environment.SpecialFolder.CommonApplicationData}
+                Try
+                    Dim PathValue As String = Environment.GetFolderPath(Special)
+                    If Not String.IsNullOrEmpty(PathValue) Then ProtectedDirs.Add(PathValue.TrimEnd("\"c))
+                Catch
+                End Try
+            Next
+            For Each DirPath In ProtectedDirs
+                If Full.StartsWith(DirPath & "\", StringComparison.OrdinalIgnoreCase) OrElse
+                   String.Equals(Full, DirPath, StringComparison.OrdinalIgnoreCase) Then Return True
+            Next
+            Return False
+        Catch
+            Return False
+        End Try
+    End Function
+
     ''' <summary>当前进程是否以管理员身份运行。</summary>
     Public ReadOnly Property IsElevated As Boolean
         Get
