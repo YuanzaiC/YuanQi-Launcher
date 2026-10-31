@@ -2,22 +2,28 @@ Imports Microsoft.Win32
 
 ''' <summary>
 ''' 杂项工具：更新检查、环境体检、空间体检。
-''' <para/>更新相关的仓库地址目前是占位值，等 GitHub 仓库建好后改 <see cref="RepoUrl"/> 即可生效。
 ''' </summary>
 Public Module ModTools
 
 #Region "仓库与版本"
 
     ''' <summary>
-    ''' 缘启的 GitHub 仓库地址。仓库尚未建立，先留占位；填好后更新检查与反馈入口即可用。
+    ''' 缘启的 GitHub 仓库地址，更新检查与反馈入口都基于它。
     ''' </summary>
-    Public Const RepoUrl As String = "https://github.com/YuanQi-Launcher/YuanQi-Launcher"
+    Public Const RepoUrl As String = "https://github.com/YuanzaiC/YunaQi-Launcher"
 
     ''' <summary>
-    ''' 仓库地址是否还是占位（占位时不去请求 API，直接提示"尚未发布"）。
+    ''' 发布包（单文件安装包）的命名规则，需与 Releases 里的资产名一致。
+    ''' </summary>
+    Public Function InstallerAssetName(Version As String) As String
+        Return $"YuanQi-Setup-{Version}.exe"
+    End Function
+
+    ''' <summary>
+    ''' 仓库是否可用（地址为空时直接跳过联网检查）。
     ''' </summary>
     Public Function IsRepoReady() As Boolean
-        Return Not RepoUrl.Contains("YuanQi-Launcher/YuanQi-Launcher")
+        Return Not String.IsNullOrWhiteSpace(RepoUrl)
     End Function
 
 #End Region
@@ -60,7 +66,13 @@ Public Module ModTools
             End If
         Catch ex As Exception
             Logger.Warn(ex, "检查启动器更新失败")
-            If Not Silent Then MyMsgBox("检查更新失败：" & vbCrLf & ex.Message, "检查更新", IsWarn:=True)
+            If Not Silent Then
+                If ex.Message.Contains("404") Then
+                    MyMsgBox($"仓库里还没有发布任何版本，暂时无法检查更新。", "检查更新")
+                Else
+                    MyMsgBox("检查更新失败：" & vbCrLf & ex.Message, "检查更新", IsWarn:=True)
+                End If
+            End If
         End Try
     End Sub
 
@@ -68,7 +80,7 @@ Public Module ModTools
     ''' 下载发布页里的单文件安装包，下载完成后引导用户启动它完成更新。
     ''' </summary>
     Private Sub DownloadInstaller(Tag As String, Latest As String)
-        Dim FileName As String = $"YuanQi-Setup-{Latest}.exe"
+        Dim FileName As String = InstallerAssetName(Latest)
         Dim Url As String = $"{RepoUrl}/releases/download/{Tag}/{FileName}"
         Dim SavePath As String = IO.Path.Combine(IO.Path.GetTempPath(), FileName)
         Hint($"正在下载安装包（约 17 MB）……", HintType.Blue, False)
