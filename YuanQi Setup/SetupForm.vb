@@ -1,3 +1,4 @@
+Imports System.Diagnostics
 Imports System.Threading.Tasks
 
 ''' <summary>安装 / 更新的图形界面（纯代码构建，避免额外的设计器文件）。</summary>
@@ -117,7 +118,6 @@ Public Class SetupForm
             IsUpdating = Installer.IsInstalled(TargetPath)
             TxtPath.Text = TargetPath
             RefreshMode()
-            RefreshPermissionHint()
         Catch ex As Exception
             LabStatus.Text = "读取安装信息失败：" & ex.Message
         End Try
@@ -137,27 +137,6 @@ Public Class SetupForm
         End If
     End Sub
 
-    ''' <summary>在当前路径不可写时给出提示，并说明不需要管理员权限的推荐路径。</summary>
-    Private Sub RefreshPermissionHint()
-        Try
-            If Installer.CanWriteTo(TxtPath.Text.Trim()) Then
-                If LabStatus.Text.StartsWith("该位置需要管理员权限") Then LabStatus.Text = ""
-                Return
-            End If
-            Dim Suggested As String = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "YuanQi Launcher")
-            LabStatus.Text = "该位置需要管理员权限，建议改为：" & Suggested
-            LabStatus.ForeColor = Color.FromArgb(196, 120, 20)
-        Catch ex As Exception
-            Logger_Trace("刷新权限提示失败：" & ex.Message)
-        End Try
-    End Sub
-
-    Private Sub Logger_Trace(Text As String)
-        Try
-            Installer.Trace(Text)
-        Catch
-        End Try
-    End Sub
 
     Private Sub OnBrowseClick(sender As Object, e As EventArgs)
         If IsBusy Then Return
@@ -175,7 +154,6 @@ Public Class SetupForm
                 IsUpdating = Installer.IsInstalled(TargetPath)
                 RefreshMode()
                 LabStatus.ForeColor = Color.FromArgb(107, 114, 128)
-                RefreshPermissionHint()
             End If
         End Using
     End Sub
@@ -204,62 +182,40 @@ Public Class SetupForm
             Return
         End If
 
-        '受保护目录提醒：即使管理员能装，普通用户运行启动器时也写不了游戏与设置数据
-        If Installer.IsProtectedPath(Target) Then
-            Dim UserDir As String = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "YuanQi Launcher")
-            Dim Choice = MessageBox.Show(Me,
-                "这个位置受系统保护：" & vbCrLf & Target & vbCrLf & vbCrLf &
-                "装到这里的启动器在普通权限下可能无法写入游戏与设置数据，需要每次以管理员身份运行。" & vbCrLf & vbCrLf &
-                "【是】改为安装到推荐目录：" & vbCrLf & UserDir & vbCrLf &
-                "【否】仍然安装到当前目录（需要管理员权限）" & vbCrLf &
-                "【取消】返回重新选择",
-                "不推荐的安装位置", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning)
-            If Choice = DialogResult.Cancel Then Return
-            If Choice = DialogResult.Yes Then
-                Target = UserDir
-                TxtPath.Text = UserDir
-                IsUpdating = Installer.IsInstalled(Target)
-                RefreshMode()
-                LabStatus.ForeColor = Color.FromArgb(107, 114, 128)
-                RefreshPermissionHint()
-            End If
-        End If
+        Dim NeedShortcut As Boolean = CheckShortcut.Checked
+        Dim NeedLaunch As Boolean = CheckLaunch.Checked
 
-        '写入权限预检：装在用户目录不需要管理员，装在 Program Files 之类的位置才需要
+        '目标目录需要管理员权限时，直接申请提权，由提权后的静默安装完成
         If Not Installer.CanWriteTo(Target) Then
             If Installer.IsElevated Then
                 MessageBox.Show(Me, "当前已是管理员身份，但仍无法写入该位置：" & vbCrLf & Target & vbCrLf & vbCrLf & "请换一个安装目录。",
                                 "无法写入", MessageBoxButtons.OK, MessageBoxIcon.Warning)
                 Return
             End If
-            Dim Suggest As String = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "YuanQi Launcher")
-            Dim Answer = MessageBox.Show(Me,
-                "没有权限写入：" & vbCrLf & Target & vbCrLf & vbCrLf &
-                "【是】以管理员身份重新启动安装程序（适合装到 Program Files 等受保护目录）" & vbCrLf &
-                "【否】改到当前用户目录安装：" & vbCrLf & Suggest & vbCrLf & vbCrLf &
-                "【取消】回到安装界面手动选择位置",
-                "需要写入权限", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning)
-            If Answer = DialogResult.Cancel Then Return
-            If Answer = DialogResult.Yes Then
-                If Installer.RestartElevated(Target, CheckShortcut.Checked) Then
-                    Close()
-                Else
-                    MessageBox.Show(Me, "无法自动提权，请关闭安装程序，右键安装包选择「以管理员身份运行」。",
-                                    "缘启 安装程序", MessageBoxButtons.OK, MessageBoxIcon.Warning)
-                End If
+            SetBusy(True)
+            LabStatus.Text = "该位置需要管理员权限，正在申请……"
+            Dim ElevatedProcess As Process = Installer.StartElevatedInstall(Target, NeedShortcut)
+            If ElevatedProcess Is Nothing Then
+                SetBusy(False)
+                LabStatus.Text = ""
+                MessageBox.Show(Me, "已取消管理员权限申请，安装未完成。" & vbCrLf & vbCrLf &
+                                "也可以换一个用户目录安装，例如：" & vbCrLf &
+                                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "YuanQi Launcher"),
+                                "缘启 安装程序", MessageBoxButtons.OK, MessageBoxIcon.Information)
                 Return
             End If
-            '选择改用用户目录
-            TxtPath.Text = Suggest
-            Target = Suggest
-            IsUpdating = Installer.IsInstalled(Target)
-            RefreshMode()
-            LabStatus.ForeColor = Color.FromArgb(107, 114, 128)
-            RefreshPermissionHint()
+            LabStatus.Text = "正在以管理员身份安装……"
+            ElevatedProcess.WaitForExit()
+            SetBusy(False)
+            If ElevatedProcess.ExitCode = 0 Then
+                If NeedLaunch Then Installer.StartApp(Target)
+                Close()
+            Else
+                MessageBox.Show(Me, "以管理员身份安装失败（退出码 " & ElevatedProcess.ExitCode & "）。" & vbCrLf & vbCrLf &
+                                "详细日志：安装包同目录下的 YuanQiSetup.log", "安装失败", MessageBoxButtons.OK, MessageBoxIcon.Error)
+            End If
+            Return
         End If
-
-        Dim NeedShortcut As Boolean = CheckShortcut.Checked
-        Dim NeedLaunch As Boolean = CheckLaunch.Checked
 
         SetBusy(True)
         Dim Succeeded As Boolean = False

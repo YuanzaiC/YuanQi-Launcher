@@ -180,36 +180,6 @@ Public Module Installer
         End Try
     End Function
 
-    ''' <summary>
-    ''' 目标是否位于系统保护目录（Program Files、Windows、盘符根目录等）。
-    ''' 这类位置即使管理员能装，普通用户运行启动器时也无法写入游戏与设置数据。
-    ''' </summary>
-    Public Function IsProtectedPath(Target As String) As Boolean
-        Try
-            Dim Full As String = Path.GetFullPath(Target).TrimEnd("\"c)
-            '盘符根目录
-            If Full.Length <= 3 Then Return True
-            Dim ProtectedDirs As New List(Of String)
-            For Each Special In {Environment.SpecialFolder.ProgramFiles,
-                                 Environment.SpecialFolder.ProgramFilesX86,
-                                 Environment.SpecialFolder.Windows,
-                                 Environment.SpecialFolder.CommonApplicationData}
-                Try
-                    Dim PathValue As String = Environment.GetFolderPath(Special)
-                    If Not String.IsNullOrEmpty(PathValue) Then ProtectedDirs.Add(PathValue.TrimEnd("\"c))
-                Catch
-                End Try
-            Next
-            For Each DirPath In ProtectedDirs
-                If Full.StartsWith(DirPath & "\", StringComparison.OrdinalIgnoreCase) OrElse
-                   String.Equals(Full, DirPath, StringComparison.OrdinalIgnoreCase) Then Return True
-            Next
-            Return False
-        Catch
-            Return False
-        End Try
-    End Function
-
     ''' <summary>当前进程是否以管理员身份运行。</summary>
     Public ReadOnly Property IsElevated As Boolean
         Get
@@ -222,17 +192,20 @@ Public Module Installer
         End Get
     End Property
 
-    ''' <summary>以管理员身份重新启动本安装程序（用于用户主动选择受保护目录的情况）。</summary>
-    Public Function RestartElevated(Target As String, CreateShortcut As Boolean) As Boolean
+    ''' <summary>
+    ''' 以管理员身份重新启动本安装程序并静默完成安装。返回提权后的进程；用户取消 UAC 时返回 Nothing。
+    ''' </summary>
+    Public Function StartElevatedInstall(Target As String, CreateShortcut As Boolean) As Process
         Try
             Dim SelfPath As String = Assembly.GetEntryAssembly().Location
-            Dim Arguments As String = """" & "/D=" & Target & """"
+            Dim Arguments As String = $"/S /D=""{Target}"" /nolaunch"
             If Not CreateShortcut Then Arguments &= " /noshortcut"
-            Process.Start(New ProcessStartInfo(SelfPath, Arguments) With {.UseShellExecute = True, .Verb = "runas"})
-            Return True
+            Trace("申请管理员权限安装：" & Arguments)
+            Return Process.Start(New ProcessStartInfo(SelfPath, Arguments) With {.UseShellExecute = True, .Verb = "runas"})
         Catch ex As Exception
-            Trace("以管理员身份重启失败：" & ex.Message)
-            Return False
+            '用户点了 UAC 的“否”，或系统不允许提权
+            Trace("申请管理员权限失败：" & ex.Message)
+            Return Nothing
         End Try
     End Function
 
