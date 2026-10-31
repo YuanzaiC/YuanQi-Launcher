@@ -109,18 +109,33 @@ Public Class Application
                 Environment.SetEnvironmentVariable("windir", Environment.GetEnvironmentVariable("SystemRoot"), EnvironmentVariableTarget.User)
                 Dim _unused As New FormattedText("", Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Fonts.SystemTypefaces.First, 96, New MyColor, DPI)
             End Try
-            '初始化文件结构
+            '初始化文件结构（失败时先重试：刚更新完或安全软件扫描时文件可能被短暂占用）
             Try
                 DirectoryUtils.Create(Paths.Base & "YQL\Pictures\")
                 DirectoryUtils.Create(Paths.Base & "YQL\Musics\")
                 CheckPermissionWithException(Paths.Base & "YQL\")
             Catch ex As Exception
-                MsgBox($"缘启没有对当前文件夹的权限（{Paths.Base}YQL\），请尝试：" & vbCrLf &
-                  "1. 将缘启移动到其他文件夹" & If(PathUtils.GetDiskName(Paths.Base) = "C"c, "，例如 C 盘和桌面以外的其他位置。", "。") & vbCrLf &
-                  "2. 删除当前目录中的 YQL 文件夹，然后再试。" & vbCrLf &
-                  "3. 右键 缘启 选择属性，打开 兼容性 中的 以管理员身份运行此程序。",
-                MsgBoxStyle.Critical, "运行环境错误")
-                Environment.[Exit](ProcessReturnValues.Cancel)
+                Dim Fixed As Boolean = False
+                For i = 1 To 6
+                    Thread.Sleep(350)
+                    Try
+                        DirectoryUtils.Create(Paths.Base & "YQL\")
+                        CheckPermissionWithException(Paths.Base & "YQL\")
+                        Fixed = True
+                        Exit For
+                    Catch
+                    End Try
+                Next
+                If Not Fixed Then
+                    MsgBox($"缘启没有对当前文件夹的权限（{Paths.Base}YQL\），请尝试：" & vbCrLf &
+                      "1. 将缘启移动到其他文件夹" & If(PathUtils.GetDiskName(Paths.Base) = "C"c, "，例如 C 盘和桌面以外的其他位置。", "。") & vbCrLf &
+                      "2. 删除当前目录中的 YQL 文件夹，然后再试。" & vbCrLf &
+                      "3. 右键 缘启 选择属性，打开 兼容性 中的 以管理员身份运行此程序。" & vbCrLf &
+                      "4. 若刚完成安装或更新，请等安装程序结束后再启动缘启。" & vbCrLf & vbCrLf &
+                      "错误详情：" & ex.Message,
+                    MsgBoxStyle.Critical, "运行环境错误")
+                    Environment.[Exit](ProcessReturnValues.Cancel)
+                End If
             End Try
             Try
                 DirectoryUtils.Create(PathTemp)
