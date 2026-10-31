@@ -61,19 +61,27 @@ Public Module ModTools
         End Sub, "Check Launcher Update", ThreadPriority.BelowNormal)
     End Sub
 
+    ''' <summary>把 tag 规范化成版本号（去掉开头的 v/V，大小写都兼容）。</summary>
+    Private Function NormalizeVersion(Tag As String) As String
+        Dim V As String = If(Tag, "").Trim()
+        V = V.TrimStart("v"c, "V"c)
+        Return V.Trim()
+    End Function
+
     ''' <summary>在后台线程执行真正的更新检查，弹窗统一切回 UI 线程。</summary>
     Private Sub DoCheckLauncherUpdate(Silent As Boolean)
         Dim Raw As String = NetRequestByClient($"https://api.github.com/repos/{RepoUrl.Replace("https://github.com/", "")}/releases/latest",
                                                RequireJson:=True, Timeout:=10000)
-        Dim Tag = CType(Raw.DeserializeJson(), JObject)?("tag_name")
+        Dim ReleaseJson = CType(Raw.DeserializeJson(), JObject)
+        Dim Tag = ReleaseJson?("tag_name")
         If Tag Is Nothing Then
             If Not Silent Then RunInUiWait(Sub() Hint("无法解析更新信息。", HintType.Red))
             Return
         End If
-        Dim TagRaw As String = Tag.ToString
-        Dim Latest As String = TagRaw.TrimStart("v"c)
-        Logger.Info($"启动器最新版本：{Latest}，当前版本：{VersionBaseName}")
-        If Latest = VersionBaseName Then
+        Dim TagRaw As String = Tag.ToString.Trim()
+        Dim Latest As String = NormalizeVersion(TagRaw)
+        Logger.Info($"启动器最新版本：{Latest}（tag：{TagRaw}），当前版本：{VersionBaseName}")
+        If String.Equals(Latest, VersionBaseName, StringComparison.OrdinalIgnoreCase) Then
             If Not Silent Then RunInUiWait(Sub() MyMsgBox($"当前已是最新版本（{VersionBaseName}）。", "检查更新"))
             Return
         End If
@@ -82,11 +90,29 @@ Public Module ModTools
             RunInUiWait(Sub() Hint($"缘启有新版本 {Latest} 可用，可在设置中检查更新。", HintType.Green))
             Return
         End If
+        '直接从 release 的资产里取安装包，不依赖固定命名（tag 大小写、资产名都能对上）
+        Dim AssetName As String = Nothing
+        Dim AssetUrl As String = Nothing
+        Dim Assets = TryCast(ReleaseJson?("assets"), JArray)
+        If Assets IsNot Nothing Then
+            For Each Item In Assets
+                Dim Name As String = If(Item?("name")?.ToString(), "").Trim()
+                If Not Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) Then Continue For
+                AssetName = Name
+                AssetUrl = Item?("browser_download_url")?.ToString()
+                If Name.IndexOf("Setup", StringComparison.OrdinalIgnoreCase) >= 0 Then Exit For
+            Next
+        End If
+        If String.IsNullOrWhiteSpace(AssetUrl) Then
+            '没有可用的资产：退回按约定命名拼地址
+            AssetName = InstallerAssetName(Latest)
+            AssetUrl = $"{RepoUrl}/releases/download/{TagRaw}/{AssetName}"
+        End If
         RunInUiWait(
         Sub()
             If MyMsgBox($"发现新版本：{Latest}{vbCrLf}当前版本：{VersionBaseName}{vbCrLf}{vbCrLf}是否立即下载安装包并更新？{vbCrLf}更新只替换程序文件，设置、游戏与存档都会保留。",
                         "检查更新", "立即更新", "稍后") = 1 Then
-                DownloadInstaller(TagRaw, Latest)
+                DownloadInstaller(AssetUrl, AssetName)
             End If
         End Sub)
     End Sub
@@ -94,9 +120,8 @@ Public Module ModTools
     ''' <summary>
     ''' 下载发布页里的单文件安装包，下载完成后引导用户启动它完成更新。
     ''' </summary>
-    Private Sub DownloadInstaller(Tag As String, Latest As String)
-        Dim FileName As String = InstallerAssetName(Latest)
-        Dim Url As String = $"{RepoUrl}/releases/download/{Tag}/{FileName}"
+    Private Sub DownloadInstaller(Url As String, FileName As String)
+        If String.IsNullOrWhiteSpace(FileName) Then FileName = "YuanQi-Setup.exe"
         Dim SavePath As String = IO.Path.Combine(IO.Path.GetTempPath(), FileName)
         Hint($"正在下载安装包（约 17 MB）……", HintType.Blue, False)
         RunInNewThread(
@@ -116,7 +141,7 @@ Public Module ModTools
                     End If
                 End Sub)
             Catch ex As Exception
-                Logger.Warn(ex, "下载安装包失败")
+                Logger.Warn(ex, $"下载安装包失败：{Url}")
                 RunInUi(
                 Sub()
                     Hint("下载安装包失败，已为你打开下载页面。", HintType.Red)
