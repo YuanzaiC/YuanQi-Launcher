@@ -169,7 +169,6 @@ powershell -ExecutionPolicy Bypass -File pack-setup.ps1
 缘启是基于龙腾猫跃 (LTCat) 开发的 **Plain Craft Launcher (PCL) 2.14.0.0 开源版本**，由第三方独立进行二次创作的产物，**与 PCL 官方无关**。
 
 - 本项目遵循《PCL 分发有限许可》与《PCL 存储库合理使用指南》；
-- 移除了 PCL 正式版中的赞助解锁体系（土豆码、赞助等级、主题解锁等），并公开修改后的源代码；
 - 保留对 Minecraft 正版购买的支持与劝导。
 
 ## 许可与致谢
