@@ -133,38 +133,38 @@ Friend Module ModSecret
 
             '按主题预设色相 / 饱和度 / 亮度 / 顶栏渐变
             Select Case ThemeNow
-                Case 1 '甜柠青
+                Case 1 '薄荷
                     ColorHue = 160 : ColorSat = 55 : ColorLightAdjust = 0 : ColorHueTopbarDelta = 0
-                Case 2 '小草绿
+                Case 2 '竹青
                     ColorHue = 120 : ColorSat = 55 : ColorLightAdjust = 0 : ColorHueTopbarDelta = 0
-                Case 3 '菠萝黄
+                Case 3 '麦穗
                     ColorHue = 50 : ColorSat = 55 : ColorLightAdjust = 0 : ColorHueTopbarDelta = 0
-                Case 4 '橡木棕
+                Case 4 '焦糖
                     ColorHue = 30 : ColorSat = 45 : ColorLightAdjust = 0 : ColorHueTopbarDelta = 0
-                Case 5 '玄素黑（灰）
+                Case 5 '水墨（灰）
                     ColorHue = 210 : ColorSat = 0 : ColorLightAdjust = 0 : ColorHueTopbarDelta = 0
-                Case 6 '铁杆粉
+                Case 6 '樱粉
                     ColorHue = 330 : ColorSat = 55 : ColorLightAdjust = 0 : ColorHueTopbarDelta = 0
-                Case 7 '神秘紫
+                Case 7 '夜紫
                     ColorHue = 270 : ColorSat = 55 : ColorLightAdjust = 0 : ColorHueTopbarDelta = 0
-                Case 8 '秋仪金
+                Case 8 '琥珀
                     ColorHue = 42 : ColorSat = 55 : ColorLightAdjust = 0 : ColorHueTopbarDelta = 0
-                Case 9 '活跃橙
+                Case 9 '晚霞
                     ColorHue = 25 : ColorSat = 60 : ColorLightAdjust = 0 : ColorHueTopbarDelta = 0
-                Case 10 '跳票红
+                Case 10 '朱砂
                     ColorHue = 0 : ColorSat = 60 : ColorLightAdjust = 0 : ColorHueTopbarDelta = 0
-                Case 11 '极客蓝
+                Case 11 '深海
                     ColorHue = 215 : ColorSat = 60 : ColorLightAdjust = -5 : ColorHueTopbarDelta = 0
-                Case 12 '滑稽彩
+                Case 12 '玫红
                     ColorHue = 300 : ColorSat = 55 : ColorLightAdjust = 0 : ColorHueTopbarDelta = 0
-                Case 13 '欧皇彩
+                Case 13 '鎏金
                     ColorHue = 45 : ColorSat = 60 : ColorLightAdjust = 0 : ColorHueTopbarDelta = 0
                 Case 14 '自定义
                     ColorHue = Settings.Get(Of Integer)("UiLauncherHue")
                     ColorSat = Settings.Get(Of Integer)("UiLauncherSat")
                     ColorLightAdjust = Settings.Get(Of Integer)("UiLauncherLight") - 20
                     ColorHueTopbarDelta = Settings.Get(Of Integer)("UiLauncherDelta") - 90
-                Case Else '0 草坪绿
+                Case Else '0 青草
                     ColorHue = 110 : ColorSat = 50 : ColorLightAdjust = 0 : ColorHueTopbarDelta = 0
             End Select
 

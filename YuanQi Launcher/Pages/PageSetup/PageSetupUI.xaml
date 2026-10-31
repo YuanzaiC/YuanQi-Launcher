@@ -58,36 +58,46 @@
                                 <RowDefinition />
                             </Grid.RowDefinitions>
                             <TextBlock VerticalAlignment="Center" HorizontalAlignment="Left" Text="主题" Margin="0,0,20,0" />
-                            <TextBlock VerticalAlignment="Center" HorizontalAlignment="Left" Text="隐藏主题" Margin="0,0,20,0" Grid.Row="1" />
-                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="0" 
-                                              Grid.Column="1" Grid.Row="0" Text="草坪绿" x:Name="RadioLauncherTheme0" />
-                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="1" 
-                                              Grid.Column="2" Grid.Row="0" Text="甜柠青" x:Name="RadioLauncherTheme1" />
-                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="2" 
-                                              Grid.Column="3" Grid.Row="0" Text="小草绿" x:Name="RadioLauncherTheme2" />
-                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="3" 
-                                              Grid.Column="4" Grid.Row="0" Text="菠萝黄" x:Name="RadioLauncherTheme3" />
-                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="4" 
-                                              Grid.Column="5" Grid.Row="0" Text="橡木棕" x:Name="RadioLauncherTheme4" />
-                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="5" 
-                                              Grid.Column="1" Grid.Row="1" Text="玄素黑" x:Name="RadioLauncherTheme5" ToolTip="灰色是个谎言" />
-                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="12" 
-                                              Grid.Column="2" Grid.Row="1" Text="滑稽彩" x:Name="RadioLauncherTheme12" ToolTip="滑稽树上滑稽果，滑稽树下你和我" />
-                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="6" 
-                                              Grid.Column="3" Grid.Row="1" Text="铁杆粉" x:Name="RadioLauncherTheme6" ToolTip="99 次重逢的喜悦" />
-                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="7" 
-                                              Grid.Column="4" Grid.Row="1" Text="神秘紫" x:Name="RadioLauncherTheme7" ToolTip="072 101 108 112 032 068 101 118 032 048 046 052 046 052" />
-                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="13" 
-                                              Grid.Column="5" Grid.Row="1" Text="欧皇彩" x:Name="RadioLauncherTheme13" ToolTip="这就是传说中的欧皇了吧" />
-                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="8" 
-                                              Grid.Column="1" Grid.Row="2" Text="秋仪金" x:Name="RadioLauncherTheme8" />
-                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="9" 
-                                              Grid.Column="2" Grid.Row="2" Text="活跃橙" x:Name="RadioLauncherTheme9" />
-                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="10" 
-                                              Grid.Column="3" Grid.Row="2" Text="跳票红" x:Name="RadioLauncherTheme10" />
-                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="11" 
-                                              Grid.Column="4" Grid.Row="2" Text="极客蓝" x:Name="RadioLauncherTheme11" />
-                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="14" 
+
+                            <!-- 第一行：绿 → 青 → 蓝紫 -->
+                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="0"
+                                              Grid.Column="1" Grid.Row="0" Text="青草" x:Name="RadioLauncherTheme0" />
+                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="2"
+                                              Grid.Column="2" Grid.Row="0" Text="竹青" x:Name="RadioLauncherTheme2" />
+                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="1"
+                                              Grid.Column="3" Grid.Row="0" Text="薄荷" x:Name="RadioLauncherTheme1" />
+                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="11"
+                                              Grid.Column="4" Grid.Row="0" Text="深海" x:Name="RadioLauncherTheme11" />
+                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="7"
+                                              Grid.Column="5" Grid.Row="0" Text="夜紫" x:Name="RadioLauncherTheme7"
+                                              ToolTip="072 101 108 112 032 068 101 118 032 048 046 052 046 052" />
+
+                            <!-- 第二行：粉紫 → 红橙 → 棕 -->
+                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="12"
+                                              Grid.Column="1" Grid.Row="1" Text="玫红" x:Name="RadioLauncherTheme12"
+                                              ToolTip="滑稽树上滑稽果，滑稽树下你和我" />
+                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="6"
+                                              Grid.Column="2" Grid.Row="1" Text="樱粉" x:Name="RadioLauncherTheme6"
+                                              ToolTip="99 次重逢的喜悦" />
+                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="10"
+                                              Grid.Column="3" Grid.Row="1" Text="朱砂" x:Name="RadioLauncherTheme10" />
+                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="9"
+                                              Grid.Column="4" Grid.Row="1" Text="晚霞" x:Name="RadioLauncherTheme9" />
+                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="4"
+                                              Grid.Column="5" Grid.Row="1" Text="焦糖" x:Name="RadioLauncherTheme4" />
+
+                            <!-- 第三行：金 → 黄 → 灰 → 自定义 -->
+                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="8"
+                                              Grid.Column="1" Grid.Row="2" Text="琥珀" x:Name="RadioLauncherTheme8" />
+                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="13"
+                                              Grid.Column="2" Grid.Row="2" Text="鎏金" x:Name="RadioLauncherTheme13"
+                                              ToolTip="这就是传说中的欧皇了吧" />
+                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="3"
+                                              Grid.Column="3" Grid.Row="2" Text="麦穗" x:Name="RadioLauncherTheme3" />
+                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="5"
+                                              Grid.Column="4" Grid.Row="2" Text="水墨" x:Name="RadioLauncherTheme5"
+                                              ToolTip="灰色是个谎言" />
+                            <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="14"
                                               Grid.Column="5" Grid.Row="2" Text="自定义" x:Name="RadioLauncherTheme14" />
                         </Grid>
                         <StackPanel Orientation="Horizontal" Margin="0,4,0,10">

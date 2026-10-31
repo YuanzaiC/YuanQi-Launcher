@@ -33,7 +33,7 @@ Public Class PageSetupUI
                 Case 1
                     NewText = "眼瞎白"
                 Case 2
-                    NewText = "真·滑稽彩"
+                    NewText = "真·玫红"
             End Select
             For Each Control In PanLauncherTheme.Children
                 If (TypeOf Control Is MyRadioBox) AndAlso CType(Control, MyRadioBox).IsEnabled Then CType(Control, MyRadioBox).Text = NewText

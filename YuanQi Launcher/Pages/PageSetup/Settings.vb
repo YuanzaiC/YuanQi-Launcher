@@ -130,8 +130,6 @@ Public Class Settings
         New Setting("UiLauncherDelta", 90),
         New Setting("UiLauncherLight", 20),
         New Setting("UiLauncherTheme", 0, OnChanged:=AddressOf ThemeRefresh),
-        New Setting("UiLauncherThemeHide", "0|1|2|3|4", Source:=Sources.Registry, Encrypted:=True),
-        New Setting("UiLauncherThemeHide2", "0|1|2|3|4", Source:=Sources.Registry, Encrypted:=True),
         New Setting("UiLauncherLogo", True),
         New Setting("UiLauncherSplash", True), '主页苏醒动画：完整播放需 2.6~3s 且期间主页不可交互，可在 设置-界面 关闭
         New Setting("UiLauncherSpecialSplash", True), '节日（春节/国庆）与彩蛋期间使用特殊苏醒动画

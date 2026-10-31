@@ -10,7 +10,7 @@ Public Module ModTools
     ''' <summary>
     ''' 缘启的 GitHub 仓库地址，更新检查与反馈入口都基于它。
     ''' </summary>
-    Public Const RepoUrl As String = "https://github.com/YuanzaiC/YunaQi-Launcher"
+    Public Const RepoUrl As String = "https://github.com/YuanzaiC/YuanQi-Launcher"
 
     ''' <summary>
     ''' 发布包（单文件安装包）的命名规则，需与 Releases 里的资产名一致。
