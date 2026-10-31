@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 使用说明
+    url: https://github.com/YuanzaiC/YuanQi-Launcher#readme
+    about: 安装方式、功能说明与从源码构建的步骤都在 README 里
+  - name: 陶瓦联机问题
+    url: https://github.com/burningtnt/Terracotta/issues
+    about: 联机底层由陶瓦联机（Terracotta）提供，网络层面的问题也可以去上游反馈

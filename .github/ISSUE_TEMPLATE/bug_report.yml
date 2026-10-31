@@ -1,0 +1,100 @@
+name: 问题反馈
+description: 报告启动器的 Bug 或异常行为
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！请尽量把信息填完整，能大幅缩短定位时间。
+        启动器版本号可以在「关于」页面底部看到，日志在「工具箱 → 打开日志文件夹」里。
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 问题描述
+      description: 发生了什么？期望的结果是什么？
+      placeholder: 例如：点击「启动游戏」后进度条停在 20%，游戏没有启动。
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 按顺序写清楚怎么操作会出现这个问题
+      placeholder: |
+        1. 打开启动器
+        2. 选择版本 xxx
+        3. 点击「启动游戏」
+        4. 出现……
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 启动器版本
+      description: 关于页面底部显示的版本号
+      placeholder: 例如：2.14.0.0
+    validations:
+      required: true
+
+  - type: input
+    id: game-version
+    attributes:
+      label: 游戏版本 / 加载器
+      description: 出问题的是哪个实例？是否使用了 Forge、NeoForge、Fabric 等
+      placeholder: 例如：1.21.1 + NeoForge 21.1.80
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 涉及的模块
+      multiple: true
+      options:
+        - 启动 / 版本管理
+        - 下载
+        - 联机（陶瓦）
+        - 种子地图
+        - 设置 / 界面
+        - 工具箱
+        - 安装 / 更新
+        - 其他
+    validations:
+      required: true
+
+  - type: input
+    id: system
+    attributes:
+      label: 系统与硬件
+      placeholder: 例如：Windows 11 23H2 / i5-12400 / 16 GB
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志
+      description: 把 `logs` 文件夹中最新的日志拖进来（可以直接粘贴文本）
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: 截图或录屏
+      description: 直接拖图片到框里即可
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: 确认
+      options:
+        - label: 我已经确认使用的是最新版本，并搜索过现有 Issue 没有重复
+          required: true

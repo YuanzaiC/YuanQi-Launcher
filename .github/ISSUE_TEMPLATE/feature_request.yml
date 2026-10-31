@@ -1,0 +1,37 @@
+name: 功能建议
+description: 希望缘启增加或改进什么
+title: "[建议] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: 想要的功能
+      description: 描述你期望的效果，越具体越好
+      placeholder: 例如：希望在版本列表里支持按最后游玩时间排序。
+    validations:
+      required: true
+
+  - type: textarea
+    id: reason
+    attributes:
+      label: 使用场景
+      description: 这个功能能解决什么问题？
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternative
+    attributes:
+      label: 备选方案
+      description: 你现在是怎么绕过这个问题的，或者有没有其他实现思路
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: 确认
+      options:
+        - label: 我搜索过现有 Issue，没有重复的建议
+          required: true
