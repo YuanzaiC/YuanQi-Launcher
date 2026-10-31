@@ -14,6 +14,7 @@
     <MyType>Empty</MyType>
     <ApplicationIcon>..\YuanQi Launcher\Images\icon.ico</ApplicationIcon>
     <StartupObject>YuanQiSetup.Program</StartupObject>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
     <OptionExplicit>On</OptionExplicit>
     <OptionStrict>Off</OptionStrict>
     <OptionInfer>On</OptionInfer>

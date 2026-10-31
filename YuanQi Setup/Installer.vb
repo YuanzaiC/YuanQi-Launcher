@@ -25,6 +25,7 @@ Public Module Installer
     Public UninstallMode As Boolean
     Public RemoveData As Boolean
     Public NoLaunch As Boolean
+    Public NoShortcut As Boolean
     Public ArgTarget As String
 
     ''' <summary>安装包内嵌的启动器版本。</summary>
@@ -69,6 +70,8 @@ Public Module Installer
                 RemoveData = True
             ElseIf Lower = "/nolaunch" Then
                 NoLaunch = True
+            ElseIf Lower = "/noshortcut" Then
+                NoShortcut = True
             ElseIf Lower.StartsWith("/d=") Then
                 ArgTarget = Arg.Substring(3).Trim(""""c)
             ElseIf Not Arg.StartsWith("/") AndAlso Not Arg.StartsWith("-") AndAlso Directory.Exists(Arg) Then
@@ -148,6 +151,69 @@ Public Module Installer
         Catch
             Return False
         End Try
+    End Function
+
+    ''' <summary>测试某目录（或其最近的已存在上级目录）是否可写。</summary>
+    Public Function CanWriteTo(Target As String) As Boolean
+        Try
+            Dim DirPath As String = Target
+            Dim Probe As String
+            If Directory.Exists(DirPath) Then
+                Probe = Path.Combine(DirPath, "_yq_probe_" & Guid.NewGuid().ToString("N") & ".tmp")
+                Using Stream = File.Create(Probe)
+                End Using
+                File.Delete(Probe)
+                Return True
+            End If
+            '目标还不存在：向上找到第一个存在的目录，试用它能否创建子目录
+            DirPath = DirPath.TrimEnd("\"c)
+            Do While Not String.IsNullOrEmpty(DirPath) AndAlso Not Directory.Exists(DirPath)
+                DirPath = Path.GetDirectoryName(DirPath)
+            Loop
+            If String.IsNullOrEmpty(DirPath) Then Return False
+            Dim ProbeDir As String = Path.Combine(DirPath, "_yq_probe_" & Guid.NewGuid().ToString("N"))
+            Directory.CreateDirectory(ProbeDir)
+            Directory.Delete(ProbeDir)
+            Return True
+        Catch
+            Return False
+        End Try
+    End Function
+
+    ''' <summary>当前进程是否以管理员身份运行。</summary>
+    Public ReadOnly Property IsElevated As Boolean
+        Get
+            Try
+                Dim Identity = Security.Principal.WindowsIdentity.GetCurrent()
+                Return New Security.Principal.WindowsPrincipal(Identity).IsInRole(Security.Principal.WindowsBuiltInRole.Administrator)
+            Catch
+                Return False
+            End Try
+        End Get
+    End Property
+
+    ''' <summary>以管理员身份重新启动本安装程序（用于用户主动选择受保护目录的情况）。</summary>
+    Public Function RestartElevated(Target As String, CreateShortcut As Boolean) As Boolean
+        Try
+            Dim SelfPath As String = Assembly.GetEntryAssembly().Location
+            Dim Arguments As String = """" & "/D=" & Target & """"
+            If Not CreateShortcut Then Arguments &= " /noshortcut"
+            Process.Start(New ProcessStartInfo(SelfPath, Arguments) With {.UseShellExecute = True, .Verb = "runas"})
+            Return True
+        Catch ex As Exception
+            Trace("以管理员身份重启失败：" & ex.Message)
+            Return False
+        End Try
+    End Function
+
+    ''' <summary>把常见的权限异常翻译成看得懂的提示。</summary>
+    Public Function DescribeError(Ex As Exception, Target As String) As String
+        If TypeOf Ex Is UnauthorizedAccessException OrElse TypeOf Ex Is Security.SecurityException Then
+            Return $"没有权限写入：{vbCrLf}{Target}{vbCrLf}{vbCrLf}" &
+                   "如果安装到了 Program Files 之类的受保护目录，请改到用户目录安装，" & vbCrLf &
+                   "或右键安装包选择「以管理员身份运行」。"
+        End If
+        Return Ex.Message
     End Function
 
     ''' <summary>如果缘启正在运行，等它退出；超时则强制结束。</summary>
@@ -355,11 +421,17 @@ Public Module Installer
         Try
             Dim Target As String = If(String.IsNullOrWhiteSpace(ArgTarget), DetectInstallPath(), ArgTarget)
             Trace("静默安装目标：" & Target)
-            Install(Target, True, Nothing)
+            If Not CanWriteTo(Target) Then
+                Trace("目标目录没有写入权限，已中止。请改用用户目录，或以管理员身份重新运行：" & Target)
+                System.Environment.Exit(2)
+                Return
+            End If
+            Install(Target, Not NoShortcut, Nothing)
             Trace("静默安装完成")
             If Not NoLaunch Then StartApp(Target)
         Catch ex As Exception
             Trace("静默安装失败：" & ex.ToString())
+            If TypeOf ex Is UnauthorizedAccessException Then Trace("提示：目标目录没有写入权限，请改用用户目录或管理员身份运行")
             System.Environment.Exit(1)
         End Try
     End Sub
