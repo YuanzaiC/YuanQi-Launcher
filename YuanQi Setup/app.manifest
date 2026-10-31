@@ -5,9 +5,9 @@
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
     <security>
       <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
-        <!-- 默认按普通用户运行：安装到用户目录时不需要管理员权限。
-             只有用户主动选择受保护目录时，安装程序才会请求以管理员身份重启。 -->
-        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+        <!-- 安装程序统一以管理员身份运行：既能在任何目录安装，也会为安装目录授予当前用户的修改权限，
+             避免安装后普通权限运行启动器时写不了 YQL。 -->
+        <requestedExecutionLevel level="requireAdministrator" uiAccess="false" />
       </requestedPrivileges>
     </security>
   </trustInfo>

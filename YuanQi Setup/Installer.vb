@@ -274,6 +274,9 @@ Public Module Installer
             End Try
         End Try
 
+        Report(Progress, 0.82, "正在设置文件夹权限……")
+        GrantUsersAccess(Target)
+
         Report(Progress, 0.86, "正在注册安装信息……")
         WriteRegistry(Target)
         WriteUninstallScript(Target)
@@ -481,13 +484,40 @@ Public Module Installer
         End Try
     End Sub
 
+    ''' <summary>
+    ''' 启动缘启。安装程序可能以管理员身份运行，这里通过资源管理器启动，
+    ''' 让启动器以普通用户权限运行（否则写 YQL 会被管理员令牌带偏，也不该让游戏继承管理员权限）。
+    ''' </summary>
     Public Sub StartApp(Target As String)
         Try
             Dim ExePath As String = Path.Combine(Target, AppExeName)
-            If File.Exists(ExePath) Then
-                Process.Start(New ProcessStartInfo(ExePath) With {.WorkingDirectory = Target, .UseShellExecute = True})
+            If Not File.Exists(ExePath) Then Return
+            If IsElevated Then
+                Try
+                    Process.Start(New ProcessStartInfo("explorer.exe", """" & ExePath & """") With {.UseShellExecute = True})
+                    Return
+                Catch ex As Exception
+                    Trace("通过资源管理器启动失败：" & ex.Message)
+                End Try
             End If
+            Process.Start(New ProcessStartInfo(ExePath) With {.WorkingDirectory = Target, .UseShellExecute = True})
         Catch
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' 给 Users 组授予安装目录的修改权限，避免安装后普通权限运行启动器时写不了 YQL。
+    ''' </summary>
+    Public Sub GrantUsersAccess(Target As String)
+        Try
+            Dim Psi As New ProcessStartInfo("icacls.exe", $"""{Target}"" /grant *S-1-5-32-545:(OI)(CI)M /T /C /Q") With {
+                .UseShellExecute = False, .CreateNoWindow = True, .RedirectStandardOutput = True, .RedirectStandardError = True}
+            Using Proc = Process.Start(Psi)
+                If Proc IsNot Nothing Then Proc.WaitForExit(120000)
+            End Using
+            Trace("已为 Users 组授予安装目录的修改权限：" & Target)
+        Catch ex As Exception
+            Trace("授予文件夹权限失败：" & ex.Message)
         End Try
     End Sub
 
