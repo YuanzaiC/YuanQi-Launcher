@@ -122,14 +122,17 @@ Public Class SetupForm
         End Try
     End Sub
 
-    ''' <summary>根据是否已安装刷新文案。</summary>
+    ''' <summary>根据是否已安装刷新文案。更新模式下默认不再创建桌面快捷方式。</summary>
     Private Sub RefreshMode()
         If IsUpdating Then
             LabSub.Text = $"检测到已安装的缘启，将更新到 {Installer.AppVersion}。" & vbCrLf & "程序文件会被替换，YQL（设置与缓存）和 .minecraft 保持不动。"
             BtnInstall.Text = "更新"
+            '更新时快捷方式已经存在，默认不勾选
+            CheckShortcut.Checked = False
         Else
             LabSub.Text = $"将安装缘启 {Installer.AppVersion}。" & vbCrLf & "建议安装到当前用户目录，避免写入需要管理员权限的位置。"
             BtnInstall.Text = "安装"
+            CheckShortcut.Checked = True
         End If
     End Sub
 

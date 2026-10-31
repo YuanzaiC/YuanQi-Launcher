@@ -35,45 +35,60 @@ Public Module ModTools
     ''' </summary>
     ''' <param name="Silent">自动检测时为 True：没有更新就静默，不做任何弹窗。</param>
     Public Sub CheckLauncherUpdate(Optional Silent As Boolean = False)
-        Try
-            If Not IsRepoReady() Then
-                If Not Silent Then Hint("暂时无法检查更新，请稍后再试。", HintType.Blue)
-                Logger.Info("启动器仓库尚未建立，跳过更新检查")
-                Return
-            End If
-            Dim Raw As String = NetRequestByClient($"https://api.github.com/repos/{RepoUrl.Replace("https://github.com/", "")}/releases/latest",
-                                                   RequireJson:=True, Timeout:=10000)
-            Dim Tag = CType(Raw.DeserializeJson(), JObject)?("tag_name")
-            If Tag Is Nothing Then
-                If Not Silent Then Hint("无法解析更新信息。", HintType.Red)
-                Return
-            End If
-            Dim TagRaw As String = Tag.ToString
-            Dim Latest As String = TagRaw.TrimStart("v"c)
-            Logger.Info($"启动器最新版本：{Latest}，当前版本：{VersionBaseName}")
-            If Latest = VersionBaseName Then
-                If Not Silent Then MyMsgBox($"当前已是最新版本（{VersionBaseName}）。", "检查更新")
-                Return
-            End If
-            If Silent Then
-                '自动检测：只提示，不打扰
-                Hint($"缘启有新版本 {Latest} 可用，可在设置中检查更新。", HintType.Green)
-                Return
-            End If
+        If Not IsRepoReady() Then
+            If Not Silent Then Hint("暂时无法检查更新，请稍后再试。", HintType.Blue)
+            Logger.Info("启动器仓库地址为空，跳过更新检查")
+            Return
+        End If
+        '网络请求不能在 UI 线程执行，统一放到后台线程，界面操作再切回 UI 线程
+        RunInNewThread(
+        Sub()
+            Try
+                DoCheckLauncherUpdate(Silent)
+            Catch ex As Exception
+                Logger.Warn(ex, "检查启动器更新失败")
+                If Not Silent Then
+                    RunInUiWait(
+                    Sub()
+                        If ex.Message.Contains("404") Then
+                            MyMsgBox("仓库里还没有发布任何版本，暂时无法检查更新。", "检查更新")
+                        Else
+                            MyMsgBox("检查更新失败：" & vbCrLf & ex.Message, "检查更新", IsWarn:=True)
+                        End If
+                    End Sub)
+                End If
+            End Try
+        End Sub, "Check Launcher Update", ThreadPriority.BelowNormal)
+    End Sub
+
+    ''' <summary>在后台线程执行真正的更新检查，弹窗统一切回 UI 线程。</summary>
+    Private Sub DoCheckLauncherUpdate(Silent As Boolean)
+        Dim Raw As String = NetRequestByClient($"https://api.github.com/repos/{RepoUrl.Replace("https://github.com/", "")}/releases/latest",
+                                               RequireJson:=True, Timeout:=10000)
+        Dim Tag = CType(Raw.DeserializeJson(), JObject)?("tag_name")
+        If Tag Is Nothing Then
+            If Not Silent Then RunInUiWait(Sub() Hint("无法解析更新信息。", HintType.Red))
+            Return
+        End If
+        Dim TagRaw As String = Tag.ToString
+        Dim Latest As String = TagRaw.TrimStart("v"c)
+        Logger.Info($"启动器最新版本：{Latest}，当前版本：{VersionBaseName}")
+        If Latest = VersionBaseName Then
+            If Not Silent Then RunInUiWait(Sub() MyMsgBox($"当前已是最新版本（{VersionBaseName}）。", "检查更新"))
+            Return
+        End If
+        If Silent Then
+            '自动检测：只提示，不打扰
+            RunInUiWait(Sub() Hint($"缘启有新版本 {Latest} 可用，可在设置中检查更新。", HintType.Green))
+            Return
+        End If
+        RunInUiWait(
+        Sub()
             If MyMsgBox($"发现新版本：{Latest}{vbCrLf}当前版本：{VersionBaseName}{vbCrLf}{vbCrLf}是否立即下载安装包并更新？{vbCrLf}更新只替换程序文件，设置、游戏与存档都会保留。",
                         "检查更新", "立即更新", "稍后") = 1 Then
                 DownloadInstaller(TagRaw, Latest)
             End If
-        Catch ex As Exception
-            Logger.Warn(ex, "检查启动器更新失败")
-            If Not Silent Then
-                If ex.Message.Contains("404") Then
-                    MyMsgBox($"仓库里还没有发布任何版本，暂时无法检查更新。", "检查更新")
-                Else
-                    MyMsgBox("检查更新失败：" & vbCrLf & ex.Message, "检查更新", IsWarn:=True)
-                End If
-            End If
-        End Try
+        End Sub)
     End Sub
 
     ''' <summary>
@@ -90,7 +105,7 @@ Public Module ModTools
                 Using Client As New Net.WebClient()
                     Client.DownloadFile(Url, SavePath)
                 End Using
-                RunInUi(
+                RunInUiWait(
                 Sub()
                     If MyMsgBox($"安装包已下载完成：{FileName}{vbCrLf}{vbCrLf}立即启动安装程序吗？{vbCrLf}安装程序会自动关闭缘启并替换程序文件，设置与存档不会丢失。",
                                 "检查更新", "立即安装", "稍后") = 1 Then
@@ -132,29 +147,36 @@ Public Module ModTools
     ''' 检查陶瓦联机模块是否有新版本（对比本地模块与 GitHub 最新 Release）。
     ''' </summary>
     Public Sub CheckTerracottaUpdate()
-        Try
-            Dim LocalVersion As String = GetLocalTerracottaVersion()
-            Hint("正在检查联机模块更新……", HintType.Blue, False)
-            Dim Latest As String = ModTerracotta.GetLatestVersion()
-            If String.IsNullOrWhiteSpace(Latest) Then
-                MyMsgBox("无法获取联机模块的最新版本，请检查网络后重试。", "联机模块更新", IsWarn:=True)
-                Return
-            End If
-            Dim Message As String = $"本地联机模块：{If(String.IsNullOrWhiteSpace(LocalVersion), "未知", LocalVersion)}{vbCrLf}" &
-                $"最新版本：{Latest}"
-            If String.IsNullOrWhiteSpace(LocalVersion) Then
-                Message &= vbCrLf & vbCrLf & "本地版本未知（可能是手动放置的模块）。"
-            ElseIf CompareVersion(LocalVersion, Latest) >= 0 Then
-                MyMsgBox(Message & vbCrLf & vbCrLf & "已是最新版本。", "联机模块更新")
-                Return
-            End If
-            If MyMsgBox(Message & vbCrLf & vbCrLf & "是否打开下载页面？", "联机模块更新", "打开", "取消") = 1 Then
-                OpenWebsite("https://github.com/burningtnt/Terracotta/releases/latest")
-            End If
-        Catch ex As Exception
-            Logger.Warn(ex, "检查联机模块更新失败")
-            MyMsgBox("检查失败：" & vbCrLf & ex.Message, "联机模块更新", IsWarn:=True)
-        End Try
+        Dim LocalVersion As String = GetLocalTerracottaVersion()
+        Hint("正在检查联机模块更新……", HintType.Blue, False)
+        '网络请求不能在 UI 线程执行
+        RunInNewThread(
+        Sub()
+            Try
+                Dim Latest As String = ModTerracotta.GetLatestVersion()
+                If String.IsNullOrWhiteSpace(Latest) Then
+                    RunInUiWait(Sub() MyMsgBox("无法获取联机模块的最新版本，请检查网络后重试。", "联机模块更新", IsWarn:=True))
+                    Return
+                End If
+                Dim Message As String = $"本地联机模块：{If(String.IsNullOrWhiteSpace(LocalVersion), "未知", LocalVersion)}{vbCrLf}" &
+                    $"最新版本：{Latest}"
+                If String.IsNullOrWhiteSpace(LocalVersion) Then
+                    Message &= vbCrLf & vbCrLf & "本地版本未知（可能是手动放置的模块）。"
+                ElseIf CompareVersion(LocalVersion, Latest) >= 0 Then
+                    RunInUiWait(Sub() MyMsgBox(Message & vbCrLf & vbCrLf & "已是最新版本。", "联机模块更新"))
+                    Return
+                End If
+                RunInUiWait(
+                Sub()
+                    If MyMsgBox(Message & vbCrLf & vbCrLf & "是否打开下载页面？", "联机模块更新", "打开", "取消") = 1 Then
+                        OpenWebsite("https://github.com/burningtnt/Terracotta/releases/latest")
+                    End If
+                End Sub)
+            Catch ex As Exception
+                Logger.Warn(ex, "检查联机模块更新失败")
+                RunInUiWait(Sub() MyMsgBox("检查失败：" & vbCrLf & ex.Message, "联机模块更新", IsWarn:=True))
+            End Try
+        End Sub, "Check Terracotta Update", ThreadPriority.BelowNormal)
     End Sub
 
     ''' <summary>读取本地联机模块版本（从 exe 文件版本信息），读不到返回空串。</summary>
