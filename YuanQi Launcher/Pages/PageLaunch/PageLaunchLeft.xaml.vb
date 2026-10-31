@@ -2299,30 +2299,29 @@ ExitRefresh:
                 End If
                 Cell.Background = New SolidColorBrush(Color.FromArgb(CByte(Op * 255), Accent.R, Accent.G, Accent.B))
             End If
-            '选中的日期套一个圆角框：尺寸与热度背景（整格 34px、圆角 6）完全一致；
-            '深色热度格上用白框，浅色/无热度格用主题绿框
-            Dim Box As New Border With {.CornerRadius = New CornerRadius(6), .Height = 34, .Margin = New Thickness(0),
-                                        .Padding = New Thickness(0),
-                                        .HorizontalAlignment = HorizontalAlignment.Stretch, .VerticalAlignment = VerticalAlignment.Center}
+            '选中的日期用同一圈描边表示（Tag 控制模板里的 Ring），不再往内容里塞额外的 Border，
+            '避免悬浮时出现「两层框」或框与热度色块尺寸不一致
             If D = SelectedDay Then
                 Txt.FontWeight = FontWeights.Bold
-                Box.BorderThickness = New Thickness(1.6)
+                Cell.BorderThickness = New Thickness(1.8)
                 If Op >= 0.5 Then
                     Txt.Foreground = Brushes.White
-                    Box.BorderBrush = Brushes.White
+                    Cell.Tag = "sel-dark"
+                    Cell.BorderBrush = Brushes.White
                 Else
                     Txt.SetResourceReference(TextBlock.ForegroundProperty, "ColorBrush3")
-                    Box.SetResourceReference(Border.BorderBrushProperty, "ColorBrush3")
+                    Cell.Tag = "sel"
+                    Cell.SetResourceReference(Border.BorderBrushProperty, "ColorBrush3")
                 End If
             Else
+                Cell.BorderThickness = New Thickness(0)
                 If Op >= 0.5 Then
                     Txt.Foreground = Brushes.White
                 Else
                     Txt.SetResourceReference(TextBlock.ForegroundProperty, "BrushText1")
                 End If
             End If
-            Box.Child = Txt
-            Cell.Content = Box
+            Cell.Content = Txt
             Dim DayDate = D
             AddHandler Cell.Click, Sub() SelectDay(DayDate)
             PanCalDays.Children.Add(Cell)

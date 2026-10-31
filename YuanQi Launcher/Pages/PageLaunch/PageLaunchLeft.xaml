@@ -7,29 +7,42 @@
              mc:Ignorable="d" x:Name="PanBack"
              d:DesignHeight="760">
     <local:MyPageLeft.Resources>
-        <!-- 主页日历格子：悬浮时只画一圈主题色提示，绝不替换背景，
-             否则会把「热度色块」盖成灰白色（LinkRow 的悬浮就是改背景） -->
+        <!-- 主页日历格子：悬浮 / 选中都只用同一圈描边（绝不替换背景，否则会把热度色块盖成灰白色）。
+             选中状态通过 Tag（sel / sel-dark）切换，保证悬浮与选中不会叠出两层框。 -->
         <Style x:Key="CalDayCell" TargetType="Button">
             <Setter Property="Height" Value="34" />
             <Setter Property="Margin" Value="2" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Grid>
                             <Border x:Name="Bd" CornerRadius="6" Background="{TemplateBinding Background}" SnapsToDevicePixels="True" />
-                            <Border x:Name="HoverRing" CornerRadius="6" BorderBrush="{DynamicResource ColorBrush3}"
-                                    BorderThickness="0" IsHitTestVisible="False" />
-                            <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+                            <Border x:Name="Ring" CornerRadius="6" IsHitTestVisible="False"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}" />
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Grid>
                         <ControlTemplate.Triggers>
+                            <!-- 悬浮：一圈主题色细描边 -->
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="HoverRing" Property="BorderThickness" Value="1.4" />
+                                <Setter TargetName="Ring" Property="BorderThickness" Value="1.4" />
+                                <Setter TargetName="Ring" Property="BorderBrush" Value="{DynamicResource ColorBrush3}" />
+                            </Trigger>
+                            <!-- 选中：加粗的同色圈（放在后面，优先于悬浮态） -->
+                            <Trigger Property="Tag" Value="sel">
+                                <Setter TargetName="Ring" Property="BorderThickness" Value="1.8" />
+                            </Trigger>
+                            <Trigger Property="Tag" Value="sel-dark">
+                                <Setter TargetName="Ring" Property="BorderThickness" Value="1.8" />
+                                <Setter TargetName="Ring" Property="BorderBrush" Value="White" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="Bd" Property="Opacity" Value="0.82" />
