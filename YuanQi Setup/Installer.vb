@@ -507,13 +507,23 @@ Public Module Installer
 
     ''' <summary>
     ''' 给 Users 组授予安装目录的修改权限，避免安装后普通权限运行启动器时写不了 YQL。
+    ''' 只在安装根目录设置可继承的 ACE（不加 /T），否则会把 .minecraft、WebView2 缓存等十几万文件全扫一遍，非常慢。
     ''' </summary>
     Public Sub GrantUsersAccess(Target As String)
         Try
-            Dim Psi As New ProcessStartInfo("icacls.exe", $"""{Target}"" /grant *S-1-5-32-545:(OI)(CI)M /T /C /Q") With {
-                .UseShellExecute = False, .CreateNoWindow = True, .RedirectStandardOutput = True, .RedirectStandardError = True}
+            '不重定向输出：icacls 在十万级文件上会刷大量日志，读空了缓冲区会卡死等待
+            Dim Psi As New ProcessStartInfo("icacls.exe", $"""{Target}"" /grant *S-1-5-32-545:(OI)(CI)M /C /Q") With {
+                .UseShellExecute = False, .CreateNoWindow = True}
             Using Proc = Process.Start(Psi)
-                If Proc IsNot Nothing Then Proc.WaitForExit(120000)
+                If Proc Is Nothing Then Return
+                If Not Proc.WaitForExit(15000) Then
+                    Try
+                        Proc.Kill()
+                    Catch
+                    End Try
+                    Trace("授予文件夹权限超时，已跳过：" & Target)
+                    Return
+                End If
             End Using
             Trace("已为 Users 组授予安装目录的修改权限：" & Target)
         Catch ex As Exception
