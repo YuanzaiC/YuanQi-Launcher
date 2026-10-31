@@ -1,0 +1,65 @@
+<local:MyPageRight
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:YuanQi" xmlns:d="http://schemas.microsoft.com/expression/blend/2008" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+    mc:Ignorable="d" x:Class="PageSetupLink"
+    PanScroll="PanBack">
+    <local:MyScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" x:Name="PanBack">
+        <StackPanel x:Name="PanMain" Margin="24,22,24,26">
+            <StackPanel Orientation="Horizontal" Margin="2,0,0,16">
+                <TextBlock Text="设置" Style="{StaticResource PageTitle}" />
+                <TextBlock Text="启动器与游戏配置" Style="{StaticResource PageSub}" />
+            </StackPanel>
+
+            <local:MyCard x:Name="CardArgument" Margin="0,15,0,15" Title="联机选项">
+                <Grid Margin="25,40,25,20">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="Name" />
+                        <ColumnDefinition Width="1*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="28" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Left" Text="显示名称" Margin="0,0,25,0" />
+                    <local:MyTextBox Grid.Row="0" Grid.Column="1" x:Name="TextPlayerName" local:SettingService.Key="LinkPlayerName" MaxHeight="28"
+                        ToolTip="联机房间里其他玩家看到的名称。留空时使用当前登录的玩家名。" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Margin="1,9,0,0" FontSize="12" LineHeight="17"
+                        Foreground="{StaticResource ColorBrushGray4}" TextWrapping="Wrap"
+                        Text="留空时使用当前登录的玩家名（离线登录即离线 ID）；都不存在时使用 Windows 用户名。" />
+                </Grid>
+            </local:MyCard>
+
+            <local:MyCard Margin="0,0,0,15" Title="高级设置" IsSwapped="True" CanSwap="True">
+                <Grid Margin="25,40,25,22">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="Name" />
+                        <ColumnDefinition Width="1*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="35" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="15" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Left" Text="公共节点" Margin="0,0,25,0" />
+                    <local:MyTextBox Grid.Row="0" Grid.Column="1" x:Name="TextCustomPeer" local:SettingService.Key="LinkCustomPeer" MaxHeight="28"
+                        ToolTip="额外使用的 EasyTier 公共节点，会与陶瓦内置的公共节点合并。&#xa;留空则只使用内置节点。&#xa;&#xa;多个节点请用逗号分隔，例如：&#xa;tcp://public.easytier.cn:11010,tcp://public2.easytier.cn:54321&#xa;&#xa;房主与加入方必须至少连接到一个相同的节点，才能互相连上。" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Margin="1,9,0,0" FontSize="12" LineHeight="17"
+                        Foreground="{StaticResource ColorBrushGray4}" TextWrapping="Wrap"
+                        Text="仅在网络环境特殊、内置节点无法连通时才需要填写。" />
+                    <StackPanel Orientation="Horizontal" Grid.Row="3" Grid.ColumnSpan="2" HorizontalAlignment="Left">
+                        <local:MyButton MinWidth="140" Padding="13,5" Margin="0,0,20,0" HorizontalAlignment="Left"
+                            Text="陶瓦联机文档" ToolTip="查看陶瓦联机的使用说明与接口文档"
+                            local:CustomEventService.EventType="打开网页" local:CustomEventService.EventData="https://burningtnt.github.io/Terracotta/" />
+                        <local:MyButton MinWidth="140" Padding="13,5" Margin="0,0,20,0" HorizontalAlignment="Left"
+                            Text="公共节点状态" ToolTip="查看陶瓦内置公共节点的运行状态"
+                            local:CustomEventService.EventType="打开网页" local:CustomEventService.EventData="https://etnode.zkitefly.eu.org/about" />
+                        <local:MyButton x:Name="BtnLinkCheckUpdate" MinWidth="140" Padding="13,5" HorizontalAlignment="Left"
+                            Text="检查联机模块更新" ToolTip="对比本地陶瓦联机模块与 GitHub 上的最新版本" />
+                    </StackPanel>
+                </Grid>
+            </local:MyCard>
+        </StackPanel>
+    </local:MyScrollViewer>
+</local:MyPageRight>

@@ -1,0 +1,20 @@
+﻿<Border x:Class="MyButton"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             FocusVisualStyle="{x:Null}" x:Name="PanBack"
+             Focusable="True" UseLayoutRounding="False" SnapsToDevicePixels="False" Background="Transparent">
+    <Border CornerRadius="4" x:Name="PanFore" BorderThickness="1" BorderBrush="{DynamicResource BrushBorderStrong}" RenderTransformOrigin="0.5,0.5" Background="{DynamicResource BrushSurface}">
+        <Border.RenderTransform>
+            <ScaleTransform />
+        </Border.RenderTransform>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+            <Path x:Name="PathLogo" Width="15" Height="15" Stretch="Uniform" Margin="0,0,7,0" VerticalAlignment="Center" Visibility="Collapsed"
+                  Fill="{Binding Foreground, ElementName=LabText}" RenderTransformOrigin="0.5,0.5" />
+            <TextBlock TextOptions.TextFormattingMode="Display" SnapsToDevicePixels="True" TextTrimming="None" HorizontalAlignment="Center" x:Name="LabText" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5" Foreground="{DynamicResource ColorBrush1}" FontSize="13" IsHitTestVisible="False">
+                <TextBlock.RenderTransform>
+                    <ScaleTransform />
+                </TextBlock.RenderTransform>
+            </TextBlock>
+        </StackPanel>
+    </Border>
+</Border>

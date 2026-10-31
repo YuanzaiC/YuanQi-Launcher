@@ -1,0 +1,461 @@
+﻿<local:MyPageRight
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:YuanQi" xmlns:d="http://schemas.microsoft.com/expression/blend/2008" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" x:Class="PageSeedMap"
+             d:DesignWidth="1280" d:DesignHeight="760">
+    <local:MyPageRight.Resources>
+        <!-- 顶部菜单栏的分段选择（维度 / 视图），对齐 PageOreGuide 的 DimTab 规格 -->
+        <Style x:Key="SegTab" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{DynamicResource BrushText2}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Bd" Background="Transparent" CornerRadius="5" Padding="10,5" SnapsToDevicePixels="True">
+                            <ContentPresenter x:Name="Cp" VerticalAlignment="Center" RecognizesAccessKey="False" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BrushSurface}" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource BrushBorder}" />
+                                <Setter TargetName="Bd" Property="BorderThickness" Value="1" />
+                                <Setter Property="Foreground" Value="{DynamicResource ColorBrush2}" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsChecked" Value="False" />
+                                    <Condition Property="IsMouseOver" Value="True" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BrushHover}" />
+                            </MultiTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- 左侧工具栏的图标按钮：36×36 幽灵按钮，选中时强调色浅底 -->
+        <Style x:Key="ToolBtn" TargetType="Button">
+            <Setter Property="Width" Value="36" />
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource BrushText2}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="8" SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="False" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BrushHover}" />
+                                <Setter Property="Foreground" Value="{DynamicResource BrushText1}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BrushPressed}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- 深色信息条上的小字 -->
+        <Style x:Key="InfoText" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="#E8ECF2" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="InfoIcon" TargetType="Path">
+            <Setter Property="Fill" Value="#9AA7B8" />
+            <Setter Property="Stretch" Value="Uniform" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <!-- 浮动小图标按钮（缩放 / 复位等），白色卡片内 -->
+        <Style x:Key="MapCtrlBtn" TargetType="Button" BasedOn="{StaticResource ToolBtn}">
+            <Setter Property="Width" Value="34" />
+            <Setter Property="Height" Value="34" />
+        </Style>
+    </local:MyPageRight.Resources>
+
+    <Grid x:Name="PanRoot" Background="#12161F">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- ==================== 地图视口（全幅铺满，无限平移） ==================== -->
+        <Border x:Name="PanMapViewport" ClipToBounds="True" Background="#0D1017" Cursor="ScrollAll">
+            <Grid>
+                <Canvas x:Name="MapRoot">
+                <Canvas.RenderTransform>
+                    <TransformGroup>
+                        <ScaleTransform x:Name="MapScale" ScaleX="1" ScaleY="1" />
+                        <TranslateTransform x:Name="MapPos" />
+                    </TransformGroup>
+                </Canvas.RenderTransform>
+                <!-- 群系瓦片（按需生成的位图，坐标为地图单位） -->
+                <Canvas x:Name="PanTiles" IsHitTestVisible="False" />
+                <!-- 结构标记（按世界坐标摆放，反向缩放保持屏幕尺寸） -->
+                <!-- 史莱姆区块叠加层（开关打开时由代码填充，位于地形之上、网格之下） -->
+                <Canvas x:Name="PanSlime" IsHitTestVisible="False" />
+                <!-- 网格线：必须排在瓦片之后，否则会被地形位图整块盖住；间距随缩放自适应，由代码按视野绘制 -->
+                <Canvas x:Name="PanGrid" IsHitTestVisible="False" />
+                <Canvas x:Name="PanMarkers" IsHitTestVisible="True" />
+                <!-- 3D 框选层（跟随鼠标的选框） -->
+                <Canvas x:Name="PanSelect3D" IsHitTestVisible="False" />
+            </Canvas>
+            <!-- 坐标标尺：不随地图缩放，由代码按网格摆文字（阴影挂在整层上，避免每帧为每个文字各建一个 Effect） -->
+            <Canvas x:Name="PanRuler" IsHitTestVisible="False">
+                <Canvas.Effect>
+                    <DropShadowEffect Color="#000000" BlurRadius="3" ShadowDepth="0" Opacity="0.9" RenderingBias="Performance" />
+                </Canvas.Effect>
+            </Canvas>
+            </Grid>
+        </Border>
+
+        <!-- 地图暗角，衬托白色浮动卡片 -->
+        <Border IsHitTestVisible="False">
+            <Border.Background>
+                <RadialGradientBrush GradientOrigin="0.5,0.5" Center="0.5,0.5" RadiusX="0.75" RadiusY="0.75">
+                    <GradientStop Color="#00000000" Offset="0.55" />
+                    <GradientStop Color="#4C000000" Offset="1" />
+                </RadialGradientBrush>
+            </Border.Background>
+        </Border>
+
+        <!-- ==================== 顶部菜单栏（进入时自上向下浮现） ==================== -->
+        <Border x:Name="PanTopBar" Height="48" Margin="12,12,12,0" VerticalAlignment="Top"
+                Background="{DynamicResource BrushSurface}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1"
+                CornerRadius="10" Padding="10,0" SnapsToDevicePixels="True">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="10" ShadowDepth="2" Direction="270" Opacity="0.14" Color="#000000" RenderingBias="Performance" />
+            </Border.Effect>
+            <Grid VerticalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <!-- 末列：坐标 / 群系 / 缩放信息（独立列，不会被按钮压住） -->
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- 种子输入 -->
+                <TextBox x:Name="TxtSeed" Grid.Column="1" Style="{StaticResource InputBox}" Width="200" Margin="10,0,0,0"
+                         FontSize="12.5" Text="7906073100618442319" ToolTip="输入世界种子" VerticalAlignment="Center" />
+                <Button x:Name="BtnSeedLoad" Grid.Column="3" Style="{StaticResource BtnPrimary}" Height="32" Padding="13,0"
+                        Margin="6,0,0,0" Content="查看地图" FontSize="12.5" />
+
+                <!-- 坐标 / 群系 / 缩放信息：每项固定宽度，文字长短变化不会推动相邻项 -->
+                <StackPanel Grid.Column="7" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="12,0,2,0">
+                    <TextBlock x:Name="LabInfoPos" Text="X 0 · Z 0" Width="140" FontSize="11.5" Foreground="{DynamicResource BrushText2}"
+                               FontFamily="Resources/#PCL English, Microsoft YaHei UI" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    <Rectangle Width="1" Height="12" Fill="{DynamicResource BrushBorder}" Margin="9,0,9,0" />
+                    <TextBlock x:Name="LabInfoBiome" Text="平原" Width="80" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource BrushText1}"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    <Rectangle Width="1" Height="12" Fill="{DynamicResource BrushBorder}" Margin="9,0,9,0" />
+                    <TextBlock x:Name="LabZoom" Text="100%" Width="46" FontSize="11.5" Foreground="{DynamicResource BrushText2}"
+                               FontFamily="Resources/#PCL English, Microsoft YaHei UI" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    <Rectangle Width="1" Height="12" Fill="{DynamicResource BrushBorder}" Margin="9,0,9,0" />
+                    <TextBlock x:Name="LabScaleHint" Text="1 格 ≈ 32 方块" Width="96" FontSize="11.5" Foreground="{DynamicResource BrushText3}"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+
+                <!-- 版本选择 -->
+                <Button x:Name="BtnVersion" Grid.Column="5" Style="{StaticResource BtnGhost}" Height="32" Padding="10,0" Margin="6,0,0,0" ToolTip="切换游戏版本">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock x:Name="LabVersion" Text="Java 版 26.3" FontSize="12.5" VerticalAlignment="Center" />
+                        <Path Data="M5,7.5 L10,12 L15,7.5 Z" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                              Stretch="Uniform" Width="10" Height="10" Margin="5,1,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <!-- 维度分段 -->
+                <Border Grid.Column="6" Background="{DynamicResource BrushSurface2}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1"
+                        CornerRadius="6" Padding="2" Margin="8,0,2,0" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton x:Name="RadioDimOver" Content="主世界" GroupName="SeedDim" IsChecked="True" Style="{StaticResource SegTab}" />
+                        <RadioButton x:Name="RadioDimNether" Content="下界" GroupName="SeedDim" Style="{StaticResource SegTab}" Margin="2,0,0,0" />
+                        <RadioButton x:Name="RadioDimEnd" Content="末地" GroupName="SeedDim" Style="{StaticResource SegTab}" Margin="2,0,0,0" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- ==================== 左侧工具栏 ==================== -->
+        <Border x:Name="PanToolRail" Width="46" Margin="12,72,0,0" HorizontalAlignment="Left" VerticalAlignment="Top"
+                Background="{DynamicResource BrushSurface}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1"
+                CornerRadius="10" Padding="4,5" SnapsToDevicePixels="True">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="10" ShadowDepth="2" Direction="270" Opacity="0.14" Color="#000000" RenderingBias="Performance" />
+            </Border.Effect>
+            <StackPanel>
+                <!-- ① 结构：显示生物群系结构的位置 -->
+                <Button x:Name="BtnToolStruct" Style="{StaticResource ToolBtn}" ToolTip="结构：显示生物群系结构的位置">
+                    <Path Data="M4,21 V9 L12,3 L20,9 V21 H14.5 V14.5 H9.5 V21 Z"
+                          Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Stretch="Uniform" Width="17" Height="17" />
+                </Button>
+                <!-- ② 地形：搜索指定地形（群系）的位置 -->
+                <Button x:Name="BtnToolLocate" Style="{StaticResource ToolBtn}" Margin="0,3,0,0" ToolTip="地形：搜索指定地形（群系）的位置">
+                    <Path Data="M11,2 h2 v3.2 a7,7 0 0 1 5.8,5.8 H22 v2 h-3.2 a7,7 0 0 1 -5.8,5.8 V22 h-2 v-3.2 a7,7 0 0 1 -5.8,-5.8 H2 v-2 h3.2 A7,7 0 0 1 11,5.2 Z M12,8 a4,4 0 1 0 0,8 a4,4 0 0 0 0,-8 Z"
+                          Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Stretch="Uniform" Width="17" Height="17" />
+                </Button>
+                <!-- ③ 跳转：定位到指定 X / Z 坐标 -->
+                <Button x:Name="BtnPanTo" Style="{StaticResource ToolBtn}" Margin="0,3,0,0" ToolTip="跳转：定位到指定 X / Z 坐标">
+                    <Path Data="M12,2.2 C8.4,2.2 5.5,5.1 5.5,8.7 c0,4.9 6.5,13.1 6.5,13.1 s6.5,-8.2 6.5,-13.1 C18.5,5.1 15.6,2.2 12,2.2 Z"
+                          Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                          Stretch="Uniform" Width="17" Height="17" />
+                </Button>
+                <!-- ④ 地形显示：显示 / 隐藏地形图层 -->
+                <Button x:Name="BtnToolLayer" Style="{StaticResource ToolBtn}" Margin="0,3,0,0" ToolTip="地形显示：显示 / 隐藏地形图层">
+                    <Path Data="M12,3 L22,8.5 12,14 2,8.5 Z M4.6,11.4 L2,12.9 12,18.5 22,12.9 19.4,11.4 12,15.7 Z M4.6,16.1 L2,17.6 12,23.2 22,17.6 19.4,16.1 12,20.4 Z"
+                          Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Stretch="Uniform" Width="17" Height="17" />
+                </Button>
+                <!-- ⑤ 网格显示：显示 / 隐藏坐标网格 -->
+                <Button x:Name="BtnToolGrid" Style="{StaticResource ToolBtn}" Margin="0,3,0,0" ToolTip="网格显示：显示 / 隐藏坐标网格">
+                    <Path Data="M2,4 H22 V5.6 H2 Z M2,11.2 H22 V12.8 H2 Z M2,18.4 H22 V20 H2 Z M4,2 H5.6 V22 H4 Z M11.2,2 H12.8 V22 H11.2 Z M18.4,2 H20 V22 H18.4 Z"
+                          Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Stretch="Uniform" Width="17" Height="17" />
+                </Button>
+                <!-- ⑥ 史莱姆显示：显示 / 隐藏史莱姆区块 -->
+                <Button x:Name="BtnToolSlime" Style="{StaticResource ToolBtn}" Margin="0,3,0,0" ToolTip="史莱姆显示：显示 / 隐藏史莱姆区块">
+                    <Path Data="M3.5,3.5 H11 V11 H3.5 Z M13,3.5 H20.5 V11 H13 Z M3.5,13 H11 V20.5 H3.5 Z M13,13 H20.5 V20.5 H13 Z"
+                          Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                          Stretch="Uniform" Width="17" Height="17" />
+                </Button>
+                <!-- ⑦ 浮雕：按地表高度着色地形 -->
+                <Button x:Name="BtnToolRelief" Style="{StaticResource ToolBtn}" Margin="0,3,0,0" ToolTip="浮雕：按地表高度着色地形">
+                    <Path Data="M2,20 L8.5,9 L12.5,15.5 L15.5,11 L22,20 Z"
+                          Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                          Stretch="Uniform" Width="17" Height="17" />
+                </Button>
+                <!-- ⑧ 精度：精细 4 方块 / 采样 ↔ 标准 8 方块 / 采样 -->
+                <Button x:Name="BtnDetail" Style="{StaticResource ToolBtn}" Margin="0,3,0,0" ToolTip="精度：精细 4 方块 / 采样 ↔ 标准 8 方块 / 采样">
+                    <Path Data="M3,5 h18 v2 h-18 Z M6,10 h12 v2 h-12 Z M9,15 h6 v2 h-6 Z"
+                          Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                          Stretch="Uniform" Width="17" Height="17" />
+                </Button>
+                <!-- ⑨ 3D 预览：框选区域后查看立体地形 -->
+                <Button x:Name="BtnTool3D" Style="{StaticResource ToolBtn}" Margin="0,3,0,0" ToolTip="3D 预览：框选区域后查看立体地形">
+                    <Path Data="M12,4.6 L19.2,8.4 L12,12.2 L4.8,8.4 Z M4.2,9.6 L11.2,13.4 L11.2,20.4 L4.2,16.6 Z M12.8,13.4 L19.8,9.6 L19.8,16.6 L12.8,20.4 Z"
+                          Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                          Stretch="Uniform" Width="17" Height="17" />
+                </Button>
+                <!-- ⑩ 第一人称：点击后在地图上选一个落点进入第一人称 -->
+                <Button x:Name="BtnToolFPS" Style="{StaticResource ToolBtn}" Margin="0,3,0,0" ToolTip="第一人称：在地图上选一个落点走进去">
+                    <Path Data="M12,2 a4.4,4.4 0 1 1 -0.01,0 Z M12,7.6 c-3.6,0 -6.2,2.4 -6.2,5.6 V21 h3 v-5.6 h0.4 V21 h5.6 v-5.6 h0.4 V21 h3 v-7.8 c0,-3.2 -2.6,-5.6 -6.2,-5.6 Z"
+                          Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                          Stretch="Uniform" Width="17" Height="17" />
+                </Button>
+            </StackPanel>
+        </Border>
+
+        <!-- ==================== 结构面板 ==================== -->
+        <Border x:Name="PanStructures" Panel.ZIndex="45" Width="264" Margin="66,72,0,12" HorizontalAlignment="Left" VerticalAlignment="Top"
+                MaxHeight="440" Background="{DynamicResource BrushSurface}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1"
+                CornerRadius="10" SnapsToDevicePixels="True" Visibility="Collapsed">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="10" ShadowDepth="2" Direction="270" Opacity="0.14" Color="#000000" RenderingBias="Performance" />
+            </Border.Effect>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <!-- 标题 -->
+                <Grid Grid.Row="0" Margin="14,12,8,4">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="地图控制台" FontSize="10.5" Foreground="{DynamicResource BrushText3}" />
+                        <Border Style="{StaticResource ChipAccent}" Margin="8,0,0,0" Padding="7,0">
+                            <TextBlock x:Name="LabStructCount" Text="已选 12 项" FontSize="10.5" Foreground="{DynamicResource ColorBrush3}" VerticalAlignment="Center" />
+                        </Border>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom" Margin="0,14,0,0">
+                        <TextBlock Text="结构" FontSize="17" FontWeight="SemiBold" Foreground="{DynamicResource BrushText1}" />
+                    </StackPanel>
+                    <Button x:Name="BtnStructClose" Style="{StaticResource ToolBtn}" Width="28" Height="28" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,4,0,0" ToolTip="收起面板">
+                        <Path Data="F1 M2,0 L0,2 8,10 0,18 2,20 10,12 18,20 20,18 12,10 20,2 18,0 10,8 2,0Z"
+                              Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Stretch="Uniform" Width="10" Height="10" />
+                    </Button>
+                </Grid>
+                <!-- 搜索 -->
+                <Border Grid.Row="1" Margin="14,10,14,8" Background="{DynamicResource BrushSurface2}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1"
+                        CornerRadius="7" Height="32">
+                    <Grid>
+                        <Path Style="{StaticResource InfoIcon}" Width="13" Height="13" Margin="10,0,0,0" HorizontalAlignment="Left" Fill="{DynamicResource BrushText3}"
+                              Data="M10.5,2.5 a6,6 0 1 0 0,12 a6,6 0 1 0 0,-12 Z M14.9,13.4 l4.9,4.9 a1.2,1.2 0 0 1 -1.7,1.7 l-4.9,-4.9 Z" />
+                        <TextBox x:Name="TxtStructSearch" Style="{StaticResource InputBox}" BorderThickness="0" Background="Transparent" Height="30"
+                                 Margin="28,0,6,0" FontSize="12.5" VerticalContentAlignment="Center" TextChanged="TxtStructSearch_TextChanged" />
+                    </Grid>
+                </Border>
+                <!-- 列表 -->
+                <local:MyScrollViewer Grid.Row="2" Margin="6,0,6,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel x:Name="PanStructList" Margin="4,0,4,0" />
+                </local:MyScrollViewer>
+                <!-- 底部操作 -->
+                <Border Grid.Row="3" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,1,0,0" Margin="8,6,8,8" Padding="6,6">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <Button x:Name="BtnStructAll" Style="{StaticResource BtnGhost}" Height="26" Padding="10,0" Content="全选" FontSize="12" />
+                        <Button x:Name="BtnStructNone" Style="{StaticResource BtnGhost}" Height="26" Padding="10,0" Margin="6,0,0,0" Content="清空" FontSize="12" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- ==================== 地形寻找面板 ==================== -->
+        <Border x:Name="PanBiomes" Panel.ZIndex="45" Width="264" Margin="66,72,0,12" HorizontalAlignment="Left" VerticalAlignment="Top"
+                MaxHeight="440" Background="{DynamicResource BrushSurface}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1"
+                CornerRadius="10" SnapsToDevicePixels="True" Visibility="Collapsed">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="10" ShadowDepth="2" Direction="270" Opacity="0.14" Color="#000000" RenderingBias="Performance" />
+            </Border.Effect>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <!-- 标题 -->
+                <Grid Grid.Row="0" Margin="14,12,8,4">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="地图控制台" FontSize="10.5" Foreground="{DynamicResource BrushText3}" />
+                        <Border Style="{StaticResource ChipAccent}" Margin="8,0,0,0" Padding="7,0">
+                            <TextBlock x:Name="LabBiomeCount" Text="未筛选" FontSize="10.5" Foreground="{DynamicResource ColorBrush3}" VerticalAlignment="Center" />
+                        </Border>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom" Margin="0,14,0,0">
+                        <TextBlock Text="地形" FontSize="17" FontWeight="SemiBold" Foreground="{DynamicResource BrushText1}" />
+                    </StackPanel>
+                    <Button x:Name="BtnBiomeClose" Style="{StaticResource ToolBtn}" Width="28" Height="28" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,4,0,0" ToolTip="收起面板">
+                        <Path Data="F1 M2,0 L0,2 8,10 0,18 2,20 10,12 18,20 20,18 12,10 20,2 18,0 10,8 2,0Z"
+                              Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Stretch="Uniform" Width="10" Height="10" />
+                    </Button>
+                </Grid>
+                <!-- 搜索 -->
+                <Border Grid.Row="1" Margin="14,10,14,8" Background="{DynamicResource BrushSurface2}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1"
+                        CornerRadius="7" Height="32">
+                    <Grid>
+                        <Path Width="13" Height="13" Margin="10,0,0,0" HorizontalAlignment="Left" Fill="{DynamicResource BrushText3}"
+                              Data="M10.5,2.5 a6,6 0 1 0 0,12 a6,6 0 1 0 0,-12 Z M14.9,13.4 l4.9,4.9 a1.2,1.2 0 0 1 -1.7,1.7 l-4.9,-4.9 Z" />
+                        <TextBox x:Name="TxtBiomeSearch" Style="{StaticResource InputBox}" BorderThickness="0" Background="Transparent" Height="30"
+                                 Margin="28,0,6,0" FontSize="12.5" VerticalContentAlignment="Center" TextChanged="TxtBiomeSearch_TextChanged" />
+                    </Grid>
+                </Border>
+                <!-- 列表 -->
+                <local:MyScrollViewer Grid.Row="2" Margin="6,0,6,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel x:Name="PanBiomeList" Margin="4,0,4,0" />
+                </local:MyScrollViewer>
+                <!-- 底部操作 -->
+                <Border Grid.Row="3" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,1,0,0" Margin="8,6,8,8" Padding="6,6">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <Button x:Name="BtnBiomeAll" Style="{StaticResource BtnGhost}" Height="26" Padding="10,0" Content="全选" FontSize="12" />
+                        <Button x:Name="BtnBiomeNone" Style="{StaticResource BtnGhost}" Height="26" Padding="10,0" Margin="6,0,0,0" Content="清空" FontSize="12" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- ==================== 3D 预览面板（拖动旋转 / 右键关闭） ==================== -->
+        <Border x:Name="PanView3D" Panel.ZIndex="40" Margin="66,72,66,64" CornerRadius="10" Visibility="Collapsed" ClipToBounds="True"
+                Background="#FFA9C7DE" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1" Cursor="SizeAll"
+                RenderTransformOrigin="0.5,0.5"
+                MouseLeftButtonDown="PanView3D_MouseDown" MouseMove="PanView3D_MouseMove"
+                MouseLeftButtonUp="PanView3D_MouseUp" MouseRightButtonUp="PanView3D_MouseRightUp"
+                MouseWheel="PanView3D_MouseWheel">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="16" ShadowDepth="3" Direction="270" Opacity="0.22" Color="#000000" RenderingBias="Performance" />
+            </Border.Effect>
+            <Grid>
+                <Image x:Name="ImgView3D" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" IsHitTestVisible="False" />
+                <Border VerticalAlignment="Top" HorizontalAlignment="Left" Margin="10" CornerRadius="6" Background="#66000000" Padding="9,4" IsHitTestVisible="False">
+                    <TextBlock x:Name="LabView3D" Text="3D 预览" FontSize="11" Foreground="White" />
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- ==================== 第一人称模式（全屏覆盖 / WASD 移动 / Esc 退出） ==================== -->
+        <Border x:Name="PanFirstPerson" Panel.ZIndex="60" Visibility="Collapsed" ClipToBounds="True"
+                Background="#FF0E1420" Focusable="True"
+                KeyDown="PanFirstPerson_KeyDown" KeyUp="PanFirstPerson_KeyUp" MouseMove="PanFirstPerson_MouseMove"
+                MouseDown="PanFirstPerson_MouseDown">
+            <Grid>
+                <Image x:Name="ImgFirstPerson" Stretch="Fill" RenderOptions.BitmapScalingMode="Linear" IsHitTestVisible="False" />
+                <!-- 加载遮罩 -->
+                <Border x:Name="PanFpsLoading" Background="#E60E1420">
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <TextBlock Text="正在生成第一人称地形…" FontSize="13.5" Foreground="White" HorizontalAlignment="Center" />
+                        <Grid Width="220" Height="6" Margin="0,12,0,0">
+                            <Border Background="#33FFFFFF" CornerRadius="3" />
+                            <Border x:Name="RectFpsProgress" Background="#FF7BB661" CornerRadius="3" HorizontalAlignment="Left" Width="0" />
+                        </Grid>
+                        <TextBlock x:Name="LabFpsStatus" Text="采样地形高程…" FontSize="11" Foreground="#99FFFFFF" HorizontalAlignment="Center" Margin="0,10,0,0" />
+                    </StackPanel>
+                </Border>
+                <!-- 顶部信息 -->
+                <Border VerticalAlignment="Top" HorizontalAlignment="Left" Margin="12" CornerRadius="7" Background="#66000000" Padding="10,5" IsHitTestVisible="False">
+                    <TextBlock x:Name="LabFpsInfo" Text="第一人称 · WASD 移动 · 空格跳跃 · 双击空格飞行 · Shift 加速 · 移动鼠标转视角 · Esc 退出" FontSize="11.5" Foreground="White" />
+                </Border>
+                <Border VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="12" CornerRadius="7" Background="#66000000" Padding="10,5" IsHitTestVisible="False">
+                    <TextBlock x:Name="LabFpsPos" Text="X 0 · Z 0" FontSize="11.5" Foreground="White" />
+                </Border>
+                <!-- 十字准星 -->
+                <Grid IsHitTestVisible="False">
+                    <Rectangle Width="14" Height="2" Fill="#B3FFFFFF" />
+                    <Rectangle Width="2" Height="14" Fill="#B3FFFFFF" />
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- ==================== 跳转到坐标 ==================== -->
+        <Popup x:Name="PopPanTo" AllowsTransparency="True" StaysOpen="False" Placement="Right"
+               PlacementTarget="{Binding ElementName=BtnPanTo}" HorizontalOffset="10" VerticalOffset="0" IsOpen="False">
+            <Border Background="{DynamicResource BrushSurface}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1"
+                    CornerRadius="10" Padding="12" MinWidth="228">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="12" ShadowDepth="2" Direction="270" Opacity="0.18" Color="#000000" RenderingBias="Performance" />
+                </Border.Effect>
+                <StackPanel>
+                    <TextBlock Text="跳转到坐标" FontSize="12.5" FontWeight="SemiBold" Foreground="{DynamicResource BrushText1}" />
+                    <TextBlock Text="输入方块坐标（支持负数，回车即跳转）" FontSize="10.5" Foreground="{DynamicResource BrushText3}" Margin="0,3,0,8" />
+                    <StackPanel Orientation="Horizontal">
+                        <StackPanel Width="98">
+                            <TextBlock Text="X" FontSize="10.5" Foreground="{DynamicResource BrushText3}" Margin="2,0,0,3" />
+                            <TextBox x:Name="TxtPanX" Style="{StaticResource InputBox}" Height="30" ToolTip="X 坐标（方块）" />
+                        </StackPanel>
+                        <StackPanel Width="98" Margin="10,0,0,0">
+                            <TextBlock Text="Z" FontSize="10.5" Foreground="{DynamicResource BrushText3}" Margin="2,0,0,3" />
+                            <TextBox x:Name="TxtPanZ" Style="{StaticResource InputBox}" Height="30" ToolTip="Z 坐标（方块）" />
+                        </StackPanel>
+                    </StackPanel>
+                    <Button x:Name="BtnPanGo" Style="{StaticResource BtnPrimary}" Content="跳转" Height="30" Margin="0,10,0,0" />
+                    <!-- 复位已并入此处：直接回到原点 -->
+                    <Button x:Name="BtnPanReset" Style="{StaticResource BtnBase}" Content="回到原点" Height="30" Margin="0,6,0,0" />
+                </StackPanel>
+            </Border>
+        </Popup>
+
+        <!-- 版本下拉（Popup，可滚动版本列表） -->
+        <Popup x:Name="PopVersion" AllowsTransparency="True" StaysOpen="False" Placement="Bottom" PlacementTarget="{Binding ElementName=BtnVersion}"
+               VerticalOffset="6" IsOpen="False">
+            <Border x:Name="PanVersionCard" Width="150" MaxHeight="340" Background="{DynamicResource BrushSurface}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1"
+                    CornerRadius="8" Padding="4">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="10" ShadowDepth="2" Direction="270" Opacity="0.16" Color="#000000" RenderingBias="Performance" />
+                </Border.Effect>
+                <local:MyScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="PanVerList" />
+                </local:MyScrollViewer>
+            </Border>
+        </Popup>
+    </Grid>
+</local:MyPageRight>
