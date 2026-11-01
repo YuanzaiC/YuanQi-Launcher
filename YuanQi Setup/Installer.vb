@@ -35,26 +35,16 @@ Public Module Installer
         End Get
     End Property
 
-    ''' <summary>把运行过程记到 %TEMP%\YuanQiSetup.log，便于排查静默安装问题。</summary>
+    ''' <summary>
+    ''' 运行过程记录：只写到调试输出，不在磁盘上生成任何日志文件
+    ''' （安装包放在桌面 / 下载目录时不该多出一个 log 文件）。
+    ''' </summary>
     Public Sub Trace(Text As String)
-        For Each LogDir In {GetLogDir(), Path.GetTempPath()}
-            Try
-                If String.IsNullOrEmpty(LogDir) Then Continue For
-                File.AppendAllText(Path.Combine(LogDir, "YuanQiSetup.log"), "[" & DateTime.Now.ToString("HH:mm:ss") & "] " & Text & vbCrLf, Encoding.UTF8)
-                Return
-            Catch
-            End Try
-        Next
-    End Sub
-
-    ''' <summary>日志目录：优先安装包所在目录（通常可写），避免 %TEMP% 权限受限。</summary>
-    Private Function GetLogDir() As String
         Try
-            Return Path.GetDirectoryName(Assembly.GetEntryAssembly().Location)
+            Diagnostics.Debug.WriteLine("[YuanQiSetup] " & Text)
         Catch
-            Return Nothing
         End Try
-    End Function
+    End Sub
 
     Public Sub ParseArgs(Args As String())
         If Args Is Nothing Then Return

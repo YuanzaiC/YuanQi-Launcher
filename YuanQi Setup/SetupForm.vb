@@ -211,8 +211,7 @@ Public Class SetupForm
                 If NeedLaunch Then Installer.StartApp(Target)
                 Close()
             Else
-                MessageBox.Show(Me, "以管理员身份安装失败（退出码 " & ElevatedProcess.ExitCode & "）。" & vbCrLf & vbCrLf &
-                                "详细日志：安装包同目录下的 YuanQiSetup.log", "安装失败", MessageBoxButtons.OK, MessageBoxIcon.Error)
+                MessageBox.Show(Me, "以管理员身份安装失败（退出码 " & ElevatedProcess.ExitCode & "）。", "安装失败", MessageBoxButtons.OK, MessageBoxIcon.Error)
             End If
             Return
         End If
@@ -234,7 +233,7 @@ Public Class SetupForm
             LabStatus.Text = "安装完成"
         Catch ex As Exception
             LabStatus.Text = "安装失败"
-            MessageBox.Show(Me, "安装失败：" & vbCrLf & Installer.DescribeError(ex, Target) & vbCrLf & vbCrLf & "详细日志：安装包同目录下的 YuanQiSetup.log", "缘启 安装程序", MessageBoxButtons.OK, MessageBoxIcon.Error)
+            MessageBox.Show(Me, "安装失败：" & vbCrLf & Installer.DescribeError(ex, Target), "缘启 安装程序", MessageBoxButtons.OK, MessageBoxIcon.Error)
         End Try
         SetBusy(False)
 
