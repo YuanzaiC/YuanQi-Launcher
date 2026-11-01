@@ -30,7 +30,7 @@
                 </Grid>
             </local:MyCard>
 
-            <local:MyCard Margin="0,0,0,15" Title="高级设置" CanSwap="True">
+            <local:MyCard Margin="0,0,0,15" Title="高级设置">
                 <Grid Margin="25,40,25,22">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" SharedSizeGroup="Name" />

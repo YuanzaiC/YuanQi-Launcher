@@ -257,6 +257,65 @@ Public Module ModuleSeedMap
         "1.13", "1.12", "1.11", "1.10", "1.9", "1.8", "1.7", "1.6",
         "1.5", "1.4", "1.3", "1.2", "1.1", "1.0", "Beta 1.8", "Beta 1.7"}
 
+    '<summary>把网络拉到的版本号并入可选列表：新版本映射到"不大于它的最新受支持版本"的算法 id。</summary>
+    ' <returns>列表是否发生变化。</returns>
+    Public Function MergeNetVersions(NetNames As IEnumerable(Of String)) As Boolean
+        Dim Changed As Boolean = False
+        Try
+            For Each RawName In NetNames
+                Dim Name As String = If(RawName, "").Trim()
+                If Name = "" OrElse IndexOfVersionName(Name) >= 0 Then Continue For
+                Dim Num As Double = VersionSortKey(Name)
+                If Num < 0 Then Continue For   'Beta 之类的名字不参与
+                '找到插入位置（列表按新到旧）
+                Dim Pos As Integer = VersionNames.Count
+                For i = 0 To VersionNames.Count - 1
+                    If VersionSortKey(VersionNames(i)) < Num Then
+                        Pos = i
+                        Exit For
+                    End If
+                Next
+                '算法锚点：取"不大于它的最近版本"，没有就用最新的一个
+                Dim Anchor As Integer = If(VersionIds.Count > 0, VersionIds(0), 0)
+                For i = 0 To VersionNames.Count - 1
+                    Dim Key As Double = VersionSortKey(VersionNames(i))
+                    If Key >= 0 AndAlso Key <= Num Then
+                        Anchor = VersionIds(i)
+                        Exit For
+                    End If
+                Next
+                VersionNames.Insert(Pos, Name)
+                VersionIds.Insert(Pos, Anchor)
+                Changed = True
+            Next
+        Catch ex As Exception
+            Logger.Warn(ex, "合并种子地图版本列表失败")
+        End Try
+        Return Changed
+    End Function
+
+    ''' <summary>按显示名查找版本下标，找不到返回 -1。</summary>
+    Public Function IndexOfVersionName(Name As String) As Integer
+        For i = 0 To VersionNames.Count - 1
+            If String.Equals(VersionNames(i), Name, StringComparison.OrdinalIgnoreCase) Then Return i
+        Next
+        Return -1
+    End Function
+
+    ''' <summary>把 "1.21" / "26.3" 转成可比较的数值（主.次），Beta 等返回 -1。</summary>
+    Private Function VersionSortKey(Name As String) As Double
+        Try
+            Dim Parts = If(Name, "").Split("."c)
+            If Parts.Length < 2 Then Return -1
+            Dim Major As Integer, Minor As Integer
+            If Not Integer.TryParse(Parts(0), Major) Then Return -1
+            If Not Integer.TryParse(Parts(1), Minor) Then Return -1
+            Return Major * 1000 + Minor
+        Catch
+            Return -1
+        End Try
+    End Function
+
     '===============================
     '  生物群系表（id → 中文名 / 地图色）
     '===============================

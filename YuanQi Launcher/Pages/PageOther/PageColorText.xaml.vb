@@ -42,6 +42,55 @@ Public Class PageColorText
         '挂载处于切页动画的 AniControlEnabled 抑制窗口内：入场动画延迟 30ms 触发，每次进入都播放
         AniStart({AaCode(Sub() AnimateModulesEnter(), 30, True)}, "PageColorText Enter Trigger")
         RefreshAll()
+        '窄窗口下把标题与右侧控件改成上下两排（重复进入页面时不重复挂事件）
+        If Not _ResponsiveHooked Then
+            _ResponsiveHooked = True
+            AddHandler SizeChanged, AddressOf PageColorText_SizeChanged
+        End If
+        ApplyResponsiveHeader()
+    End Sub
+
+    ' ==================== 窄窗口自适应 ====================
+    ' 窗口缩到标题与右侧控件会互相遮挡时，把右侧控件挪到下一排
+    Private Const ResponsiveNarrowWidth As Double = 780
+    Private _ResponsiveHooked As Boolean = False
+
+    Private Sub PageColorText_SizeChanged(sender As Object, e As SizeChangedEventArgs)
+        ApplyResponsiveHeader()
+    End Sub
+
+    Private Sub ApplyResponsiveHeader()
+        Try
+            Dim Narrow As Boolean = ActualWidth > 0 AndAlso ActualWidth < ResponsiveNarrowWidth
+            ReflowHeader(PanHeader, PanHeaderRight, Narrow)
+            ReflowHeader(PanTextInputHead, LabTextInputHint, Narrow)
+            ReflowHeader(PanColorHead, LabColorName, Narrow)
+            ReflowHeader(PanGradientHead, LabGradientHint, Narrow)
+            ReflowHeader(PanSceneHead, PanSceneSeg, Narrow)
+            ReflowHeader(PanFormatHead, PanFormatSeg, Narrow)
+        Catch ex As Exception
+            Logger.Warn(ex, "调整彩色文字页面布局失败")
+        End Try
+    End Sub
+
+    ''' <summary>把「标题 + 右侧控件」在单排 / 两排之间切换。</summary>
+    Private Sub ReflowHeader(Head As Grid, RightPart As FrameworkElement, Narrow As Boolean)
+        If Head Is Nothing OrElse RightPart Is Nothing Then Return
+        If Narrow Then
+            If Grid.GetRow(RightPart) = 1 Then Return
+            Grid.SetRow(RightPart, 1)
+            Grid.SetColumn(RightPart, 0)
+            Grid.SetColumnSpan(RightPart, 2)
+            RightPart.HorizontalAlignment = HorizontalAlignment.Left
+            RightPart.Margin = New Thickness(0, 8, 0, 0)
+        Else
+            If Grid.GetRow(RightPart) = 0 Then Return
+            Grid.SetRow(RightPart, 0)
+            Grid.SetColumn(RightPart, 1)
+            Grid.SetColumnSpan(RightPart, 1)
+            RightPart.HorizontalAlignment = HorizontalAlignment.Right
+            RightPart.Margin = New Thickness(0)
+        End If
     End Sub
 
     Private Sub PageColorText_Unloaded() Handles Me.Unloaded

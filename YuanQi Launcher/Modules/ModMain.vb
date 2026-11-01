@@ -70,9 +70,10 @@ Public Module ModMain
                     AniStop("Hint Hide " & DoubleStack.Tag(1))
                     DoubleStack.RenderTransform = New TranslateTransform(0, 0)
                     DoubleStack.Opacity = 1
+                    '只用透明度脉冲表示"重复提示"，不再左右位移，避免多条提示的左边缘看起来不对齐
                     AniStart({
-                        AaX(DoubleStack, -10, 120, , New AniEaseOutFluent),
-                        AaX(DoubleStack, 10, 220, 60, New AniEaseOutFluent)
+                        AaOpacity(DoubleStack, -0.35, 100, , New AniEaseOutFluent),
+                        AaOpacity(DoubleStack, 0.35, 180, 100, New AniEaseOutFluent)
                     }, "Hint Show " & DoubleStack.Tag(1))
                     ScheduleHintHide(DoubleStack, CurrentHint.Text)
                 Else
@@ -85,7 +86,7 @@ Public Module ModMain
                         .CornerRadius = New CornerRadius(10),
                         .BorderThickness = New Thickness(1),
                         .MaxWidth = 440,
-                        .RenderTransform = New TranslateTransform(-10, 0)
+                        .RenderTransform = New TranslateTransform(0, 0)
                     }
                     NewHintControl.Background = New MyColor(255, 255, 255)
                     NewHintControl.SetResourceReference(Border.BorderBrushProperty, "BrushBorder")
@@ -115,10 +116,8 @@ Public Module ModMain
                     NewHintControl.Child = Layout
 
                     FrmMain.PanHint.Children.Add(NewHintControl)
-                    AniStart({
-                        AaOpacity(NewHintControl, 1, 140),
-                        AaX(NewHintControl, 10, 240, , New AniEaseOutFluent)
-                    }, "Hint Show " & NewHintControl.Tag(1))
+                    '淡入即可；不做横向位移，保证每条提示的左边缘一致
+                    AniStart(AaOpacity(NewHintControl, 1, 140), "Hint Show " & NewHintControl.Tag(1))
                     ScheduleHintHide(NewHintControl, CurrentHint.Text)
                 End If
 EndHint:

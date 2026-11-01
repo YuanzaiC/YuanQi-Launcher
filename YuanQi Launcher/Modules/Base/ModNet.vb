@@ -87,6 +87,51 @@ Retry:
         End Try
     End Function
     ''' <summary>
+    ''' 带磁盘缓存的网络请求：命中缓存（默认 2 天）就直接读本地，用存储换响应速度。
+    ''' 只适合"内容更新很慢"的元数据（版本清单、加载器版本列表等），不要用于下载文件或账号相关请求。
+    ''' </summary>
+    ''' <param name="IgnoreCache">用户手动刷新时传 True，强制重新请求。</param>
+    ''' <summary>手动刷新时的时间窗：该时间戳之前（毫秒）带缓存的请求会跳过缓存。</summary>
+    Public NetCacheBypassUntil As Long = 0
+
+    Public Function NetRequestByClientRetryCached(Url As String, Optional MaxAgeDays As Double = 2,
+            Optional RequireJson As Boolean = False, Optional Encoding As Encoding = Nothing,
+            Optional Accept As String = "*/*", Optional SimulateBrowserHeaders As Boolean = False,
+            Optional IgnoreCache As Boolean = False) As String
+        Dim CacheFile As String = Nothing
+        Try
+            Dim Hash As String = BitConverter.ToString(
+                System.Security.Cryptography.SHA256.Create().ComputeHash(Text.Encoding.UTF8.GetBytes(Url))).Replace("-", "").Substring(0, 32)
+            CacheFile = Paths.Base & "YQL\Cache\Net\" & Hash & ".cache"
+            Dim Bypass As Boolean = IgnoreCache OrElse GetTimeMs() < NetCacheBypassUntil
+            If Not Bypass AndAlso FileUtils.Exists(CacheFile) Then
+                Dim Age As TimeSpan = Date.Now - IO.File.GetLastWriteTime(CacheFile)
+                If Age.TotalDays < MaxAgeDays Then
+                    Dim Cached As String = FileUtils.ReadAsString(CacheFile)
+                    If Not String.IsNullOrWhiteSpace(Cached) Then
+                        Logger.Info($"命中接口缓存（{Math.Round(Age.TotalHours, 1)} 小时前）：{Url}")
+                        Return Cached
+                    End If
+                End If
+            End If
+        Catch ex As Exception
+            Logger.Warn(ex, $"读取接口缓存失败：{Url}")
+        End Try
+        Dim Result As String = NetRequestByClientRetry(Url, RequireJson:=RequireJson, Encoding:=Encoding,
+                                                       Accept:=Accept, SimulateBrowserHeaders:=SimulateBrowserHeaders)
+        '写回缓存（失败不影响主流程）
+        If CacheFile IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(Result) Then
+            Try
+                DirectoryUtils.Create(IO.Path.GetDirectoryName(CacheFile))
+                FileUtils.Write(CacheFile, Result)
+            Catch ex As Exception
+                Logger.Warn(ex, $"写入接口缓存失败：{Url}")
+            End Try
+        End If
+        Return Result
+    End Function
+
+    ''' <summary>
     ''' 生成数个线程，同时发送网络请求并获取返回内容。
     ''' 每个线程开始之前会略有延迟。
     ''' </summary>

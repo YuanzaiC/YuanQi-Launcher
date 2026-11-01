@@ -133,26 +133,45 @@ Public Module AccountPool
             Case McLoginType.Nide
                 Dim Server = GetNideServerName()
                 If Server = "" Then Throw New Exception("尚未配置统一通行证服务器，请先在登录页选择服务器并登录一次")
-                Return New McLoginServer(McLoginType.Nide) With {.Token = "Nide", .UserName = Ref.Name, .Password = GetThirdPartyPass("Nide", Ref.Name), .Description = "统一通行证", .Type = McLoginType.Nide, .BaseUrl = "https://auth.mc-user.com:233/" & Server & "/authserver"}
+                Return New McLoginServer(McLoginType.Nide) With {.Token = "Nide", .UserName = GetThirdPartyStoredName("Nide", Ref.Name), .Password = GetThirdPartyPass("Nide", Ref.Name), .Description = "统一通行证", .Type = McLoginType.Nide, .BaseUrl = "https://auth.mc-user.com:233/" & Server & "/authserver"}
             Case McLoginType.Auth
                 Dim Server = GetAuthServerUrl()
                 If Server = "" Then Throw New Exception("尚未配置 Authlib-Injector 服务器，请先在登录页填写服务器地址并登录一次")
-                Return New McLoginServer(McLoginType.Auth) With {.Token = "Auth", .BaseUrl = Server & "/authserver", .UserName = Ref.Name, .Password = GetThirdPartyPass("Auth", Ref.Name), .Description = "Authlib-Injector", .Type = McLoginType.Auth}
+                Return New McLoginServer(McLoginType.Auth) With {.Token = "Auth", .BaseUrl = Server & "/authserver", .UserName = GetThirdPartyStoredName("Auth", Ref.Name), .Password = GetThirdPartyPass("Auth", Ref.Name), .Description = "Authlib-Injector", .Type = McLoginType.Auth}
             Case Else
                 Return Nothing
         End Select
     End Function
 
+    ''' <summary>
+    ''' 按账户名取第三方密码。账户名忽略大小写匹配：
+    ''' 设置里可能同时存在 Yuanzai_c@outlook.com 与 Yuanzai_C@outlook.com 两种写法，
+    ''' 严格比较会取不到密码，导致启动时报「密码不能为空」。
+    ''' </summary>
     Private Function GetThirdPartyPass(Token As String, Name As String) As String
         Try
             Dim Names = If(Settings.Get(Of String)("Login" & Token & "Email"), "").Split("¨")
             Dim Passs = If(Settings.Get(Of String)("Login" & Token & "Pass"), "").Split("¨")
+            Dim Target As String = If(Name, "").Trim()
             For i = 0 To Math.Min(Names.Length, Passs.Length) - 1
-                If Names(i) = Name Then Return Passs(i).Trim
+                If String.Equals(Names(i).Trim(), Target, StringComparison.OrdinalIgnoreCase) Then Return Passs(i).Trim
             Next
         Catch
         End Try
         Return ""
+    End Function
+
+    ''' <summary>取设置里实际保存的账户名（大小写以此为准），找不到则返回原值。</summary>
+    Private Function GetThirdPartyStoredName(Token As String, Name As String) As String
+        Try
+            For Each RawName In If(Settings.Get(Of String)("Login" & Token & "Email"), "").Split("¨")
+                If String.Equals(RawName.Trim(), If(Name, "").Trim(), StringComparison.OrdinalIgnoreCase) AndAlso RawName.Trim() <> "" Then
+                    Return RawName.Trim()
+                End If
+            Next
+        Catch
+        End Try
+        Return Name
     End Function
 
     ''' <summary>添加离线账户；成功返回空串，失败返回错误原因。</summary>
@@ -181,7 +200,7 @@ Public Module AccountPool
                 Passs.Add(If(i < RawPasss.Length, RawPasss(i), ""))
             Next
         End If
-        Dim Idx = Names.IndexOf(Email)
+        Dim Idx = Names.FindIndex(Function(N) String.Equals(N.Trim(), Email.Trim(), StringComparison.OrdinalIgnoreCase))
         If Idx >= 0 Then
             Passs(Idx) = Pass
         Else

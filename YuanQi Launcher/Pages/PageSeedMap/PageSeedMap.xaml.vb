@@ -125,6 +125,15 @@ Public Class PageSeedMap
         BuildStructList()
         BuildBiomeList()
         BuildVersionList()
+        '默认版本按名字定位：版本列表可能会联网补充，索引不再固定
+        Dim DefaultIndex As Integer = ModuleSeedMap.IndexOfVersionName("26.3")
+        If DefaultIndex >= 0 Then
+            VersionIndex = DefaultIndex
+            HighlightVersion()
+            LabVersion.Text = "Java 版 " & ModuleSeedMap.VersionNames(VersionIndex)
+        End If
+        '联网拉取官方版本列表，把新版本并入下拉
+        RefreshVersionListFromNet()
         '每次进入页面都尝试刷新默认种子（同一实例只填一次；用户手动改过就不覆盖）
         AddHandler PageEnter,
             Sub()
@@ -1742,6 +1751,115 @@ Public Class PageSeedMap
         SeedValue = Parsed
         RegenerateAll(True)
         Hint($"正在生成种子 {Text} 的地图…", HintType.Blue)
+    End Sub
+
+    ''' <summary>是否已经尝试过联网补充版本列表（一次会话只拉一次）。</summary>
+    Private _VersionListRefreshed As Boolean = False
+
+    ''' <summary>
+    ''' 从 Mojang 的版本清单拉取正式版号，把种子地图还不认识的新版本加进下拉。
+    ''' 新版本按其"不大于的最新受支持版本"的算法近似生成地图。
+    ''' </summary>
+    ''' <summary>合并列表后按名字保持选中项并刷新下拉（UI 线程）。</summary>
+    Private Sub RebuildVersionListSafely()
+        Try
+            Dim CurrentName As String = ""
+            If VersionIndex >= 0 AndAlso VersionIndex < ModuleSeedMap.VersionNames.Count Then CurrentName = ModuleSeedMap.VersionNames(VersionIndex)
+            RunInUi(Sub() ApplyVersionListAndKeepSelection(CurrentName))
+        Catch ex As Exception
+            Logger.Warn(ex, "重建种子地图版本下拉失败")
+        End Try
+    End Sub
+
+    Private Sub ApplyVersionListAndKeepSelection(CurrentName As String)
+        Try
+            If CurrentName <> "" Then
+                Dim NewIndex As Integer = ModuleSeedMap.IndexOfVersionName(CurrentName)
+                If NewIndex >= 0 Then VersionIndex = NewIndex
+            End If
+            BuildVersionList()
+            If VersionIndex >= 0 AndAlso VersionIndex < ModuleSeedMap.VersionNames.Count Then
+                LabVersion.Text = "Java 版 " & ModuleSeedMap.VersionNames(VersionIndex)
+            End If
+            Logger.Info($"种子地图版本列表已更新，共 {ModuleSeedMap.VersionNames.Count} 项")
+        Catch ex As Exception
+            Logger.Warn(ex, "刷新种子地图版本下拉失败")
+        End Try
+    End Sub
+
+    ''' <summary>版本清单的磁盘缓存，两天内不再联网。</summary>
+    Private Shared ReadOnly Property VersionListCachePath As String
+        Get
+            Return Paths.Base & "YQL\Cache\SeedMapVersions.txt"
+        End Get
+    End Property
+    Private Const VersionListCacheDays As Double = 2
+
+    Private Sub RefreshVersionListFromNet()
+        If _VersionListRefreshed Then Return
+        _VersionListRefreshed = True
+        '先看磁盘缓存：两天内直接用，不再发请求
+        Try
+            Dim CacheFile = VersionListCachePath
+            If FileUtils.Exists(CacheFile) AndAlso (Date.Now - IO.File.GetLastWriteTime(CacheFile)).TotalDays < VersionListCacheDays Then
+                Dim Cached = FileUtils.ReadAsString(CacheFile)
+                Dim Names As New List(Of String)
+                For Each LineText In If(Cached, "").Split({vbCrLf, vbLf}, StringSplitOptions.RemoveEmptyEntries)
+                    If LineText.Trim() <> "" Then Names.Add(LineText.Trim())
+                Next
+                If Names.Count > 0 Then
+                    If ModuleSeedMap.MergeNetVersions(Names) Then RebuildVersionListSafely()
+                    Return
+                End If
+            End If
+        Catch ex As Exception
+            Logger.Warn(ex, "读取种子地图版本缓存失败")
+        End Try
+        RunInNewThread(
+        Sub()
+            Try
+                Dim Raw As String = ""
+                For Each Url In {"https://launchermeta.mojang.com/mc/game/version_manifest.json",
+                                 "https://bmclapi2.bangbang93.com/mc/game/version_manifest.json"}
+                    Try
+                        Raw = NetRequestByLoader(Url, Timeout:=12000, IsJson:=True)
+                        If Not String.IsNullOrWhiteSpace(Raw) Then Exit For
+                    Catch ex As Exception
+                        Logger.Warn(ex, $"拉取版本清单失败：{Url}")
+                    End Try
+                Next
+                If String.IsNullOrWhiteSpace(Raw) Then Return
+                Dim Json = Raw.DeserializeJson()
+                Dim Names As New List(Of String)
+                For Each Item In Json("versions")
+                    If String.IsNullOrWhiteSpace(Item?("id")?.ToString()) Then Continue For
+                    If String.IsNullOrWhiteSpace(Item?("type")?.ToString()) Then Continue For
+                    If Item("type").ToString() <> "release" Then Continue For
+                    Dim Id As String = Item("id").ToString().Trim()
+                    '只要主.次版本号（1.21.4 → 1.21 这种不单独列，避免列表爆炸）
+                    If Not Text.RegularExpressions.Regex.IsMatch(Id, "^\d+\.\d+$") Then Continue For
+                    If Not Names.Contains(Id) Then Names.Add(Id)
+                Next
+                If Names.Count = 0 Then Return
+                Dim CurrentName As String = ""
+                RunInUiWait(Sub()
+                                If VersionIndex >= 0 AndAlso VersionIndex < ModuleSeedMap.VersionNames.Count Then CurrentName = ModuleSeedMap.VersionNames(VersionIndex)
+                            End Sub)
+                '写回磁盘缓存（两天内不再联网）
+                Try
+                    FileUtils.Write(VersionListCachePath, String.Join(vbCrLf, Names))
+                Catch ex As Exception
+                    Logger.Warn(ex, "写入种子地图版本缓存失败")
+                End Try
+                If Not ModuleSeedMap.MergeNetVersions(Names) Then Return
+                RunInUi(
+                Sub()
+                    ApplyVersionListAndKeepSelection(CurrentName)
+                End Sub)
+            Catch ex As Exception
+                Logger.Warn(ex, "获取种子地图版本清单失败")
+            End Try
+        End Sub, "SeedMap Version List", ThreadPriority.BelowNormal)
     End Sub
 
     '版本下拉

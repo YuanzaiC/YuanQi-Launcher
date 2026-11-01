@@ -1,4 +1,4 @@
-﻿Public Class MyComboBox
+Public Class MyComboBox
     Inherits ComboBox
     Implements ISettingControl
     Public Event TextChanged(sender As Object, e As TextChangedEventArgs)
@@ -46,7 +46,15 @@
                     TextBox.Text = value
                 End If
             Else
-                Throw New NotSupportedException("该 ComboBox 不支持修改文本。")
+                '非可编辑下拉框不支持直接写文本：尝试选中同名项，找不到就保持原状（避免调用方崩溃）
+                If value IsNot Nothing Then
+                    For Each Item In Items
+                        If Item IsNot Nothing AndAlso String.Equals(Item.ToString(), value, StringComparison.Ordinal) Then
+                            SelectedItem = Item
+                            Return
+                        End If
+                    Next
+                End If
             End If
         End Set
     End Property

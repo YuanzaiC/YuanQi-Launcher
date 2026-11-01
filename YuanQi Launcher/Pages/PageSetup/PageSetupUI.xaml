@@ -112,6 +112,15 @@
                                 <local:MyComboBoxItem Content="150%" local:SettingService.Value="150" />
                             </local:MyComboBox>
                         </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                            <TextBlock Text="渲染性能" VerticalAlignment="Center" Margin="0,0,12,0" Foreground="{StaticResource ColorBrushGray2}" />
+                            <local:MyComboBox x:Name="ComboUiPerfMode" local:SettingService.Key="UiPerfMode" Width="150" Height="28" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                              ToolTip="启动器用的是分层透明窗口，Windows 只能对界面做软件渲染，后台跑大型游戏时会明显掉帧。&#xa;自动：动画期间自动加快绘制，掉帧时临时降低阴影等特效。&#xa;流畅优先：始终按低开销绘制。&#xa;画质优先：不做任何自动降级，保持原有观感。">
+                                <local:MyComboBoxItem Content="自动（默认）" local:SettingService.Value="0" IsSelected="True" />
+                                <local:MyComboBoxItem Content="流畅优先" local:SettingService.Value="1" />
+                                <local:MyComboBoxItem Content="画质优先" local:SettingService.Value="2" />
+                            </local:MyComboBox>
+                        </StackPanel>
                         <local:MyCheckBox x:Name="CheckLauncherSplash" local:SettingService.Key="UiLauncherSplash" Text="打开启动器时播放主页苏醒动画" Margin="-1,0,0,1" Height="22" />
                         <local:MyCheckBox x:Name="CheckLauncherLogo" local:SettingService.Key="UiLauncherLogo" Text="打开启动器时显示 缘启 图标" Margin="-1,0,0,1" Height="22" />
                         <local:MyCheckBox x:Name="CheckLauncherSpecialSplash" local:SettingService.Key="UiLauncherSpecialSplash" Text="节日与彩蛋期间使用特殊苏醒动画" Margin="-1,0,0,1" Height="22"

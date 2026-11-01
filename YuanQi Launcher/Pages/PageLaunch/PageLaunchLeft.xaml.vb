@@ -2174,11 +2174,16 @@ ExitRefresh:
             PanAccountMenu.Visibility = Visibility.Collapsed
             AccountPool.SetVersionAccount(New AccountRef With {.Type = McLoginType.Legacy, .Name = Name})
             If ComboName Is Nothing Then Return
-            If ComboName.Items.Contains(Name) Then
-                ComboName.SelectedItem = Name
-            Else
-                ComboName.Text = Name
-            End If
+            '离线用户名下拉框不可编辑，只能通过选中列表项来切换
+            ReloadLegacyName(False)
+            Dim FoundItem As Object = Nothing
+            For Each Item In ComboName.Items
+                If Item IsNot Nothing AndAlso String.Equals(Item.ToString(), Name, StringComparison.Ordinal) Then
+                    FoundItem = Item
+                    Exit For
+                End If
+            Next
+            ComboName.SelectedItem = If(FoundItem, Name)
             RefreshHomeInfo()
             PulseAccountCapsule()
             Hint($"已切换到离线账号 {Name}", HintType.Green)
@@ -2945,7 +2950,7 @@ ExitRefresh:
     Private Sub BtnLaunch_PreviewDown(sender As Object, e As MouseButtonEventArgs) Handles BtnLaunch.PreviewMouseLeftButtonDown
         Try
             If Not BtnLaunch.IsEnabled Then Return
-            HeroBtnLift(0, 20, 2)
+            HeroBtnLift(0, 14, 2)
         Catch
         End Try
     End Sub
@@ -2954,7 +2959,7 @@ ExitRefresh:
     Private Sub BtnLaunch_PreviewUp(sender As Object, e As MouseButtonEventArgs) Handles BtnLaunch.PreviewMouseLeftButtonUp
         Try
             If Not BtnLaunch.IsEnabled Then Return
-            HeroBtnLift(-2, 36, 6)
+            HeroBtnLift(-2, 26, 6)
         Catch
         End Try
     End Sub

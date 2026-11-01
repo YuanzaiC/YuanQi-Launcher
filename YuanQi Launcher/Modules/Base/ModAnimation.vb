@@ -25,6 +25,10 @@ Public Module ModAnimation
         Public Data As List(Of AniData)
         Public StartTick As Long
         Public Uuid As Integer = GetUuid()
+        ''' <summary>
+        ''' 本组动画期间挂了位图缓存的元素，结束时逐个撤销（见 ModRenderPerf）。
+        ''' </summary>
+        Public CachedElements As New List(Of UIElement)
     End Class
     ''' <summary>
     ''' 上一次记刻的时间。
@@ -768,6 +772,8 @@ Public Module ModAnimation
         Else
             AniStop(Name)
         End If
+        '分层窗口只能软件渲染：动画期间把被搬运的元素缓存成位图，帧内就只剩合成
+        ModRenderPerf.PrepareAniCache(AllAnis, NewEntry.CachedElements)
         AniGroups.Add(Name, NewEntry)
         '新动画：若帧钩子因空闲被摘掉了，这里重新挂上（RunInUi 在 UI 线程时是同步执行的）
         RunInUi(AddressOf EnsureAniRenderHook)
@@ -783,6 +789,10 @@ Public Module ModAnimation
     ''' </summary>
     ''' <param name="name">需要停止的动画组的名称。</param>
     Public Sub AniStop(Name As String)
+        Dim Entry As AniGroupEntry = Nothing
+        If AniGroups.TryGetValue(Name, Entry) AndAlso Entry IsNot Nothing Then
+            ModRenderPerf.ReleaseAniCache(Entry.CachedElements)
+        End If
         AniGroups.Remove(Name)
     End Sub
     ''' <summary>
@@ -868,6 +878,7 @@ Public Module ModAnimation
             End If
             '执行动画
             AniCount = 0
+            ModRenderPerf.NotifyFrame(DeltaTime) '按真实帧间隔判断是否在掉帧，必要时降低特效开销
             AniTimer(DeltaTime * AniSpeed)
             If AniGroups.Count = 0 Then ReleaseAniRenderHook() '空闲：停止逐帧唤醒
         Catch ex As Exception
@@ -880,7 +891,8 @@ Public Module ModAnimation
     ''' </summary>
     Public Sub AniTimer(DeltaTick As Double)
         Try
-            If DeltaTick / AniSpeed > 100 Then Logger.Info($"两个动画帧间隔 {DeltaTick} ms")
+            '掉帧时不要逐帧写日志：每条日志都要落盘，会反过来把 UI 线程拖得更慢
+            If DeltaTick / AniSpeed > 100 Then ModRenderPerf.LogSlowFrame(DeltaTick / AniSpeed)
             Dim i As Integer = -1
             '循环每个动画组
             Do While i + 1 < AniGroups.Count
@@ -936,6 +948,8 @@ NextAni:
                     '为了允许动画在执行中添加同名动画组，不能按名字移除
                     For Current = 0 To AniGroups.Count - 1
                         If AniGroups.ElementAt(Current).Value.Uuid = Entry.Uuid Then
+                            '动画结束：撤掉本组挂上的位图缓存，恢复矢量绘制与 ClearType
+                            ModRenderPerf.ReleaseAniCache(Entry.CachedElements)
                             AniGroups.Remove(AniGroups.ElementAt(Current).Key)
                             Exit For
                         End If

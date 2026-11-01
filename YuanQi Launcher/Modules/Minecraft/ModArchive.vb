@@ -181,3 +181,144 @@ Public Module ModArchive
     End Sub
 
 End Module
+''' <summary>
+''' 版本占用大小的持久化缓存：用存储换响应速度，避免每次启动都遍历所有版本目录。
+''' 失效条件：版本目录的 LastWriteTime 变化，或缓存条目超过 7 天。
+''' </summary>
+Public Module InstanceSizeStore
+
+    Private Const CacheFileName As String = "InstanceSizes.json"
+    Private Const MaxAgeDays As Double = 7
+    Private Const SaveThrottleMs As Long = 3000
+
+    Private ReadOnly SyncRoot As New Object()
+    Private IsLoaded As Boolean = False
+    Private IsDirty As Boolean = False
+    Private LastSaveTick As Long = 0
+    Private ReadOnly Entries As New Dictionary(Of String, SizeEntry)(StringComparer.OrdinalIgnoreCase)
+
+    Private Class SizeEntry
+        Public Bytes As Long
+        Public Ticks As Long
+        Public Saved As Date
+    End Class
+
+    Private ReadOnly Property CachePath As String
+        Get
+            Return Paths.Base & "YQL\Cache\" & CacheFileName
+        End Get
+    End Property
+
+    Private Sub EnsureLoaded()
+        If IsLoaded Then Return
+        SyncLock SyncRoot
+            If IsLoaded Then Return
+            IsLoaded = True
+            Try
+                If FileUtils.Exists(CachePath) Then
+                    Dim Root As JObject = TryCast(FileUtils.ReadAsString(CachePath, Encoding.UTF8).DeserializeJson(), JObject)
+                    If Root IsNot Nothing Then
+                        For Each Pair As KeyValuePair(Of String, JToken) In Root
+                            Dim Node As JObject = TryCast(Pair.Value, JObject)
+                            If Node Is Nothing Then Continue For
+                            Dim Entry As New SizeEntry
+                            Long.TryParse(If(Node("bytes")?.ToString, ""), Entry.Bytes)
+                            Long.TryParse(If(Node("ticks")?.ToString, ""), Entry.Ticks)
+                            Date.TryParse(If(Node("saved")?.ToString, ""), Entry.Saved)
+                            Entries(Pair.Key) = Entry
+                        Next
+                        Logger.Info($"版本占用缓存：已载入 {Entries.Count} 项")
+                    End If
+                End If
+            Catch ex As Exception
+                Logger.Warn(ex, "读取版本占用缓存失败")
+            End Try
+        End SyncLock
+    End Sub
+
+    ''' <summary>读取缓存的大小；未命中或已失效返回 -1。</summary>
+    Public Function TryGet(VersionPath As String) As Long
+        EnsureLoaded()
+        Try
+            SyncLock SyncRoot
+                Dim Entry As SizeEntry = Nothing
+                If Not Entries.TryGetValue(VersionPath, Entry) Then Return -1
+                If Entry.Bytes <= 0 Then Return -1
+                If (Date.Now - Entry.Saved).TotalDays > MaxAgeDays Then Return -1
+                If IO.Directory.GetLastWriteTimeUtc(VersionPath).Ticks <> Entry.Ticks Then Return -1
+                Return Entry.Bytes
+            End SyncLock
+        Catch
+            Return -1
+        End Try
+    End Function
+
+    ''' <summary>记录某版本的大小（节流后落盘）。</summary>
+    Public Sub Store(VersionPath As String, Bytes As Long)
+        EnsureLoaded()
+        Try
+            SyncLock SyncRoot
+                Dim Entry As New SizeEntry With {
+                    .Bytes = Bytes,
+                    .Ticks = IO.Directory.GetLastWriteTimeUtc(VersionPath).Ticks,
+                    .Saved = Date.Now
+                }
+                Entries(VersionPath) = Entry
+                IsDirty = True
+            End SyncLock
+            RequestSave()
+        Catch ex As Exception
+            Logger.Warn(ex, "记录版本占用缓存失败")
+        End Try
+    End Sub
+
+    Public Sub Remove(VersionPath As String)
+        EnsureLoaded()
+        Try
+            Dim Changed As Boolean = False
+            SyncLock SyncRoot
+                Changed = Entries.Remove(VersionPath)
+                If Changed Then IsDirty = True
+            End SyncLock
+            If Changed Then RequestSave()
+        Catch ex As Exception
+            Logger.Warn(ex, "移除版本占用缓存失败")
+        End Try
+    End Sub
+
+    Private Sub RequestSave()
+        SyncLock SyncRoot
+            If Not IsDirty Then Return
+            If GetTimeMs() - LastSaveTick < SaveThrottleMs Then Return
+            LastSaveTick = GetTimeMs()
+        End SyncLock
+        RunInNewThread(Sub()
+                           SaveNow()
+                       End Sub, "Save Instance Size Cache", ThreadPriority.BelowNormal)
+    End Sub
+
+    ''' <summary>立即落盘。</summary>
+    Public Sub SaveNow()
+        SyncLock SyncRoot
+            If Not IsDirty Then Return
+            Try
+                Dim Root As New JObject
+                For Each Pair As KeyValuePair(Of String, SizeEntry) In Entries.ToList()
+                    If (Date.Now - Pair.Value.Saved).TotalDays > MaxAgeDays Then Continue For
+                    Dim Node As New JObject
+                    Node("bytes") = Pair.Value.Bytes
+                    Node("ticks") = Pair.Value.Ticks
+                    Node("saved") = Pair.Value.Saved.ToString("o")
+                    Root(Pair.Key) = Node
+                Next
+                DirectoryUtils.Create(IO.Path.GetDirectoryName(CachePath) & "\")
+                FileUtils.Write(CachePath, Root.ToString())
+                IsDirty = False
+                Logger.Info($"版本占用缓存已保存：{Root.Count} 项")
+            Catch ex As Exception
+                Logger.Warn(ex, "保存版本占用缓存失败")
+            End Try
+        End SyncLock
+    End Sub
+
+End Module

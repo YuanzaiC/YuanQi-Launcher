@@ -102,6 +102,8 @@ Public Class PageResource
                 TextSearchName.Text = TargetName
                 TargetName = Nothing
             End If
+            '标注并优先选中「所选版本」
+            UpdateSelectedVersionFilter()
             '如果已经完成请求，则重新开始
             If IsFirstLoaded Then StartNewSearch()
             ScrollToHome()
@@ -118,10 +120,51 @@ Public Class PageResource
             End If
         End If
     End Sub
+    ''' <summary>版本筛选里「所选版本」的后缀。</summary>
+    Public Const SelectedVersionSuffix As String = "（所选版本）"
+
+    ''' <summary>主页当前选择的实例版本（没有实例时返回空串）。</summary>
+    Public Shared Function GetSelectedInstanceVersion() As String
+        Try
+            If McInstanceSelected Is Nothing Then Return ""
+            Return McInstanceSelected.Version.VanillaName
+        Catch
+            Return ""
+        End Try
+    End Function
+
+    ''' <summary>
+    ''' 把「主页当前选择的版本」加进版本筛选下拉，并标注（所选版本）后优先选中；
+    ''' 比列表里原有的「当前版本」项优先级更高。
+    ''' </summary>
+    Private Sub UpdateSelectedVersionFilter()
+        Try
+            If TextSearchVersion Is Nothing Then Return
+            Dim Ver As String = GetSelectedInstanceVersion()
+            If String.IsNullOrWhiteSpace(Ver) Then Return
+            '先移除旧的（所选版本）项，避免重复
+            For i = TextSearchVersion.Items.Count - 1 To 1 Step -1
+                Dim Old = TryCast(TextSearchVersion.Items(i), MyComboBoxItem)
+                If Old IsNot Nothing AndAlso Old.Content IsNot Nothing AndAlso
+                   Old.Content.ToString().EndsWithF(SelectedVersionSuffix, True) Then TextSearchVersion.Items.RemoveAt(i)
+            Next
+            '插到「全部」后面
+            TextSearchVersion.Items.Insert(1, New MyComboBoxItem With {.Content = Ver & SelectedVersionSuffix})
+            '默认选中它：除非当前文本框里已经是用户手动输入的其它版本
+            Dim Current As String = If(TextSearchVersion.Text, "").Trim()
+            Dim UserPicked As Boolean = Current.Contains(".") OrElse Current.Contains("w")
+            If Not UserPicked Then TextSearchVersion.Text = Ver & SelectedVersionSuffix
+        Catch ex As Exception
+            Logger.Warn(ex, "更新所选版本筛选项失败")
+        End Try
+    End Sub
+
     Private Function LoaderInput() As ResourceSearcher.SearchRequest
         Dim Request As New ResourceSearcher.SearchRequest(PageType, Storage, (Page + 1) * PAGE_SIZE)
-        Dim GameVersion As String = If(TextSearchVersion.Text = "全部 (也可自行输入)", Nothing,
-            If(TextSearchVersion.Text.Contains(".") OrElse TextSearchVersion.Text.Contains("w"), TextSearchVersion.Text, Nothing))
+        '去掉（所选版本）标注后再当作版本号使用
+        Dim VersionText As String = If(TextSearchVersion.Text, "").Replace(SelectedVersionSuffix, "").Trim()
+        Dim GameVersion As String = If(VersionText = "全部 (也可自行输入)" OrElse VersionText = "", Nothing,
+            If(VersionText.Contains(".") OrElse VersionText.Contains("w"), VersionText, Nothing))
         With Request
             .SearchText = TextSearchName.Text
             .GameVersion = GameVersion
@@ -237,6 +280,7 @@ Public Class PageResource
         ComboSearchSource.SelectedIndex = 0
         ComboSearchTag.SelectedIndex = 0
         ComboSearchLoader.SelectedIndex = 0
+        UpdateSelectedVersionFilter()
         Loader.LastFinishedTime = 0 '要求强制重新开始
     End Sub
 

@@ -366,7 +366,11 @@ Public Module ModTools
                         .Path = Folder,
                         .IsArchived = ModArchive.IsArchived(Folder)
                     }
-                    Item.Bytes = ModArchive.GetFolderSize(Folder, Nothing)
+                    Item.Bytes = InstanceSizeStore.TryGet(Folder)
+                    If Item.Bytes <= 0 Then
+                        Item.Bytes = ModArchive.GetFolderSize(Folder, Nothing)
+                        If Item.Bytes > 0 Then InstanceSizeStore.Store(Folder, Item.Bytes)
+                    End If
                     Result.Add(Item)
                 Catch ex As Exception
                     Logger.Warn(ex, $"统计版本占用失败：{Folder}")

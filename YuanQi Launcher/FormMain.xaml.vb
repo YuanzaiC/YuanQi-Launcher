@@ -419,8 +419,10 @@ Public Class FormMain
         ApplicationStartTick = GetTimeMs()
         Handle = New WindowInteropHelper(Me).Handle
         InstallMouseHook()
+        FixMinimizeBeep()
         '读取设置（HiddenRefresh/BackgroundRefresh 依赖主页控件，移至主页构建完成后执行）
         UpdateBackgroundAndTitleBar()
+        ModRenderPerf.ApplySetting() '按设置应用界面渲染性能档位
         ApplyUiScale() '应用保存的界面缩放比例
         '扩展按钮
         BtnExtraDownload.ShowCheck = AddressOf BtnExtraDownload_ShowCheck
@@ -1716,6 +1718,8 @@ Public Class FormMain
     ''' </summary>
     Public IsSizeSaveable As Boolean = False
     Private Sub FormMain_SizeChanged() Handles Me.SizeChanged, Me.Loaded
+        '最小化时的尺寸不是真实尺寸，既不保存也不参与布局计算
+        If WindowState = WindowState.Minimized Then Return
         If IsSizeSaveable AndAlso WindowState <> WindowState.Maximized Then
             Settings.Set("WindowHeight", Height)
             Settings.Set("WindowWidth", Width)
@@ -1781,6 +1785,42 @@ Public Class FormMain
         End Try
     End Sub
 
+    <Runtime.InteropServices.DllImport("dwmapi.dll")>
+    Private Shared Function DwmSetWindowAttribute(hwnd As IntPtr, attr As Integer, ByRef value As Integer, size As Integer) As Integer
+    End Function
+    Private Shared Function GetWindowLongPtrSafe(hwnd As IntPtr, index As Integer) As Integer
+        Return CInt(GetWindowLong(hwnd, index))
+    End Function
+    <Runtime.InteropServices.DllImport("user32.dll", EntryPoint:="GetWindowLongW")>
+    Private Shared Function GetWindowLong(hwnd As IntPtr, index As Integer) As Integer
+    End Function
+    <Runtime.InteropServices.DllImport("user32.dll", EntryPoint:="SetWindowLongW")>
+    Private Shared Function SetWindowLong(hwnd As IntPtr, index As Integer, value As Integer) As Integer
+    End Function
+
+    ''' <summary>
+    ''' 分层（AllowsTransparency）+ 无边框窗口在系统最小化/还原时，Windows 会先响一声提示音。
+    ''' 这里关掉该窗口的 DWM 过渡动画，并确保窗口带 WS_MINIMIZEBOX，让还原按普通窗口处理。
+    ''' </summary>
+    Private Sub FixMinimizeBeep()
+        Try
+            Dim Hwnd As IntPtr = New Interop.WindowInteropHelper(Me).Handle
+            If Hwnd = IntPtr.Zero Then Return
+            Dim Disable As Integer = 1
+            DwmSetWindowAttribute(Hwnd, 3, Disable, 4) 'DWMWA_TRANSITIONS_FORCEDISABLED
+            Const GWL_STYLE As Integer = -16
+            Const WS_MINIMIZEBOX As Integer = &H20000
+            Dim Style As Integer = GetWindowLongPtrSafe(Hwnd, GWL_STYLE)
+            If (Style And WS_MINIMIZEBOX) = 0 Then
+                SetWindowLong(Hwnd, GWL_STYLE, Style Or WS_MINIMIZEBOX)
+                Logger.Info("已为窗口补上 WS_MINIMIZEBOX")
+            End If
+            Logger.Info("已关闭窗口过渡动画以规避还原提示音")
+        Catch ex As Exception
+            Logger.Warn(ex, "处理最小化提示音失败")
+        End Try
+    End Sub
+
     '最小化
     Private Sub BtnTitleMin_Click() Handles BtnTitleMin.Click
         WindowState = WindowState.Minimized
@@ -1802,13 +1842,21 @@ Public Class FormMain
 
     ''' <summary>系统最大化/还原状态变化时，同步自定义最大化状态并刷新窗口边框。</summary>
     Private Sub FormMain_StateChanged() Handles Me.StateChanged
+        '最小化时不要改 ResizeMode / 边距等窗口样式：改动会让 HWND 样式重建，
+        '导致第一次点任务栏的还原请求丢失（表现为点一次没反应、还会响一声），必须点第二次
+        If WindowState = WindowState.Minimized Then Return
         IsMaximizedCustom = (WindowState = WindowState.Maximized)
         RefreshWindowChrome()
     End Sub
     ''' <summary>
     ''' 根据是否最大化调整透明边距与圆角。
     ''' </summary>
+    Private _ChromeIsMaximized As Boolean? = Nothing
     Private Sub RefreshWindowChrome()
+        '状态没变就不重复改窗口样式：反复重建 HWND 样式会打断系统的还原/激活流程
+        Dim Target As Boolean = IsMaximizedCustom
+        If _ChromeIsMaximized.HasValue AndAlso _ChromeIsMaximized.Value = Target Then Return
+        _ChromeIsMaximized = Target
         If IsMaximizedCustom Then
             RectForm.RadiusX = 0
             RectForm.RadiusY = 0
@@ -1934,11 +1982,35 @@ Public Class FormMain
     ''' 根据浮动返回键是否可见调整消息弹窗高度：
     ''' 返回键出现在左下角时抬高弹窗避让，返回键隐藏时回落，减少对页面内容的遮挡。
     ''' </summary>
+    ''' <summary>是否应该显示浮动返回键（与 Popup 实际开关状态分开记录）。</summary>
+    Private _FloatingBackWanted As Boolean = False
+
+    ''' <summary>
+    ''' 提示气泡与浮动返回键都承载在独立的 Popup 窗口里，属于"另一个窗口"：
+    ''' 启动器不处于激活状态（切到别的程序、最小化）时必须收起，否则会浮在别人上面。
+    ''' </summary>
+    Private Sub SyncOverlayPopups()
+        Try
+            Dim Active As Boolean = IsActive AndAlso WindowState <> WindowState.Minimized AndAlso Visibility = Visibility.Visible
+            If PopHint IsNot Nothing Then PopHint.IsOpen = Active
+            If PopFloatingBack IsNot Nothing Then PopFloatingBack.IsOpen = Active AndAlso _FloatingBackWanted
+        Catch ex As Exception
+            Logger.Warn(ex, "同步浮层弹窗状态失败")
+        End Try
+    End Sub
+
+    Private Sub FrmMain_OverlayStateChanged(sender As Object, e As EventArgs) Handles Me.Activated, Me.Deactivated
+        SyncOverlayPopups()
+    End Sub
+
+    Private Sub FrmMain_OverlayVisibleChanged(sender As Object, e As DependencyPropertyChangedEventArgs) Handles Me.IsVisibleChanged
+        SyncOverlayPopups()
+    End Sub
+
     Private Sub UpdateHintOffset()
         Try
             If PopHint Is Nothing Then Return
-            Dim Raised As Boolean = PopFloatingBack IsNot Nothing AndAlso PopFloatingBack.IsOpen
-            PopHint.VerticalOffset = If(Raised, -270, -220)
+            PopHint.VerticalOffset = If(_FloatingBackWanted, -270, -220)
         Catch
         End Try
     End Sub
@@ -1979,25 +2051,48 @@ Public Class FormMain
         If FrmMain Is Nothing OrElse Not FrmMain.IsLoaded Then Return
         FrmMain.UpdateBackgroundAndTitleBar()
     End Sub
+    '背景图片模糊：预渲染相关状态
+    ''' <summary>未被模糊的原始背景图。</summary>
+    Private _BgOrigin As ImageSource = Nothing
+    ''' <summary>预渲染出来的模糊背景图（缓存）。</summary>
+    Private _BgBlurred As ImageSource = Nothing
+    ''' <summary>缓存对应的模糊半径。</summary>
+    Private _BgBlurredRadius As Double = -1
+    ''' <summary>拖动模糊滑块时的重建防抖。</summary>
+    Private _BgBlurTimer As Windows.Threading.DispatcherTimer = Nothing
+
     Public Sub UpdateBackgroundAndTitleBar()
         Logger.Info("从设置更新背景图片与标题栏样式")
         '背景图片透明度
         ImgBack.Opacity = Settings.Get(Of Integer)("UiBackgroundOpacity") / 1000
-        '背景图片模糊
-        Dim BlurRadius As Double = Settings.Get(Of Integer)("UiBackgroundBlur") + 1
-        If BlurRadius = 1 Then
-            ImgBack.Effect = Nothing
-        Else
-            ImgBack.Effect = New Effects.BlurEffect With {.Radius = BlurRadius}
+        '认一下当前画刷里的图是哪一张：
+        '如果它就是我们上一次预渲染出来的模糊图，说明原图没换；否则就是新图，缓存作废。
+        Dim Brush As ImageBrush = TryCast(ImgBack.Background, ImageBrush)
+        If Brush Is Nothing Then
+            _BgOrigin = Nothing
+            _BgBlurred = Nothing
+            _BgBlurredRadius = -1
+        ElseIf Brush.ImageSource IsNot Nothing AndAlso Not ReferenceEquals(Brush.ImageSource, _BgBlurred) AndAlso Not ReferenceEquals(Brush.ImageSource, _BgOrigin) Then
+            _BgOrigin = Brush.ImageSource
+            _BgBlurred = Nothing
+            _BgBlurredRadius = -1
         End If
-        ImgBack.Margin = New Thickness(-BlurRadius / 1.8)
-        '背景图片适应方式
+        Dim Origin As ImageSource = _BgOrigin
+        '背景图片模糊：改成一次性预渲染，彻底避免逐帧执行 BlurEffect
+        '（分层窗口只能软件渲染，逐帧模糊是整个界面最贵的一笔开销）
+        Dim BlurRadius As Double = Settings.Get(Of Integer)("UiBackgroundBlur") + 1
+        Dim UseBlur As Boolean = BlurRadius > 1 AndAlso Origin IsNot Nothing
+        If Not UseBlur Then
+            ImgBack.Effect = Nothing
+            ImgBack.Margin = New Thickness(0)
+            If Brush IsNot Nothing AndAlso Origin IsNot Nothing Then Brush.ImageSource = Origin
+        End If
+        '背景图片适应方式（智能判断必须基于原始图片尺寸，而不是缩小过的模糊图）
         Dim BackgroundType As Integer = Settings.Get(Of Integer)("UiBackgroundSuit")
-        If ImgBack.Background IsNot Nothing Then
-            Dim Brush As ImageBrush = CType(ImgBack.Background, ImageBrush)
+        If Brush IsNot Nothing AndAlso Origin IsNot Nothing Then
             If BackgroundType = 0 Then
                 '智能：当图片较小时平铺，较大时适应
-                If Brush.ImageSource.Width < PanMain.ActualWidth / 2 AndAlso Brush.ImageSource.Height < PanMain.ActualHeight / 2 Then
+                If Origin.Width < PanMain.ActualWidth / 2 AndAlso Origin.Height < PanMain.ActualHeight / 2 Then
                     BackgroundType = 4 '平铺
                 Else
                     BackgroundType = 2 '适应
@@ -2017,7 +2112,7 @@ Public Class FormMain
                 Case 4 '平铺
                     Brush.Stretch = Stretch.None
                     Brush.TileMode = TileMode.Tile
-                    Brush.Viewport = New Rect(0, 0, Brush.ImageSource.Width, Brush.ImageSource.Height)
+                    Brush.Viewport = New Rect(0, 0, Origin.Width, Origin.Height)
                     Brush.ViewportUnits = BrushMappingMode.Absolute
 
                 Case 2 '适应
@@ -2047,6 +2142,8 @@ Public Class FormMain
                     Brush.AlignmentY = AlignmentY.Bottom
             End Select
         End If
+        '应用模糊：能预渲染的一律预渲染，省掉逐帧的 BlurEffect
+        If UseBlur Then ApplyBackgroundBlur(BlurRadius, BackgroundType)
         '标题栏：固定只显示「缘启」二字，隐藏徽标 / 图片 / 英文
         PanTitleBadge.Visibility = Visibility.Collapsed
         ShapeTitleLogo.Visibility = Visibility.Collapsed
@@ -2056,6 +2153,85 @@ Public Class FormMain
         FrmSetupUI?.CardLogo.TriggerForceResize()
         '标题栏文本是否居左
         PanTitleMain.ColumnDefinitions(0).Width = New GridLength(If(Settings.Get(Of Boolean)("UiLogoLeft") AndAlso Settings.Get(Of Integer)("UiLogoType") = 0, 0, 1), GridUnitType.Star)
+    End Sub
+
+    ''' <summary>
+    ''' 应用背景模糊。能预渲染成位图的一律预渲染：
+    ''' 背景图本身在运行期间几乎不变，而逐帧执行 BlurEffect 是软件渲染下最贵的一笔开销。
+    ''' </summary>
+    Private Sub ApplyBackgroundBlur(Radius As Double, BackgroundType As Integer)
+        Try
+            '「居中（原始尺寸）」与「平铺」两种模式下图片的像素尺寸本身有意义，
+            '预渲染是缩过图的，会改变观感，这两种保持实时模糊。
+            If BackgroundType = 1 OrElse BackgroundType = 4 OrElse _BgOrigin Is Nothing Then
+                ImgBack.Margin = New Thickness(-Radius / 1.8)
+                ImgBack.Effect = New Effects.BlurEffect With {.Radius = Radius}
+                Return
+            End If
+            ImgBack.Effect = Nothing
+            ImgBack.Margin = New Thickness(0)
+            '命中缓存：直接换图，开销为零
+            If _BgBlurred IsNot Nothing AndAlso Math.Abs(_BgBlurredRadius - Radius) < 0.5 Then
+                ApplyBackgroundSource(_BgBlurred)
+                Return
+            End If
+            '设置变化后再算：拖动模糊滑块时每一次都重算会让界面一顿一顿的
+            If _BgBlurTimer Is Nothing Then
+                _BgBlurTimer = New Windows.Threading.DispatcherTimer With {.Interval = TimeSpan.FromMilliseconds(200)}
+                AddHandler _BgBlurTimer.Tick, AddressOf BackgroundBlurTimer_Tick
+            End If
+            _BgBlurTimer.Stop()
+            _BgBlurTimer.Start()
+        Catch ex As Exception
+            Logger.Warn(ex, "应用背景模糊失败")
+        End Try
+    End Sub
+
+    Private Sub BackgroundBlurTimer_Tick(sender As Object, e As EventArgs)
+        _BgBlurTimer.Stop()
+        Try
+            Dim Radius As Double = Settings.Get(Of Integer)("UiBackgroundBlur") + 1
+            Dim Origin As ImageSource = _BgOrigin
+            If Radius <= 1 OrElse Origin Is Nothing Then Return
+            '模糊是纯像素运算，丢到线程池算：否则启动时的苏醒动画会被这几十毫秒卡一下
+            Threading.Tasks.Task.Run(
+                Sub()
+                    Dim Result As ImageSource = Nothing
+                    Try
+                        Result = ModRenderPerf.CreateBlurredSource(Origin, Radius)
+                    Catch ex As Exception
+                        Logger.Warn(ex, "预渲染背景模糊失败")
+                    End Try
+                    RunInUi(
+                        Sub()
+                            Try
+                                If Not ReferenceEquals(_BgOrigin, Origin) Then Return '期间换了图，本次结果作废
+                                If Result Is Nothing Then
+                                    '预渲染失败：退回实时模糊，至少保证观感
+                                    ImgBack.Effect = New Effects.BlurEffect With {.Radius = Radius}
+                                    ImgBack.Margin = New Thickness(-Radius / 1.8)
+                                    Return
+                                End If
+                                _BgBlurred = Result
+                                _BgBlurredRadius = Radius
+                                ApplyBackgroundSource(Result)
+                            Catch ex As Exception
+                                Logger.Warn(ex, "应用预渲染的背景模糊失败")
+                            End Try
+                        End Sub)
+                End Sub)
+        Catch ex As Exception
+            Logger.Warn(ex, "启动背景模糊预渲染失败")
+        End Try
+    End Sub
+
+    ''' <summary>把背景画刷的图换成指定的图（模糊前 / 模糊后）。</summary>
+    Private Sub ApplyBackgroundSource(Source As ImageSource)
+        If Source Is Nothing Then Return
+        Dim Brush As ImageBrush = TryCast(ImgBack.Background, ImageBrush)
+        If Brush Is Nothing Then Return
+        If ReferenceEquals(Brush.ImageSource, Source) Then Return
+        Brush.ImageSource = Source
     End Sub
 
 #End Region
@@ -2928,7 +3104,8 @@ Public Class FormMain
                     End If
                 Else
                     '主页面 → 子页面，进入（标题栏固定显示「缘启」，显示浮动返回键）
-                    PopFloatingBack.IsOpen = True
+                    _FloatingBackWanted = True
+                    SyncOverlayPopups()
                     UpdateHintOffset()
                     PageStack.Insert(0, PageCurrent)
                 End If
@@ -3086,6 +3263,8 @@ Public Class FormMain
                 PageRight.PageOnEnter()
             End Sub, 30, True)
         }, "FrmMain PageChangeRight")
+        '新页面里的阴影是降档之后才建出来的，补一次降档遍历
+        ModRenderPerf.RefreshLowPower()
     End Sub
     ''' <summary>
     ''' 退出子界面。
@@ -3095,7 +3274,8 @@ Public Class FormMain
             '子页面 → 主页面，退出（标题栏固定显示「缘启」，隐藏浮动返回键）
             PageStack.Clear()
         End If
-        PopFloatingBack.IsOpen = False
+        _FloatingBackWanted = False
+        SyncOverlayPopups()
         UpdateHintOffset()
     End Sub
 

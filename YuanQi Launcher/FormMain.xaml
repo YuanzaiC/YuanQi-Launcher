@@ -332,7 +332,7 @@
                 </Popup>
                 <Popup x:Name="PopHint" AllowsTransparency="True" Placement="Bottom" PlacementTarget="{Binding ElementName=PanForm}"
                        HorizontalOffset="88" VerticalOffset="-220" StaysOpen="True" IsOpen="True">
-                    <Grid Width="320" Height="200" IsHitTestVisible="False" UseLayoutRounding="True" SnapsToDevicePixels="True">
+                    <Grid Width="480" Height="200" IsHitTestVisible="False" UseLayoutRounding="True" SnapsToDevicePixels="True">
                         <StackPanel x:Name="PanHint" IsHitTestVisible="False" VerticalAlignment="Bottom" />
                     </Grid>
                 </Popup>
@@ -387,7 +387,7 @@
                         <!-- 不要开 ClipToBounds：它会把投影裁进元素边界，阴影就变成硬边的方形块；
                              圆角裁切由内部 Grid 的 RectangleGeometry 负责，图片照样不会溢出圆角。 -->
                         <Border.Effect>
-                            <DropShadowEffect Color="#000000" BlurRadius="14" ShadowDepth="2" Direction="270" Opacity="0.13" RenderingBias="Quality" />
+                            <DropShadowEffect Color="#000000" BlurRadius="14" ShadowDepth="2" Direction="270" Opacity="0.13" RenderingBias="Performance" />
                         </Border.Effect>
                         <Border.RenderTransform>
                             <TransformGroup>

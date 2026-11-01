@@ -75,6 +75,7 @@ Public Class PageDownloadResourceDetail
     End Class
 
     Private VersionFilter As String
+
     Private GroupedDrop As Boolean '是否按 Drop 筛选（1.21 / 1.20 / 1.19 / ...）而非小版本号（1.21.1 / 1.21 / 1.20.4 / ...）
     Private GroupedOld As Boolean '是否折叠远古版本为一个选项
     '筛选类型相同的结果（Modrinth 会返回 Mod、服务端插件、数据包混合的列表）
@@ -152,6 +153,7 @@ GroupDone:
             ToCheck.Checked = True
         End If
 
+
         '更新筛选结果（文件列表 UI 化）
         UpdateFilterResult()
     End Sub
@@ -206,7 +208,10 @@ GroupDone:
                 If Not Pair.Value.Any() Then Continue For
                 If Pair.Key = TargetCardName.Replace("（所选版本）", "") Then Continue For
                 '增加卡片
-                Dim NewCard As New MyCard With {.Title = Pair.Key, .Margin = New Thickness(0, 0, 0, 15)}
+                '折叠状态只看得到标题，所以把「当前版本」标到标题上
+                Dim CardTitle As String = Pair.Key
+                If Not CardTitle.Contains("（所选版本）") AndAlso IsCurrentVersionCard(Pair.Key) Then CardTitle &= "（当前版本）"
+                Dim NewCard As New MyCard With {.Title = CardTitle, .Margin = New Thickness(0, 0, 0, 15)}
                 Dim NewStack As New StackPanel With {.Margin = New Thickness(20, MyCard.SwapedHeight, 18, 0), .VerticalAlignment = VerticalAlignment.Top, .RenderTransform = New TranslateTransform(0, 0), .Tag = Pair.Value}
                 NewCard.Children.Add(NewStack)
                 NewCard.SwapControl = NewStack
@@ -245,8 +250,12 @@ GroupDone:
     ''' 根据卡片中的 StackPanel.Tag 将资源版本列表数据实例化为 UI。
     ''' </summary>
     Private Sub InitializeStackResourceVersions(Stack As StackPanel)
-        Dim Versions = CType(Stack.Tag, List(Of ResourceVersion)).SortByComparison(Function(a, b) a.ReleaseDate > b.ReleaseDate)
+        'Tag 已经在别的时机被消费时直接跳过，避免把卡片刷成空白
+        Dim RawVersions = TryCast(Stack.Tag, List(Of ResourceVersion))
+        If RawVersions Is Nothing Then Return
+        Dim Versions = RawVersions.SortByComparison(Function(a, b) a.ReleaseDate > b.ReleaseDate)
         Dim HasDuplicates = Versions.DistinctBy(Function(a) a.Display).Count <> Versions.Count
+
         Dim Dependences As List(Of String)
         '获取并添加前置信息
         If TargetResourceType = ResourceTypes.ModPack Then
@@ -281,6 +290,32 @@ GroupDone:
         Stack.Children.Add(New FrameworkElement With {.Height = 18})
         Stack.Tag = Nothing
     End Sub
+    ''' <summary>这张版本卡片的标题是否就是「主页当前选择的版本」。</summary>
+    Private Function IsCurrentVersionCard(CardTitle As String) As Boolean
+        Try
+            Dim Current As String = PageResource.GetSelectedInstanceVersion()
+            If String.IsNullOrWhiteSpace(Current) Then Return False
+            Dim Title As String = CardTitle.Replace(PageResource.SelectedVersionSuffix, "").Trim()
+            '标题可能带加载器前缀（如 "Fabric 26.3"），取最后一段版本号比较
+            If Title.Contains(" ") Then
+                '标题形如 "Fabric 26.3"，加载器前缀也要和当前实例对得上
+                Dim LoaderText As String = Title.BeforeLast(" ").Trim()
+                Title = Title.AfterLast(" ").Trim()
+                If McInstanceSelected IsNot Nothing Then
+                    Dim CurLoaders = McInstanceSelected.Version.ModLoaders.Flags.Select(Function(f) f.ToString()).ToList
+                    If CurLoaders.Any() AndAlso Not CurLoaders.Contains(LoaderText) Then Return False
+                End If
+            End If
+
+            If String.Equals(Title, Current, StringComparison.OrdinalIgnoreCase) Then Return True
+            '分组后的标题（如按 Drop 归为 26.3 / 折叠旧版本）也要能对上
+            If String.Equals(GetGroupedVersionName(Current, GroupedDrop, GroupedOld), Title, StringComparison.OrdinalIgnoreCase) Then Return True
+            Return False
+        Catch
+            Return False
+        End Try
+    End Function
+
     Private Function GetGroupedVersionName(Name As String, GroupedByDrop As Boolean, FoldOld As Boolean) As String
         Dim Drop = McVersion.VersionToDrop(Name)
         If Name Is Nothing Then
@@ -518,6 +553,42 @@ GroupDone:
                     Dim LoaderName As String = Desc & "下载：" & PathUtils.GetFileNameWithoutExtension(Target) & " "
                     If Not PathUtils.IsSame(PathUtils.RemoveLastPart(Target), DefaultFolder) Then CachedFolder(File.ResourceType) = PathUtils.RemoveLastPart(Target)
                     Dim Loaders As New List(Of LoaderBase)
+                    '下载 Mod 时检查前置：当前实例里没有的，询问是否一起下载（前置的前置也会递归带上）
+                    Dim DependencyFiles As New List(Of NetFile)
+                    If File.ResourceType = ResourceTypes.Mod Then
+                        Try
+                            '注意：ToNetFile 只有路径以 \ 结尾时才把它当文件夹，否则会当成文件名
+                            Dim ModsFolder As String = PathUtils.RemoveLastPart(Target)
+                            If Not ModsFolder.EndsWith("\"c) Then ModsFolder &= "\"
+                            Dim Missing = CollectMissingDependencies(File, ModsFolder)
+                            If Missing IsNot Nothing AndAlso Missing.Any() Then
+                                Dim Lines As New List(Of String)
+                                For i = 0 To Math.Min(Missing.Count, 8) - 1
+                                    Lines.Add("· " & Missing(i).Display)
+                                Next
+                                If Missing.Count > 8 Then Lines.Add($"…… 另有 {Missing.Count - 8} 个")
+                                Dim Answer As Integer = RunInUiWait(
+                                    Function() As Integer
+                                        Return MyMsgBox("当前版本缺少以下前置 Mod：" & vbCrLf & String.Join(vbCrLf, Lines) & vbCrLf & vbCrLf &
+                                                        "是否一并下载这些前置？", "前置 Mod", "一起下载", "只下载本体")
+                                    End Function)
+                                If Answer = 1 Then
+                                    For Each DepFile In Missing
+                                        Try
+                                            DependencyFiles.Add(DepFile.ToNetFile(ModsFolder, ResourceVersion.DownloadReason.Dependency))
+                                        Catch ex As Exception
+                                            Logger.Warn(ex, $"准备前置下载失败：{DepFile.FileName}")
+                                        End Try
+                                    Next
+                                End If
+                            End If
+                        Catch ex As Exception
+                            Logger.Warn(ex, "检查前置 Mod 失败")
+                        End Try
+                    End If
+                    If DependencyFiles.Any() Then
+                        Loaders.Add(New LoaderDownload("下载前置 Mod", DependencyFiles) With {.ProgressWeight = 4, .Block = True})
+                    End If
                     Loaders.Add(New LoaderDownload("下载文件", {
                         File.ToNetFile(Target, If(TargetResourceType = ResourceTypes.Any, ResourceVersion.DownloadReason.Dependency, ResourceVersion.DownloadReason.Standalone))
                     }) With {.ProgressWeight = 6, .Block = True})
@@ -555,4 +626,85 @@ GroupDone:
         PageLoaderRestart(IsForceRestart:=True)
     End Sub
 
+    ' ==================== 前置 Mod 检查 ====================
+
+    ''' <summary>本地 mods 文件夹里是否已经装了这个前置（按 slug / 中文名做文件名匹配）。</summary>
+    Private Function IsDependencyInstalled(DepProject As ResourceProject, ModsFolder As String) As Boolean
+        Try
+            If String.IsNullOrWhiteSpace(ModsFolder) OrElse Not DirectoryUtils.Exists(ModsFolder) Then Return False
+            Dim Keys As New List(Of String)
+            If Not String.IsNullOrWhiteSpace(DepProject.Slug) Then Keys.Add(DepProject.Slug.Replace("-", "").Replace("_", "").Lower)
+            Dim Cn As String = DepProject.TranslatedName
+            If Not String.IsNullOrWhiteSpace(Cn) Then Keys.Add(Cn.BeforeFirst(" (").BeforeFirst(" - ").Lower)
+            For Each FilePath In DirectoryUtils.EnumerateFiles(ModsFolder)
+                Dim Name As String = IO.Path.GetFileNameWithoutExtension(FilePath).Replace("-", "").Replace("_", "").Replace(" ", "").Lower
+                For Each Key In Keys
+                    Dim Normalized As String = Key.Replace("-", "").Replace("_", "").Replace(" ", "")
+                    If Normalized <> "" AndAlso Name.Contains(Normalized) Then Return True
+                Next
+            Next
+        Catch ex As Exception
+            Logger.Warn(ex, "检测本地前置失败")
+        End Try
+        Return False
+    End Function
+
+    ''' <summary>收集缺失的前置（会递归处理「前置的前置」），返回需要一起下载的版本列表。</summary>
+    Private Function CollectMissingDependencies(File As ResourceVersion, ModsFolder As String) As List(Of ResourceVersion)
+        Dim Result As New List(Of ResourceVersion)
+        Dim Visited As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+        CollectMissingDependenciesCore(File, ModsFolder, Result, Visited, 0)
+        Return Result
+    End Function
+
+    Private Sub CollectMissingDependenciesCore(File As ResourceVersion, ModsFolder As String,
+                                               Result As List(Of ResourceVersion), Visited As HashSet(Of String), Depth As Integer)
+        Try
+            If File Is Nothing OrElse Depth > 3 Then Return
+            Dim DepIds As List(Of String) = Nothing
+            Try
+                DepIds = File.Dependencies.Distinct().ToList()
+            Catch
+                Return
+            End Try
+            If DepIds Is Nothing Then Return
+            Dim WantVersions = File.GameVersions
+            Dim WantLoaders As ModLoaders = If(File.ModLoaders <> ModLoaders.None, File.ModLoaders, Project.ModLoaders)
+            For Each DepId In DepIds
+                If String.IsNullOrWhiteSpace(DepId) Then Continue For
+                If Not Visited.Add(DepId) Then Continue For
+                Dim DepProject As ResourceProject = Nothing
+                Try
+                    If Not ResourceProject.Cache.TryGetValue(DepId, DepProject) Then
+                        DepProject = ResourceProject.FromProjectId(DepId, Project.Platform)
+                    End If
+                Catch ex As Exception
+                    Logger.Warn(ex, $"获取前置工程失败：{DepId}")
+                    Continue For
+                End Try
+                If DepProject Is Nothing Then Continue For
+                If IsDependencyInstalled(DepProject, ModsFolder) Then
+                    Logger.Info($"前置已存在，跳过：{DepProject.Slug}")
+                    Continue For
+                End If
+                '挑一个适用于当前版本 / 加载器的前置文件
+                Dim DepFile As ResourceVersion = Nothing
+                Try
+                    Dim Candidates = ResourceVersion.FromProjectId(DepProject.Id, DepProject.Platform, LoadDependencies:=False)
+                    DepFile = Candidates.
+                        Where(Function(v) WantVersions Is Nothing OrElse Not WantVersions.Any() OrElse v.GameVersions.Intersect(WantVersions).Any()).
+                        Where(Function(v) WantLoaders = ModLoaders.None OrElse v.ModLoaders = ModLoaders.None OrElse v.ModLoaders.Flags.Intersect(WantLoaders.Flags).Any()).
+                        OrderByDescending(Function(v) v.ReleaseDate).FirstOrDefault()
+                Catch ex As Exception
+                    Logger.Warn(ex, $"获取前置版本失败：{DepProject.Slug}")
+                End Try
+                If DepFile Is Nothing Then Continue For
+                Result.Add(DepFile)
+                '前置自己也可能还有前置
+                CollectMissingDependenciesCore(DepFile, ModsFolder, Result, Visited, Depth + 1)
+            Next
+        Catch ex As Exception
+            Logger.Warn(ex, "收集前置 Mod 失败")
+        End Try
+    End Sub
 End Class

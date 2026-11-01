@@ -155,6 +155,7 @@ Public Class Settings
         New Setting("UiAutoCheckUpdate", False), '启动时自动检查更新（默认关；仓库建立后生效）
         New Setting("UiOpenWebInLauncher", True), '是否通过启动器内置浏览器打开网页
         New Setting("UiUiScale", 100), '界面缩放百分比
+        New Setting("UiPerfMode", 0, OnChanged:=AddressOf ModRenderPerf.ApplySetting), '界面渲染性能档位：0 自动 / 1 流畅优先 / 2 画质优先
         New Setting("SystemEnvCheckVersion", 0, Source:=Sources.Registry), '环境体检已执行的版本
         New Setting("UiHiddenPageDownload", False, OnChanged:=AddressOf PageSetupUI.HiddenRefresh),
         New Setting("UiHiddenPageLink", False, OnChanged:=AddressOf PageSetupUI.HiddenRefresh),

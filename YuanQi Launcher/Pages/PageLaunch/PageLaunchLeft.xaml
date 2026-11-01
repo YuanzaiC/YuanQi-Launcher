@@ -229,7 +229,7 @@
                         <Border Grid.Row="0" x:Name="PanHero" VerticalAlignment="Top" Style="{StaticResource Card}" Padding="22,16,22,16" Margin="0,0,0,12"
                                 BorderBrush="{DynamicResource ColorBrush5}">
                             <Border.Effect>
-                                <DropShadowEffect BlurRadius="16" ShadowDepth="3" Direction="270" Opacity="0.2" Color="{DynamicResource ColorObject2}" />
+                                <DropShadowEffect BlurRadius="16" ShadowDepth="3" Direction="270" Opacity="0.2" Color="{DynamicResource ColorObject2}" RenderingBias="Performance" />
                             </Border.Effect>
                                         <Grid>
                                     <Grid.RowDefinitions>
@@ -307,13 +307,15 @@
                                                     <TranslateTransform x:Name="AprilPosTrans" />
                                                 </TransformGroup>
                                             </Grid.RenderTransform>
-                                            <!-- 启动按钮：主页唯一主操作（更大尺寸 + 深投影；悬停上浮与阴影变化由代码驱动） -->
+                                            <!-- 启动按钮：主页唯一主操作（更大尺寸 + 深投影；悬停上浮与阴影变化由代码驱动）
+                                                 投影半径刻意控制在 20 以内：分层窗口只能软件渲染，
+                                                 模糊半径每涨一档、每帧重绘的开销都会成倍上涨。 -->
                                             <Border HorizontalAlignment="Left" x:Name="HeroBtnBorder" RenderTransformOrigin="0.5,0.5">
                                                 <Border.RenderTransform>
                                                     <TranslateTransform x:Name="HeroBtnTrans" Y="0" />
                                                 </Border.RenderTransform>
                                                 <Border.Effect>
-                                                    <DropShadowEffect x:Name="HeroBtnShadow" Color="#26200F0A" BlurRadius="28" ShadowDepth="4" Direction="270" Opacity="1" RenderingBias="Performance" />
+                                                    <DropShadowEffect x:Name="HeroBtnShadow" Color="#26200F0A" BlurRadius="20" ShadowDepth="4" Direction="270" Opacity="1" RenderingBias="Performance" />
                                                 </Border.Effect>
                                                 <local:MyButton x:Name="BtnLaunch" Height="60" MinWidth="284" Text="正在加载" ColorType="Highlight"
                                                                 ForceWhiteText="True" AccentShadow="True" IsEnabled="False" TextPadding="12,0,0,0" TextFontSize="17" TextFontWeight="Bold"

@@ -43,7 +43,7 @@
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="10">
                             <Border.Effect>
-                                <DropShadowEffect BlurRadius="8" ShadowDepth="1" Direction="270" Opacity="0.08" Color="#000000" />
+                                <DropShadowEffect BlurRadius="8" ShadowDepth="1" Direction="270" Opacity="0.08" Color="#000000" RenderingBias="Performance" />
                             </Border.Effect>
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}" />
                         </Border>

@@ -184,14 +184,13 @@ Public Class PageSelectRight
         End If
     End Sub
 
-    ''' <summary>版本占用大小的缓存（路径 → 字节数），避免每次滚动都重新统计。</summary>
-    Private Shared ReadOnly InstanceSizeCache As New ConcurrentDictionary(Of String, Long)
+    ''' <summary>版本占用大小直接从持久化缓存取（首次统计后写入 YQL\Cache\InstanceSizes.json）。</summary>
 
     ''' <summary>在条目描述里追加该版本的占用大小。</summary>
     Private Shared Sub ShowInstanceSize(Item As MyListItem, Instance As McInstance)
         Try
-            Dim Cached As Long = -1
-            If InstanceSizeCache.TryGetValue(Instance.PathVersion, Cached) Then
+            Dim Cached As Long = InstanceSizeStore.TryGet(Instance.PathVersion)
+            If Cached > 0 Then
                 ApplyInstanceSize(Item, Instance, Cached)
                 Return
             End If
@@ -199,7 +198,7 @@ Public Class PageSelectRight
             Sub()
                 Try
                     Dim Size As Long = ModArchive.GetFolderSize(Instance.PathVersion, Nothing)
-                    InstanceSizeCache(Instance.PathVersion) = Size
+                    InstanceSizeStore.Store(Instance.PathVersion, Size)
                     RunInUi(Sub() ApplyInstanceSize(Item, Instance, Size))
                 Catch ex As Exception
                     Logger.Warn(ex, "统计版本占用大小失败")
@@ -294,7 +293,7 @@ Public Class PageSelectRight
                     Case LoadState.Finished
                         Hint($"已归档 {Paths.Count} 个版本！", HintType.Green)
                         For Each Path In Paths
-                            InstanceSizeCache.TryRemove(Path, Nothing)
+                            InstanceSizeStore.Remove(Path)
                         Next
                         McInstanceListForceRefresh = True
                         LoaderFolderRun(McInstanceListLoader, McFolderSelected, LoaderFolderRunType.ForceRun, MaxDepth:=1, ExtraPath:="versions\")
@@ -324,7 +323,7 @@ Public Class PageSelectRight
                 Select Case NewState
                     Case LoadState.Finished
                         Hint(If(IsArchive, "已归档该版本！", "已解压还原该版本！"), HintType.Green)
-                        InstanceSizeCache.TryRemove(Instance.PathVersion, Nothing)
+                        InstanceSizeStore.Remove(Instance.PathVersion)
                         McInstanceListForceRefresh = True
                         LoaderFolderRun(McInstanceListLoader, McFolderSelected, LoaderFolderRunType.ForceRun, MaxDepth:=1, ExtraPath:="versions\")
                     Case LoadState.Failed
