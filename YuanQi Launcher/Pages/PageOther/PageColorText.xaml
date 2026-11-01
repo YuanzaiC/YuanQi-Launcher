@@ -64,8 +64,8 @@
             </Setter>
         </Style>
     </local:MyPageRight.Resources>
-    <local:MyScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" x:Name="PanBack">
-        <StackPanel Margin="24,22,24,26">
+    <local:MyScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" x:Name="PanBack">
+        <StackPanel Margin="24,22,24,26" MinWidth="880">
 
             <!-- 页头 -->
             <Grid x:Name="PanHeader" Margin="2,0,0,14">

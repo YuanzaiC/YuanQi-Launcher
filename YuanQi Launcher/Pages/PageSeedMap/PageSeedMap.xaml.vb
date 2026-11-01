@@ -1,4 +1,4 @@
-﻿Imports System.Collections.Concurrent
+Imports System.Collections.Concurrent
 Imports System.Windows.Threading
 Imports System.Windows.Controls.Primitives
 Imports System.Windows.Media
@@ -1437,6 +1437,8 @@ Public Class PageSeedMap
             End If
             UpdateSelect3DBox(e.GetPosition(PanMapViewport))
             Open3DAt(Sel3DCenter)
+            '一次性操作：打开预览后立即退出框选模式，按钮也不再保持选中
+            Exit3DModeVisuals()
             Return
         End If
         If Not IsDragging Then Return
@@ -2272,25 +2274,31 @@ Public Class PageSeedMap
     Private _3DCloseTick As Long = 0
     Private _3DSuppressOpenThisClick As Boolean = False
 
+    ''' <summary>退出 3D 框选模式并复位按钮外观（不关闭已打开的 3D 预览）。</summary>
+    Private Sub Exit3DModeVisuals()
+        Select3DMode = False
+        BtnTool3D.Background = Brushes.Transparent
+        BtnTool3D.Foreground = TryCast(FindResource("BrushText2"), Brush)
+        PanMapViewport.Cursor = Cursors.ScrollAll
+        PanSelect3D.Children.Clear()
+    End Sub
+
     Private Sub BtnTool3D_Click(sender As Object, e As RoutedEventArgs) Handles BtnTool3D.Click
-        Select3DMode = Not Select3DMode
         If Select3DMode Then
-            BtnTool3D.Background = TryCast(FindResource("BrushAccentSoft"), Brush)
-            BtnTool3D.Foreground = TryCast(FindResource("ColorBrush3"), Brush)
-            PanMapViewport.Cursor = Cursors.Cross
-            '先在视野中心放一个选框，避免开启后看不到反馈
-            If PanMapViewport.ActualWidth > 40 AndAlso PanMapViewport.ActualHeight > 40 Then
-                UpdateSelect3DBox(New Point(PanMapViewport.ActualWidth / 2, PanMapViewport.ActualHeight / 2))
-            End If
-            Hint("3D 预览：已开启（移动鼠标框选，左键查看，右键取消）", HintType.Blue)
-        Else
-            BtnTool3D.Background = Brushes.Transparent
-            BtnTool3D.Foreground = TryCast(FindResource("BrushText2"), Brush)
-            PanMapViewport.Cursor = Cursors.ScrollAll
-            PanSelect3D.Children.Clear()
-            '关掉 3D 功能时，正在预览的图也一起收起
+            '再次点击按钮：退出框选并收起预览
+            Exit3DModeVisuals()
             CloseView3DNow()
+            Return
         End If
+        Select3DMode = True
+        BtnTool3D.Background = TryCast(FindResource("BrushAccentSoft"), Brush)
+        BtnTool3D.Foreground = TryCast(FindResource("ColorBrush3"), Brush)
+        PanMapViewport.Cursor = Cursors.Cross
+        '先在视野中心放一个选框，避免开启后看不到反馈
+        If PanMapViewport.ActualWidth > 40 AndAlso PanMapViewport.ActualHeight > 40 Then
+            UpdateSelect3DBox(New Point(PanMapViewport.ActualWidth / 2, PanMapViewport.ActualHeight / 2))
+        End If
+        Hint("3D 预览：已开启（移动鼠标框选，左键查看，右键取消）", HintType.Blue)
     End Sub
 
     ''' <summary>把框选框移到指定屏幕点（中心吸附到 16 方块区块网格）。</summary>

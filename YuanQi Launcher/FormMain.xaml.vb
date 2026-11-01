@@ -1969,12 +1969,9 @@ Public Class FormMain
             Logger.Warn(ex, "刷新导航栏头像失败")
         End Try
     End Sub
+    '导航栏头像：切换全局账户（不跳转页面）
     Private Sub BtnAvatar_Click() Handles BtnAvatar.Click
-        PageChange(PageType.Launch)
-        RunInUi(
-        Sub()
-            If FrmLaunchLeft IsNot Nothing Then FrmLaunchLeft.ShowGlobalAccountPicker()
-        End Sub, True)
+        PageLaunchLeft.ShowGlobalAccountSwitcher()
     End Sub
 
     '背景图片与标题栏

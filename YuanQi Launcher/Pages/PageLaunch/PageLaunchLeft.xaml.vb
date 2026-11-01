@@ -1292,8 +1292,14 @@ ExitRefresh:
                     Case Else
                         Dim LegacyName As String = ""
                         If ComboName IsNot Nothing Then LegacyName = If(ComboName.Text, "").Trim
-                        LabAccountName.Text = If(String.IsNullOrWhiteSpace(LegacyName), "离线账户", LegacyName)
-                        LabAccountType.Text = "离线"
+                        If String.IsNullOrWhiteSpace(LegacyName) AndAlso Not HasAnyAccount() Then
+                            '一个账户都没有：引导注册，而不是显示「离线账户」
+                            LabAccountName.Text = "点击注册账号"
+                            LabAccountType.Text = "还没有账户"
+                        Else
+                            LabAccountName.Text = If(String.IsNullOrWhiteSpace(LegacyName), "离线账户", LegacyName)
+                            LabAccountType.Text = "离线"
+                        End If
                 End Select
             End If
             If SkinHeadAccount IsNot Nothing Then SkinHeadAccount.SetSkin(GetAccountSkinAddress())
@@ -1305,7 +1311,7 @@ ExitRefresh:
                 Dim HourNow = Date.Now.Hour
                 Dim Greeting As String = If(HourNow >= 5 AndAlso HourNow < 11, "早上好", If(HourNow < 13, "中午好", If(HourNow < 18, "下午好", "晚上好")))
                 Dim GreetName As String = LabAccountName.Text
-                If GreetName = "未登录" OrElse String.IsNullOrWhiteSpace(GreetName) Then GreetName = "冒险家"
+                If GreetName = "未登录" OrElse GreetName = "点击注册账号" OrElse String.IsNullOrWhiteSpace(GreetName) Then GreetName = "冒险家"
                 LabGreetingTitle.Text = Greeting & "，" & GreetName
                 Dim WeekNames = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"}
                 LabGreetingSub.Text = $"{Date.Now.Month} 月 {Date.Now.Day} 日 · {WeekNames(CInt(Date.Now.DayOfWeek))} · 祝你玩得开心"
@@ -1514,11 +1520,25 @@ ExitRefresh:
 
 #Region "账户下拉"
 
+    ''' <summary>账户池里是否有任何可用账户。</summary>
+    Private Function HasAnyAccount() As Boolean
+        Try
+            Return AccountPool.GetAllAccounts().Count > 0
+        Catch
+            Return False
+        End Try
+    End Function
+
     ''' <summary>
-    ''' 点击账户胶囊：展开或收起账号下拉面板。
+    ''' 点击账户胶囊：展开或收起账号下拉面板；一个账户都没有时直接引导注册。
     ''' </summary>
     Private Sub BtnAccount_Click() Handles BtnAccount.Click
         Try
+            '还没有任何账户：直接引导注册，而不是弹一个空列表
+            If Not HasAnyAccount() Then
+                BtnAccountAdd_Click()
+                Return
+            End If
             AniStop("Account Menu")
             Dim Open As Boolean = PanAccountMenu.Visibility <> Visibility.Visible
             If Open Then
@@ -1610,6 +1630,58 @@ ExitRefresh:
         RefreshHomeInfo()
         PulseAccountCapsule()
         Hint($"已添加账户 {Ref.Name}", HintType.Green)
+    End Sub
+
+    ''' <summary>
+    ''' 导航栏头像入口：从当前账户切换到另一个账户（不离开当前页面）。
+    ''' 没有账户时引导去添加，只有一个账户时提示已是唯一账户。
+    ''' </summary>
+    Public Shared Sub ShowGlobalAccountSwitcher()
+        Try
+            Dim Accounts = AccountPool.GetAllAccounts()
+            If Accounts.Count = 0 Then
+                Hint("还没有账户，先在主页的账户卡片里添加一个吧", HintType.Blue)
+                Return
+            End If
+            Dim Cur = AccountPool.GetDefaultAccount()
+            Dim Others As New List(Of AccountRef)
+            For Each A In Accounts
+                If Cur IsNot Nothing AndAlso A.Type = Cur.Type AndAlso String.Equals(A.Name, Cur.Name, StringComparison.Ordinal) Then Continue For
+                Others.Add(A)
+            Next
+            If Others.Count = 0 Then
+                Hint($"当前已是唯一的账户：{If(Cur?.Name, "默认账户")}", HintType.Blue)
+                Return
+            End If
+            Dim Options As New List(Of IMyRadio)
+            For Each A In Others
+                Options.Add(New MyRadioBox With {.Text = $"{AccountPool.TypeDisplay(A.Type)} · {A.Name}"})
+            Next
+            Dim Index As Integer? = MyMsgBoxSelect(Options, $"从「{If(Cur?.Name, "当前账户")}」切换全局账户", "切换", "取消")
+            If Index Is Nothing Then Return
+            Dim Ref = Others(Index.Value)
+            AccountPool.SetDefaultAccount(Ref)
+            Hint($"已切换全局账户：{Ref.Name}", HintType.Green)
+            RunInUi(
+            Sub()
+                If FrmLaunchLeft IsNot Nothing Then FrmLaunchLeft.RefreshAccountUi()
+            End Sub)
+        Catch ex As Exception
+            Logger.Error(ex, "切换全局账户失败")
+        End Try
+    End Sub
+
+    ''' <summary>供外部（导航栏头像）在切换账户后刷新主页账户相关 UI。</summary>
+    Public Sub RefreshAccountUi()
+        Try
+            RefreshAccountMenu()
+            RefreshHomeInfo()
+            PulseAccountCapsule()
+            '导航栏头像也要跟着换，本页未创建时同样生效
+            If FrmMain IsNot Nothing Then FrmMain.RefreshAccountAvatar()
+        Catch ex As Exception
+            Logger.Warn(ex, "刷新账户 UI 失败")
+        End Try
     End Sub
 
     ''' <summary>从导航栏头像入口：选择或注册全局默认账户。</summary>
