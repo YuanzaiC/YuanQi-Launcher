@@ -841,6 +841,8 @@ ExitDataLoad:
                     Logger.Error(ex, "加载版本图标失败", LogBehavior.Toast)
                     NewItem.Logo = "pack://application:,,,/images/Blocks/RedstoneBlock.png"
                 End Try
+                '列表项一被创建（真正显示出来）就补上占用大小，不再依赖鼠标移入才触发
+                AddHandler NewItem.Loaded, Sub() PageSelectRight.ShowInstanceSize(NewItem, Me)
                 Return NewItem
             End Function) With {.Height = 42}
         End Function
@@ -1454,7 +1456,7 @@ OnLoaded:
         If UUID = "" Then Throw New Exception("UUID 为空。")
         If UUID.StartsWithF("00000") AndAlso Type <> "Auth" Then Throw New Exception("离线 UUID 无正版皮肤文件：" & UUID)
         '尝试读取缓存
-        Dim CacheSkinAddress As String = ReadIni(PathTemp & "Cache\Skin\Index" & Type & ".ini", UUID)
+        Dim CacheSkinAddress As String = ReadIni(PathCache & "Skin\Index" & Type & ".ini", UUID)
         If Not CacheSkinAddress = "" Then Return CacheSkinAddress
         '获取皮肤地址
         Dim Url As String
@@ -1493,7 +1495,7 @@ OnLoaded:
             SkinValue = If(SkinUrl.Contains("minecraft.net/"), SkinUrl.Replace("http://", "https://"), SkinUrl)
         End If
         '保存缓存
-        WriteIni(PathTemp & "Cache\Skin\Index" & Type & ".ini", UUID, SkinValue)
+        WriteIni(PathCache & "Skin\Index" & Type & ".ini", UUID, SkinValue)
         Logger.Info($"UUID {UUID} 对应的皮肤文件为 {SkinValue}")
         Return SkinValue
     End Function
@@ -1504,7 +1506,7 @@ OnLoaded:
     ''' </summary>
     Public Function McSkinDownload(Address As String) As String
         Dim SkinName As String = PathUtils.GetLastPart(Address)
-        Dim FileAddress As String = PathTemp & "Cache\Skin\" & Address.GetStableHashCode() & ".png"
+        Dim FileAddress As String = PathCache & "Skin\" & Address.GetStableHashCode() & ".png"
         SyncLock McSkinDownloadLock
             If Not FileUtils.Exists(FileAddress) Then
                 NetDownloadByClient(Address, FileAddress & ".YQLDownloading")

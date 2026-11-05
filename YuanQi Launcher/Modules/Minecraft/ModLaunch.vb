@@ -337,6 +337,8 @@ NextInner:
         ''' 是否在本次登录中强制要求玩家重新选择角色，目前仅对 Authlib-Injector 生效。
         ''' </summary>
         Public ForceReselectProfile As Boolean = False
+    ''' <summary>该账户上次使用的角色 UUID；不为空时优先选它，避免多账户共用同一份缓存角色。</summary>
+    Public ProfileUuid As String = ""
 
         Public Sub New(Type As McLoginType)
             Me.Type = Type
@@ -789,7 +791,7 @@ LoginFinish:
             If (LoginJson("selectedProfile") Is Nothing OrElse Data.Input.ForceReselectProfile) AndAlso LoginJson("availableProfiles").Count > 1 Then
                 '要求选择档案；优先从缓存读取
                 NeedRefresh = True
-                Dim CacheId As String = Settings.Get(Of String)("Cache" & Data.Input.Token & "Uuid")
+                Dim CacheId As String = If(String.IsNullOrWhiteSpace(Data.Input.ProfileUuid), Settings.Get(Of String)("Cache" & Data.Input.Token & "Uuid"), Data.Input.ProfileUuid)
                 For Each Profile In LoginJson("availableProfiles")
                     If Profile("id").ToString = CacheId Then
                         SelectedName = Profile("name").ToString
@@ -831,6 +833,9 @@ LoginFinish:
             Settings.Set("Cache" & Data.Input.Token & "Name", Data.Output.Name)
             Settings.Set("Cache" & Data.Input.Token & "Username", Data.Input.UserName)
             Settings.Set("Cache" & Data.Input.Token & "Pass", Data.Input.Password)
+            '顺带记住这个账户用的是哪个角色，下次登录就不用再选
+            Dim LoginType As McLoginType = If(Data.Input.Token = "Nide", McLoginType.Nide, McLoginType.Auth)
+            AccountSkinStore.AccountSkinSave(LoginType, Data.Input.UserName, Data.Output.Name, Data.Output.Uuid, "")
             McLaunchLog("登录成功（Login, " & Data.Input.Token & "）")
             Return NeedRefresh
         Catch ex As Exception
@@ -1146,7 +1151,7 @@ Retry:
     Public Function McLoginMojangUuid(Name As String, ThrowOnNotFound As Boolean)
         If Name.Trim.Length = 0 Then Return New String("0"c, 32)
         '从缓存获取
-        Dim Uuid As String = ReadIni(PathTemp & "Cache\Uuid\Mojang.ini", Name, "")
+        Dim Uuid As String = ReadIni(PathCache & "Uuid\Mojang.ini", Name, "")
         If Len(Uuid) = 32 Then Return Uuid
         '从官网获取
         Try
@@ -1163,7 +1168,7 @@ Retry:
         End Try
         '写入缓存
         If Not Len(Uuid) = 32 Then Throw New Exception("获取的正版 Uuid 长度不足（" & Uuid & "）")
-        WriteIni(PathTemp & "Cache\Uuid\Mojang.ini", Name, Uuid)
+        WriteIni(PathCache & "Uuid\Mojang.ini", Name, Uuid)
         Return Uuid
     End Function
     Public Function McLoginLegacyUuid(Name As String)

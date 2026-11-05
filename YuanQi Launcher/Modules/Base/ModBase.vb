@@ -6,7 +6,7 @@ Public Module ModBase
 #Region "声明"
 
     '下列版本信息由更新器自动修改
-    Public Const VersionBaseName As String = "2.14.1.0" '显示用版本名
+    Public Const VersionBaseName As String = "2.14.2.0" '显示用版本名
     Public Const CommitHash As String = "" 'Commit Hash，由 GitHub Workflow 自动替换
 #If RELEASE Then
     Public Const VersionCode As Integer = 411 '正式版
@@ -70,6 +70,11 @@ Public Module ModBase
     ''' 程序的缓存文件夹路径，以 \ 结尾。
     ''' </summary>
     Public PathTemp As String = PathUtils.AddSlashSuffix(Path.GetTempPath() & "YQL\")
+    ''' <summary>
+    ''' 持久化缓存文件夹路径，以 \ 结尾。
+    ''' 放在 YQL\Cache 下，不会像 %TEMP% 那样被系统清理或“清理垃圾”删掉。
+    ''' </summary>
+    Public PathCache As String = Paths.Base & "YQL\Cache\"
     ''' <summary>
     ''' 当前程序的语言。
     ''' </summary>

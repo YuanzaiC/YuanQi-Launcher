@@ -1,0 +1,139 @@
+<Grid x:Class="MySleepOverlay"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:local="clr-namespace:YuanQi"
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+      mc:Ignorable="d" d:DesignWidth="1600" d:DesignHeight="900"
+      x:Name="PanRoot" Background="Transparent" ClipToBounds="True" Cursor="None">
+
+    <!-- ============================================================
+         场景层：游戏原版全景（六面立方体，相机在内部）+ 调色 / 托底 / 颗粒
+         整层一起做缩放动画，与界面层形成视差
+         ============================================================ -->
+    <Grid x:Name="PanWorld" RenderTransformOrigin="0.5,0.5">
+        <Grid.RenderTransform>
+            <ScaleTransform x:Name="TfWorld" ScaleX="1" ScaleY="1" />
+        </Grid.RenderTransform>
+
+        <!-- 取不到全景时的自绘回退：一条地平线的远景色块 + 一团柔光，保证页面不空 -->
+        <Rectangle x:Name="RectFallback" IsHitTestVisible="False">
+            <Rectangle.Fill>
+                <LinearGradientBrush StartPoint="0.18,0" EndPoint="0.55,1">
+                    <GradientStop Color="#16241A" Offset="0" />
+                    <GradientStop Color="#2C4527" Offset="0.34" />
+                    <GradientStop Color="#4C6E3E" Offset="0.52" />
+                    <GradientStop Color="#3A5730" Offset="0.60" />
+                    <GradientStop Color="#1D2C18" Offset="0.80" />
+                    <GradientStop Color="#0B120A" Offset="1" />
+                </LinearGradientBrush>
+            </Rectangle.Fill>
+        </Rectangle>
+        <Rectangle x:Name="RectFallbackGlow" IsHitTestVisible="False">
+            <Rectangle.Fill>
+                <RadialGradientBrush Center="0.74,0.24" GradientOrigin="0.74,0.24" RadiusX="0.52" RadiusY="0.46">
+                    <GradientStop Color="#7AA98A63" Offset="0" />
+                    <GradientStop Color="#007AA98A" Offset="1" />
+                </RadialGradientBrush>
+            </Rectangle.Fill>
+        </Rectangle>
+
+        <Viewport3D x:Name="Viewport" IsHitTestVisible="False" ClipToBounds="True" Visibility="Collapsed" />
+
+        <!-- 顶部 20% 轻压、底部 40% 渐暗 -->
+        <Rectangle x:Name="RectGrade" IsHitTestVisible="False">
+            <Rectangle.Fill>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                    <GradientStop Color="#33181F14" Offset="0" />
+                    <GradientStop Color="#00181F14" Offset="0.26" />
+                    <GradientStop Color="#00181F14" Offset="0.62" />
+                    <GradientStop Color="#73080C08" Offset="1" />
+                </LinearGradientBrush>
+            </Rectangle.Fill>
+        </Rectangle>
+        <!-- 四角暗角 -->
+        <Rectangle x:Name="RectVignette" IsHitTestVisible="False">
+            <Rectangle.Fill>
+                <RadialGradientBrush Center="0.5,0.46" GradientOrigin="0.5,0.46" RadiusX="1.15" RadiusY="0.95">
+                    <GradientStop Color="#00060A06" Offset="0.35" />
+                    <GradientStop Color="#6B060A06" Offset="1" />
+                </RadialGradientBrush>
+            </Rectangle.Fill>
+        </Rectangle>
+        <!-- 两处托底：全景转到任何角度，左上字标与左下文字都要读得清 -->
+        <Rectangle x:Name="RectScrimTop" IsHitTestVisible="False">
+            <Rectangle.Fill>
+                <RadialGradientBrush Center="0,0" GradientOrigin="0,0" RadiusX="0.38" RadiusY="0.40">
+                    <GradientStop Color="#9E040804" Offset="0" />
+                    <GradientStop Color="#4D040804" Offset="0.48" />
+                    <GradientStop Color="#00040804" Offset="1" />
+                </RadialGradientBrush>
+            </Rectangle.Fill>
+        </Rectangle>
+        <Rectangle x:Name="RectScrimBottom" IsHitTestVisible="False">
+            <Rectangle.Fill>
+                <RadialGradientBrush Center="0.08,0.94" GradientOrigin="0.08,0.94" RadiusX="0.52" RadiusY="0.56">
+                    <GradientStop Color="#B3040804" Offset="0" />
+                    <GradientStop Color="#52040804" Offset="0.44" />
+                    <GradientStop Color="#00040804" Offset="1" />
+                </RadialGradientBrush>
+            </Rectangle.Fill>
+        </Rectangle>
+        <!-- 5% 颗粒（噪点图在代码里生成，避免在 XAML 里塞一坨 base64） -->
+        <Rectangle x:Name="RectGrain" IsHitTestVisible="False" Opacity="0.05" />
+    </Grid>
+
+    <!-- ============================================================
+         界面层：只有三样东西 —— 字标 / 时间 / 当前版本，零控件
+         ============================================================ -->
+    <Grid x:Name="PanUi" IsHitTestVisible="False">
+
+        <!-- 左上：字标 -->
+        <StackPanel x:Name="PanBrand" Orientation="Vertical" HorizontalAlignment="Left" VerticalAlignment="Top">
+            <local:MyWordmark x:Name="ImgWordmark" HorizontalAlignment="Left" BlockSize="2" ShadowDepth="3" />
+            <local:MyMcText x:Name="LabBrandSub" Text="YUANQI" Cell="16" HorizontalAlignment="Left" Margin="0,10,0,0" />        </StackPanel>
+
+        <!-- 左下：时间 / 日期 / 分隔线 / 实例名 + 真实版本 -->
+        <StackPanel x:Name="PanDock" Orientation="Vertical" HorizontalAlignment="Left" VerticalAlignment="Bottom">
+            <local:MyMcText x:Name="LabClock" Cell="96" ShadowDepth="5" HorizontalAlignment="Left" />
+            <TextBlock x:Name="LabDate" Text="—" FontSize="13" Margin="0,12,0,0" Foreground="#CCFFFFFF" />
+            <Rectangle x:Name="RectRule" HorizontalAlignment="Left" Width="48" Height="1" Margin="0,18,0,0">
+                <Rectangle.Fill>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                        <GradientStop Color="#9EFFFFFF" Offset="0" />
+                        <GradientStop Color="#1AFFFFFF" Offset="1" />
+                    </LinearGradientBrush>
+                </Rectangle.Fill>
+            </Rectangle>
+            <StackPanel x:Name="PanInstance" Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,16,0,0">
+                <local:MyMcText x:Name="LabInstanceName" Cell="32" ShadowDepth="2" VerticalAlignment="Bottom" />
+                <TextBlock x:Name="LabInstanceNameText" FontSize="22" FontWeight="SemiBold" Foreground="#F0FFFFFF"
+                           VerticalAlignment="Bottom" Visibility="Collapsed" />
+                <Rectangle x:Name="RectSep" Width="1" Height="22" Margin="12,0,12,3" VerticalAlignment="Bottom" Fill="#42FFFFFF" />
+                <TextBlock x:Name="LabInstanceMeta" FontSize="12.5" Margin="0,0,0,2" VerticalAlignment="Bottom" Foreground="#ADFFFFFF" />
+            </StackPanel>
+        </StackPanel>
+
+        <!-- 右下：退出提示（整页最弱的位置，只在想离开时才有用） -->
+        <StackPanel x:Name="PanHint" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+            <Border x:Name="BdEsc" Background="#4E4E4E" BorderBrush="#8C000000" BorderThickness="1" Padding="5,3,7,5" VerticalAlignment="Center">
+                <local:MyMcText x:Name="LabEsc" Text="ESC" Cell="16" ShadowDepth="0" />
+            </Border>
+            <TextBlock x:Name="LabHint" Text="或点击任意处返回" FontSize="13" Margin="9,0,0,0" VerticalAlignment="Center" Foreground="#A8FFFFFF" />
+        </StackPanel>
+    </Grid>
+
+    <!-- ============================================================
+         启动器幻影：窗口瞬间变成全屏（或缩回去）是没法做动画的，
+         这里用进入前抓下的那一帧启动器画面顶住这段过渡 —— 和预览页 images/home.png 同一层同一个做法。
+         图片按原尺寸摆在原来的位置，只做轻微放大与溶解，所以看不到「启动器被拉伸」。
+         ============================================================ -->
+    <Grid x:Name="PanPhantom" IsHitTestVisible="False" Visibility="Collapsed">
+        <Canvas x:Name="PanPhantomCanvas" ClipToBounds="True">
+            <Image x:Name="ImgPhantom" Stretch="Fill" RenderTransformOrigin="0.5,0.5" />
+        </Canvas>
+    </Grid>
+
+    <!-- 点击任意处返回。放在最上层并铺满整窗：子元素之间总有缝，缝里点下去不能没反应 -->
+    <Border x:Name="BdClick" Background="#01000000" Cursor="None" />
+</Grid>

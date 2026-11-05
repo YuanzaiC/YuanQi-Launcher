@@ -1595,6 +1595,12 @@ Public Class FormMain
 
     '关闭
     Private Sub FormMain_Closing(sender As Object, e As CancelEventArgs) Handles Me.Closing
+        '休眠态下按 Alt+F4 或点关闭，先退出休眠，不要顺手把启动器关掉
+        If IsSleeping Then
+            e.Cancel = True
+            ExitImmersiveMode()
+            Return
+        End If
         EndProgram(True)
         e.Cancel = True
     End Sub
@@ -1699,6 +1705,7 @@ Public Class FormMain
         Dim Current As DependencyObject = TryCast(Source, DependencyObject)
         Do While Current IsNot Nothing
             If TypeOf Current Is System.Windows.Controls.Primitives.ButtonBase Then Return True
+            If TypeOf Current Is System.Windows.Controls.Primitives.TextBoxBase Then Return True
             If TypeOf Current Is MyButton OrElse TypeOf Current Is MyIconButton OrElse TypeOf Current Is MyTextButton OrElse
                TypeOf Current Is MyIconTextButton OrElse TypeOf Current Is MyCheckBox OrElse TypeOf Current Is MyComboBox OrElse
                TypeOf Current Is MyListItem OrElse TypeOf Current Is MyNavItem OrElse TypeOf Current Is MySlider OrElse
@@ -1720,12 +1727,13 @@ Public Class FormMain
     Private Sub FormMain_SizeChanged() Handles Me.SizeChanged, Me.Loaded
         '最小化时的尺寸不是真实尺寸，既不保存也不参与布局计算
         If WindowState = WindowState.Minimized Then Return
-        If IsSizeSaveable AndAlso WindowState <> WindowState.Maximized Then
+        If IsSizeSaveable AndAlso WindowState <> WindowState.Maximized AndAlso Not IsSleeping Then
             Settings.Set("WindowHeight", Height)
             Settings.Set("WindowWidth", Width)
         End If
         '先更新圆角与透明边缘状态，再据此计算内容尺寸（避免依赖可能滞后的 ActualWidth）
         RefreshWindowChrome()
+        '休眠页现在是独立窗口，启动器窗口在休眠期间完全不变形，所以这里只看最大化
         Dim Margin = If(IsMaximizedCustom, 0.0, 8.0)
         '界面缩放时，根容器的布局尺寸要放大为「窗口尺寸 ÷ 缩放比例」，
         '这样 LayoutTransform 缩小后的画面正好铺满窗口，不会留白也不会被裁掉
@@ -1853,6 +1861,9 @@ Public Class FormMain
     ''' </summary>
     Private _ChromeIsMaximized As Boolean? = Nothing
     Private Sub RefreshWindowChrome()
+        '休眠态下的窗口外观（无圆角、无透明边缘、无缩放热区）由 EnterImmersiveMode 自己接管，
+        '这里若继续按最大化状态刷新，会把圆角和 8px 边缘又加回去
+        If IsSleeping Then Return
         '状态没变就不重复改窗口样式：反复重建 HWND 样式会打断系统的还原/激活流程
         Dim Target As Boolean = IsMaximizedCustom
         If _ChromeIsMaximized.HasValue AndAlso _ChromeIsMaximized.Value = Target Then Return
@@ -1991,7 +2002,7 @@ Public Class FormMain
     ''' </summary>
     Private Sub SyncOverlayPopups()
         Try
-            Dim Active As Boolean = IsActive AndAlso WindowState <> WindowState.Minimized AndAlso Visibility = Visibility.Visible
+            Dim Active As Boolean = IsActive AndAlso WindowState <> WindowState.Minimized AndAlso Visibility = Visibility.Visible AndAlso Not IsSleeping
             If PopHint IsNot Nothing Then PopHint.IsOpen = Active
             If PopFloatingBack IsNot Nothing Then PopFloatingBack.IsOpen = Active AndAlso _FloatingBackWanted
         Catch ex As Exception
@@ -2240,6 +2251,12 @@ Public Class FormMain
 
     '按键事件
     Private Sub FormMain_KeyDown(sender As Object, e As KeyEventArgs) Handles Me.KeyDown
+        '休眠态下只有 ESC 有意义：其余按键一律吞掉，避免误触页面切换或启动游戏
+        If IsSleeping Then
+            If e.Key = Key.Escape Then ExitImmersiveMode()
+            e.Handled = True
+            Return
+        End If
         If e.IsRepeat Then Return
         '修复按下 Alt 后误认为弹出系统菜单导致的冻结
         If e.SystemKey = Key.LeftAlt OrElse e.SystemKey = Key.RightAlt Then e.Handled = True
@@ -2305,10 +2322,13 @@ Public Class FormMain
         End If
     End Sub
     Private Sub FormMain_MouseDown(sender As Object, e As MouseButtonEventArgs) Handles Me.MouseDown
+        '休眠态下点一下就返回，不处理侧键返回
+        If IsSleeping Then Return
         '鼠标侧键返回上一级
         If FrmMain.PanMsg.Children.Count > 0 OrElse WaitingMyMsgBox.Any Then Return '弹窗中（#5513）
         If e.ChangedButton = MouseButton.XButton1 OrElse e.ChangedButton = MouseButton.XButton2 Then TriggerPageBack()
     End Sub
+
     Private Sub TriggerPageBack()
         If PageCurrent = PageType.Download AndAlso PageCurrentSub = PageSubType.DownloadInstall AndAlso FrmDownloadInstall.IsInSelectPage Then
             FrmDownloadInstall.ExitSelectPage()
@@ -2909,6 +2929,244 @@ Public Class FormMain
         End Operator
     End Class
     Public PageLeft As MyPageLeft, PageRight As MyPageRight
+
+    ' ==================== 休眠观赏页（全屏待机） ====================
+
+    ''' <summary>
+    ''' 休眠页是否覆盖任务栏。设计方案 §6.4 暂定「保留任务栏」，需要真全屏时把这里改成 True。
+    ''' </summary>
+    Public Property SleepCoverTaskbar As Boolean = False
+
+    ''' <summary>
+    ''' 休眠观赏页本体。它不在启动器窗口里，而是放在一个独立的置顶全屏窗口里 ——
+    ''' 主窗口从头到尾尺寸一动不动，所以「窗口瞬间放大 / 缩小」这一类跳变从根上就不存在了。
+    ''' </summary>
+    Friend PanSleep As MySleepOverlay
+    ''' <summary>承载休眠页的独立窗口，首次进入时创建，之后复用。</summary>
+    Private _SleepWindow As Window
+
+    Private _SleepActive As Boolean = False
+    ''' <summary>正在播放退出过渡：这期间的重新进入请求要忽略，否则会打架。</summary>
+    Private _SleepExiting As Boolean = False
+    ''' <summary>进入前抓下的启动器画面，用来顶住独立窗口的第一帧。</summary>
+    Private _SleepPhantom As BitmapSource
+    ''' <summary>该画面在屏幕坐标系里的位置。</summary>
+    Private _SleepPhantomRect As Rect
+
+    ''' <summary>
+    ''' 是否正处在休眠观赏页（含进退场动画）。
+    ''' 休眠态下 Alt+F4、关闭按钮、ESC 都先退出休眠，不会顺手把启动器关掉。
+    ''' </summary>
+    Public ReadOnly Property IsSleeping As Boolean
+        Get
+            Return _SleepActive
+        End Get
+    End Property
+
+    ''' <summary>旧命名，保留以兼容已有调用。</summary>
+    Public ReadOnly Property IsImmersive As Boolean
+        Get
+            Return _SleepActive
+        End Get
+    End Property
+
+    ''' <summary>
+    ''' 进入无标题栏的全屏休眠观赏页。主页右上角「全屏」按钮的唯一出口。
+    ''' 页面本身没有任何操作：只有风景、时间、日期和当前版本，点一下任意处或按 ESC 返回。
+    ''' 设计方案与预览见 docs\沉浸模式-设计方案.md 与 docs\immersive-preview.html。
+    ''' </summary>
+    ''' <param name="Options">预留的进入参数，目前未使用。</param>
+    Public Sub EnterImmersiveMode(Optional Options As Object = Nothing)
+        If _SleepActive OrElse _SleepExiting Then Return
+        _SleepActive = True
+        Try
+            '先抓一帧启动器画面：独立窗口的第一帧画的就是「启动器还待在原地」，
+            '两边完全一致，所以窗口出现的那一下看不出任何交接。
+            _SleepPhantomRect = New Rect(Left, Top, Width, Height)
+            _SleepPhantom = CaptureLauncherPhantom()
+
+            Dim Area As Rect = GetSleepScreenArea()
+            EnsureSleepWindow()
+            Logger.Info($"休眠页：目标区域 {Area.Left:0},{Area.Top:0} {Area.Width:0}x{Area.Height:0}，DPI 缩放 {GetDpiScale():0.##}")
+
+            '尺寸在 Show 之前就定好：窗口一出现就是全屏，全程没有一次改尺寸
+            _SleepWindow.Left = Area.Left
+            _SleepWindow.Top = Area.Top
+            _SleepWindow.Width = Area.Width
+            _SleepWindow.Height = Area.Height
+            '这一层底色是全透明的，窗口先出来也不会露出任何东西，所以不必等它「画好再亮」
+            PanSleep.Visibility = Visibility.Collapsed '先空着，等 Prepare 摆好再显出来
+            If Not _SleepWindow.IsVisible Then _SleepWindow.Show()
+            _SleepWindow.Activate()
+            PanSleep.Prepare(McInstanceSelected, _SleepPhantom, PhantomRectOf(_SleepPhantomRect))
+            _SleepWindow.UpdateLayout()
+            PanSleep.PlayEnter()
+            Logger.Info($"已进入休眠观赏页（窗口 {_SleepWindow.Left:0},{_SleepWindow.Top:0} {_SleepWindow.Width:0}x{_SleepWindow.Height:0}）")
+        Catch ex As Exception
+            Logger.Error(ex, "进入休眠观赏页失败", LogBehavior.Toast)
+            ExitImmersiveMode()
+        End Try
+    End Sub
+
+    ''' <summary>创建休眠页窗口（只创建一次，之后复用）。</summary>
+    Private Sub EnsureSleepWindow()
+        If _SleepWindow IsNot Nothing Then Return
+        If PanSleep Is Nothing Then PanSleep = New MySleepOverlay()
+        _SleepWindow = New Window With {
+            .WindowStyle = WindowStyle.None,
+            .AllowsTransparency = True,
+            .Background = Brushes.Transparent,
+            .ShowInTaskbar = False,
+            .ResizeMode = ResizeMode.NoResize,
+            .WindowStartupLocation = WindowStartupLocation.Manual,
+            .Topmost = True,
+            .Cursor = Cursors.None,
+            .Content = PanSleep}
+        '跟着启动器走：休眠页压在启动器上面，启动器一关它也一起走
+        _SleepWindow.Owner = Me
+        AddHandler _SleepWindow.PreviewKeyDown, AddressOf SleepWindow_KeyDown
+        AddHandler _SleepWindow.Closing, AddressOf SleepWindow_Closing
+    End Sub
+
+    ''' <summary>焦点在休眠页上时 ESC 直接返回（主窗口收不到这个按键）。</summary>
+    Private Sub SleepWindow_KeyDown(sender As Object, e As KeyEventArgs)
+        If Not _SleepActive Then Return
+        If e.Key <> Key.Escape Then Return
+        e.Handled = True
+        ExitImmersiveMode()
+    End Sub
+
+    ''' <summary>休眠页上的 Alt+F4：先退出休眠，别把启动器一起带走。</summary>
+    Private Sub SleepWindow_Closing(sender As Object, e As CancelEventArgs)
+        If Not _SleepActive AndAlso Not _SleepExiting Then Return
+        e.Cancel = True
+        ExitImmersiveMode()
+    End Sub
+
+    ''' <summary>
+    ''' 把「屏幕坐标里的一块矩形」换算成休眠页坐标：休眠页窗口就是整块屏幕区域，减掉窗口原点即可。
+    ''' </summary>
+    Private Function PhantomRectOf(Target As Rect) As Rect
+        Dim OriginX As Double = 0, OriginY As Double = 0
+        If _SleepWindow IsNot Nothing Then
+            OriginX = _SleepWindow.Left
+            OriginY = _SleepWindow.Top
+        End If
+        Return New Rect(Target.Left - OriginX, Target.Top - OriginY, Target.Width, Target.Height)
+    End Function
+
+    ''' <summary>抓一帧当前窗口画面。窗口尺寸变化时用它顶住画面，避免看到启动器被拉伸。</summary>
+    Private Function CaptureLauncherPhantom() As BitmapSource
+        Try
+            Dim W As Integer = CInt(Math.Ceiling(ActualWidth))
+            Dim H As Integer = CInt(Math.Ceiling(ActualHeight))
+            If W <= 0 OrElse H <= 0 Then Return Nothing
+            Dim Bitmap As New RenderTargetBitmap(W, H, 96, 96, PixelFormats.Pbgra32)
+            Bitmap.Render(PanBack)
+            Bitmap.Freeze()
+            Return Bitmap
+        Catch ex As Exception
+            Logger.Warn(ex, "休眠页：抓取启动器画面失败，改为直接切换")
+            Return Nothing
+        End Try
+    End Function
+
+    ''' <summary>当前窗口所在显示器的 DPI 缩放（1 表示 100%）。</summary>
+    Private Function GetDpiScale() As Double
+        Try
+            Dim Source As PresentationSource = PresentationSource.FromVisual(Me)
+            If Source IsNot Nothing AndAlso Source.CompositionTarget IsNot Nothing Then
+                Dim M As Matrix = Source.CompositionTarget.TransformToDevice
+                If M.M11 > 0 Then Return M.M11
+            End If
+        Catch
+        End Try
+        Return 1
+    End Function
+
+    ''' <summary>
+    ''' 休眠页占用的屏幕区域（WPF 单位）。默认取工作区以保留任务栏，见 SleepCoverTaskbar。
+    ''' </summary>
+    Private Function GetSleepScreenArea() As Rect
+        Try
+            Dim Handle As IntPtr = New Interop.WindowInteropHelper(Me).Handle
+            Dim Screen = System.Windows.Forms.Screen.FromHandle(Handle)
+            Dim Bounds = If(SleepCoverTaskbar, Screen.Bounds, Screen.WorkingArea)
+            'Screen 给的是物理像素，WPF 用 DIP，要按当前 DPI 换算
+            Dim Scale As Double = GetDpiScale()
+            Return New Rect(Bounds.Left / Scale, Bounds.Top / Scale, Bounds.Width / Scale, Bounds.Height / Scale)
+        Catch ex As Exception
+            Logger.Warn(ex, "获取休眠页屏幕区域失败，改用主屏工作区")
+            Return SystemParameters.WorkArea
+        End Try
+    End Function
+
+    ''' <summary>
+    ''' 退出休眠观赏页。
+    ''' 先播退出动画（启动器画面浮回原来的位置、风景淡出），等幻影已经盖住那个位置，
+    ''' 再把整个休眠页窗口收起来 —— 启动器窗口一直就在那里没动过，所以看不出交接。
+    ''' </summary>
+    Public Sub ExitImmersiveMode()
+        If Not _SleepActive Then Return
+        _SleepActive = False
+        _SleepExiting = True
+
+        Try
+            If PanSleep IsNot Nothing Then PanSleep.[End]()
+
+            SleepSwapTimer.Stop()
+            If Not _SleepSwapHooked Then
+                _SleepSwapHooked = True
+                SleepSwapTimer.Interval = TimeSpan.FromMilliseconds(350)
+                AddHandler SleepSwapTimer.Tick, Sub() OnSleepSwapTick()
+            End If
+            SleepSwapTimer.Start()
+
+            '兜底：万一中途出错没走到收尾，这里强制定时把休眠页收起来，否则它会一直盖在屏幕上
+            Dim Guard As New System.Windows.Threading.DispatcherTimer With {.Interval = TimeSpan.FromMilliseconds(900)}
+            AddHandler Guard.Tick,
+                Sub()
+                    Guard.Stop()
+                    If Not _SleepActive AndAlso _SleepExiting Then FinishExitImmersive()
+                End Sub
+            Guard.Start()
+        Catch ex As Exception
+            Logger.Error(ex, "退出休眠观赏页失败", LogBehavior.Toast)
+            _SleepExiting = False
+        End Try
+    End Sub
+
+    Private ReadOnly SleepSwapTimer As New System.Windows.Threading.DispatcherTimer()
+    Private _SleepSwapHooked As Boolean
+
+    Private Sub OnSleepSwapTick()
+        SleepSwapTimer.Stop()
+        FinishExitImmersive()
+    End Sub
+
+    ''' <summary>
+    ''' 收起休眠页。这一帧屏幕上最后画的是「按原尺寸摆回原处的启动器画面」，
+    ''' 而启动器窗口本来就在那个位置，所以收掉这一层等于什么都没变。
+    ''' </summary>
+    Private Sub FinishExitImmersive()
+        If _SleepActive Then
+            '过渡期间又被叫去休眠了，放弃这次收尾
+            _SleepExiting = False
+            Return
+        End If
+        Try
+            If _SleepWindow IsNot Nothing Then
+                _SleepWindow.Hide()
+            End If
+            If PanSleep IsNot Nothing Then PanSleep.Visibility = Visibility.Collapsed
+            Activate()
+            Logger.Info($"已退出休眠观赏页（启动器窗口 {Left:0},{Top:0} {Width:0}x{Height:0}，{WindowState}）")
+        Catch ex As Exception
+            Logger.Error(ex, "退出休眠观赏页失败", LogBehavior.Toast)
+        Finally
+            _SleepExiting = False
+        End Try
+    End Sub
 
     '引发实际页面切换的入口
     Private IsChangingPage As Boolean = False

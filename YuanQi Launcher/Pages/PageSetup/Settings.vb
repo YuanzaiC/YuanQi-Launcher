@@ -68,6 +68,8 @@ Public Class Settings
         New Setting("CacheAuthServerServer", "", Source:=Sources.Registry, Encrypted:=True),
         New Setting("CacheAuthServerName", "", Source:=Sources.Registry, Encrypted:=True),
         New Setting("CacheAuthServerRegister", "", Source:=Sources.Registry, Encrypted:=True),
+        New Setting("AccountLastUsed", "", Source:=Sources.Registry),
+        New Setting("SkinNameCacheVersion", "", Source:=Sources.Registry),
         New Setting("CacheDownloadFolder", "", Source:=Sources.Registry),
         New Setting("CacheJavaListVersion", 0, Source:=Sources.Registry),
         New Setting("LoginRemember", True, Source:=Sources.Registry, Encrypted:=True),
@@ -155,6 +157,8 @@ Public Class Settings
         New Setting("UiAutoCheckUpdate", False), '启动时自动检查更新（默认关；仓库建立后生效）
         New Setting("UiOpenWebInLauncher", True), '是否通过启动器内置浏览器打开网页
         New Setting("UiUiScale", 100), '界面缩放百分比
+        New Setting("UiGreetingNameMode", 0), '主页问候语显示的名字：0=当前实例账户 1=全局账户 2=自定义
+        New Setting("UiGreetingNameCustom", ""), '主页问候语的自定义名字
         New Setting("UiPerfMode", 0, OnChanged:=AddressOf ModRenderPerf.ApplySetting), '界面渲染性能档位：0 自动 / 1 流畅优先 / 2 画质优先
         New Setting("SystemEnvCheckVersion", 0, Source:=Sources.Registry), '环境体检已执行的版本
         New Setting("UiHiddenPageDownload", False, OnChanged:=AddressOf PageSetupUI.HiddenRefresh),

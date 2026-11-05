@@ -15,3 +15,5 @@ YQL/
 .minecraft/
 Terracotta/
 logs/
+# 待机赏景的全景素材（游戏自带美术资源，不随源码分发；本地保留供打包）
+YuanQi Launcher/Resources/SleepPanorama/

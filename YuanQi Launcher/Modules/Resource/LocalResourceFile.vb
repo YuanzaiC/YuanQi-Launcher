@@ -190,7 +190,7 @@ Public Class LocalResourceFile
             If _CurseForgeHash Is Nothing Then
                 '读取缓存
                 Dim CacheKey As String = $"{EnabledFullName}-{File.LastWriteTime.ToLongTimeString}-{File.Length}-C".GetStableHashCode()
-                Dim Cached As String = ReadIni(PathTemp & "Cache\ModHash.ini", CacheKey)
+                Dim Cached As String = ReadIni(PathCache & "ModHash.ini", CacheKey)
                 If Cached <> "" AndAlso Cached.RegexCheck("^\d+$") Then '#5062
                     _CurseForgeHash = Cached
                     Return _CurseForgeHash
@@ -230,7 +230,7 @@ Public Class LocalResourceFile
                 h = h Xor (h >> 15)
                 _CurseForgeHash = h
                 '写入缓存
-                WriteIni(PathTemp & "Cache\ModHash.ini", CacheKey, h.ToString)
+                WriteIni(PathCache & "ModHash.ini", CacheKey, h.ToString)
             End If
             Return _CurseForgeHash
         End Get
@@ -245,7 +245,7 @@ Public Class LocalResourceFile
             If _ModrinthHash Is Nothing Then
                 '读取缓存
                 Dim CacheKey As String = $"{EnabledFullName}-{File.LastWriteTime.ToLongTimeString}-{File.Length}-M".GetStableHashCode()
-                Dim Cached As String = ReadIni(PathTemp & "Cache\ModHash.ini", CacheKey)
+                Dim Cached As String = ReadIni(PathCache & "ModHash.ini", CacheKey)
                 If Cached <> "" Then
                     _ModrinthHash = Cached
                     Return _ModrinthHash
@@ -253,7 +253,7 @@ Public Class LocalResourceFile
                 '计算 SHA1
                 _ModrinthHash = CryptographyUtils.ComputeFileHash(File.FullName, CryptographyUtils.HashMethod.Sha1)
                 '写入缓存
-                WriteIni(PathTemp & "Cache\ModHash.ini", CacheKey, _ModrinthHash)
+                WriteIni(PathCache & "ModHash.ini", CacheKey, _ModrinthHash)
             End If
             Return _ModrinthHash
         End Get

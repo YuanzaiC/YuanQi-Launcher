@@ -171,11 +171,25 @@ Public Class PageResource
             .Tag = ComboSearchTag.SelectedItem.Tag
             .ModLoaders = If(PageType = ResourceTypes.Mod, Val(ComboSearchLoader.SelectedItem.Tag), ModLoaders.None)
             .Sources = CType(Val(ComboSearchSource.SelectedItem.Tag), ResourcePlatforms)
+            .IgnoreCache = _IgnoreSearchCacheOnce
         End With
+        _IgnoreSearchCacheOnce = False
+        _LastRequest = Request
         Return Request
     End Function
 
 #End Region
+
+    ''' <summary>下一次搜索是否跳过磁盘缓存（手动刷新时置 True）。</summary>
+    Private _IgnoreSearchCacheOnce As Boolean = False
+
+    ''' <summary>手动刷新：让下一次搜索跳过磁盘缓存，真正联网拿新结果。</summary>
+    Public Sub InvalidateSearchCache()
+        _IgnoreSearchCacheOnce = True
+    End Sub
+
+    ''' <summary>最近一次的搜索请求（过滤条件），用于界面渲染与磁盘缓存键。</summary>
+    Private _LastRequest As ResourceSearcher.SearchRequest
 
     Public Storage As New ResourceSearcher.SearchResult
     ''' <summary>
@@ -188,13 +202,14 @@ Public Class PageResource
     Private Sub Load_OnFinish()
         Try
             Logger.Info($"开始可视化{TypeNameSpaced}列表，已储藏 {Storage.Results.Count} 个结果，当前在第 {Page + 1} 页")
+            If _LastRequest Is Nothing Then _LastRequest = Loader.Input
             '列表项
             PanProjects.Children.Clear()
             Dim Index As Integer = Math.Min(Page * PAGE_SIZE, Storage.Results.Count - 1)
             For Each Result In Storage.Results.GetRange(Index, Math.Min(Storage.Results.Count - Index, PAGE_SIZE))
                 PanProjects.Children.Add(Result.ToResourceItem(
-                    ShowMcVersionDesc:=Loader.Input.GameVersion Is Nothing,
-                    ShowLoaderDesc:=Loader.Input.ModLoaders = ModLoaders.None AndAlso (PageType = ResourceTypes.Mod OrElse PageType = ResourceTypes.ModPack)))
+                    ShowMcVersionDesc:=_LastRequest Is Nothing OrElse _LastRequest.GameVersion Is Nothing,
+                    ShowLoaderDesc:=(_LastRequest Is Nothing OrElse _LastRequest.ModLoaders = ModLoaders.None) AndAlso (PageType = ResourceTypes.Mod OrElse PageType = ResourceTypes.ModPack)))
             Next
             '页码
             CardPages.Visibility = If(Storage.Results.Count > 40 OrElse
@@ -219,6 +234,8 @@ Public Class PageResource
             End If
             '强制返回顶部
             ScrollToTop()
+            '把第一页结果存盘，下次启动直接铺出来
+            ResourceSearcher.SaveSearchCache(_LastRequest)
         Catch ex As Exception
             Logger.Error(ex, $"可视化{TypeNameSpaced}列表出错")
         End Try

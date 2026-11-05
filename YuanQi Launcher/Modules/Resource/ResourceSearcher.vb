@@ -56,6 +56,9 @@ Public Class ResourceSearcher
         ''' 允许的来源。
         ''' </summary>
         Public Sources As ResourcePlatforms = ResourcePlatforms.Any
+
+        ''' <summary>手动刷新时为 True：跳过磁盘缓存，强制联网。</summary>
+        Public IgnoreCache As Boolean = False
         Public Sub New(Type As ResourceTypes, Storage As SearchResult, TargetResultCount As Integer)
             Me.Type = Type
             Me.Storage = Storage
@@ -161,9 +164,92 @@ Public Class ResourceSearcher
     Public Shared Function GetLoader(InputDelegate As Func(Of SearchRequest)) As LoaderTask(Of SearchRequest, Integer)
         Return New LoaderTask(Of SearchRequest, Integer)("社区资源获取", AddressOf Run, InputDelegate) With {.ReloadTimeout = 2 * 24 * 60 * 60 * 1000}
     End Function
+    '===============================
+    '  搜索结果磁盘缓存
+    '===============================
+
+    ''' <summary>搜索结果磁盘缓存目录。</summary>
+    Public Shared ReadOnly Property SearchCacheDir As String
+        Get
+            Return Paths.Base & "YQL\Cache\ResourceSearch\"
+        End Get
+    End Property
+
+    ''' <summary>按筛选条件生成缓存文件名。</summary>
+    Public Shared Function GetSearchCacheKey(Request As SearchRequest) As String
+        Try
+            If Request Is Nothing Then Return ""
+            Dim Raw As String = $"{Request.Type}|{Request.SearchText}|{Request.GameVersion}|{Request.Tag}|{Request.ModLoaders}|{Request.Sources}"
+            Return Raw.GetStableHashCode().ToString()
+        Catch
+            Return ""
+        End Try
+    End Function
+
+    ''' <summary>尝试用磁盘缓存填充第一页结果（两天内有效）。</summary>
+    Public Shared Function TryRestoreSearchCache(Request As SearchRequest) As Boolean
+        Try
+            If Request Is Nothing OrElse Request.Storage Is Nothing Then Return False
+            If Request.Storage.Results.Any() Then Return False
+            Dim Key As String = GetSearchCacheKey(Request)
+            If Key = "" Then Return False
+            Dim FilePath As String = SearchCacheDir & Key & ".json"
+            If Not FileUtils.Exists(FilePath) Then Return False
+            If (Date.Now - IO.File.GetLastWriteTime(FilePath)).TotalDays > 2 Then Return False
+            Dim Root = FileUtils.ReadAsString(FilePath).DeserializeJson()
+            Dim Arr = Root?("projects")
+            If Arr Is Nothing OrElse Arr.Count = 0 Then Return False
+            For Each Item In Arr
+                Try
+                    Request.Storage.Results.Add(New ResourceProject(CType(Item, JObject)))
+                Catch ex As Exception
+                    Logger.Warn(ex, "反序列化搜索结果失败")
+                End Try
+            Next
+            Return Request.Storage.Results.Any()
+        Catch ex As Exception
+            Logger.Warn(ex, "读取资源搜索结果缓存失败")
+            Return False
+        End Try
+    End Function
+
+    ''' <summary>把第一页结果存盘，下次启动直接铺出来。</summary>
+    Public Shared Sub SaveSearchCache(Request As SearchRequest)
+        Try
+            If Request Is Nothing OrElse Request.Storage Is Nothing Then Return
+            If Request.TargetResultCount > RESULT_PAGE_SIZE Then Return '只缓存第一页
+            If Not Request.Storage.Results.Any() Then Return
+            Dim Key As String = GetSearchCacheKey(Request)
+            If Key = "" Then Return
+            Dim Root As New JObject
+            Root("saved") = Date.Now.ToString("o")
+            Root("type") = Request.Type.ToString()
+            Dim Arr As New JArray
+            For Each Project In Request.Storage.Results.Take(RESULT_PAGE_SIZE)
+                Try
+                    Arr.Add(Project.ToJson())
+                Catch ex As Exception
+                    Logger.Warn(ex, "序列化搜索结果失败")
+                End Try
+            Next
+            If Arr.Count = 0 Then Return
+            Root("projects") = Arr
+            DirectoryUtils.Create(SearchCacheDir)
+            FileUtils.Write(SearchCacheDir & Key & ".json", Root.ToString())
+        Catch ex As Exception
+            Logger.Warn(ex, "保存资源搜索结果缓存失败")
+        End Try
+    End Sub
+
     Private Shared Sub Run(Task As LoaderTask(Of SearchRequest, Integer))
         Dim Request As SearchRequest = Task.Input
         Dim Storage = Request.Storage '避免其他线程对 Request.Storage 重新进行了赋值
+
+        '第一页优先用磁盘缓存：启动后进来不用再等“正在获取”，手动刷新时因为结果已被清空则会正常联网
+        If Not Request.IgnoreCache AndAlso Request.TargetResultCount <= RESULT_PAGE_SIZE AndAlso TryRestoreSearchCache(Request) Then
+            Logger.Info($"{Request.Type} 列表：已从磁盘缓存恢复 {Storage.Results.Count} 项")
+            Return
+        End If
 
 #Region "前置检查"
 

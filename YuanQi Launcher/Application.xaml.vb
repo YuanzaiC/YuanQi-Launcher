@@ -5,6 +5,63 @@ Imports System.Windows.Input
 Public Class Application
 
     ''' <summary>
+    ''' 文本框上下留白处的点击。
+    ''' 模板里的内容宿主是 VerticalAlignment=Center，只有文字那一行能点中；框子做高之后
+    ''' （比如彩色文字页那个 84px 的多行输入框），上下留白点下去没有任何反应。
+    ''' 这里把留白处的点击转成「聚焦 + 光标落到最近的一端」，整个框就都能点了。
+    ''' 注意：点在文字区里必须原样放过，否则会把光标位置抢成开头/结尾。
+    ''' </summary>
+    Private Sub MyTextBoxBlankMouseDown(sender As Object, e As MouseButtonEventArgs)
+        Dim Blank As Border = TryCast(sender, Border)
+        If Blank Is Nothing Then Return
+        Dim Box As MyTextBox = TryCast(Blank.TemplatedParent, MyTextBox)
+        If Box Is Nothing Then Return
+        '点在文字那一行上：交给 TextView 自己定位光标，这里一点都不能碰
+        If IsInsideContentHost(Blank, TryCast(e.OriginalSource, DependencyObject)) Then Return
+        If Not Box.IsKeyboardFocusWithin Then Box.Focus()
+        '留白处也要落到「鼠标正上下方的那个字」上，而不是简单扔到首尾
+        Dim P As Point = e.GetPosition(Box)
+        Dim Index As Integer = -1
+        Try
+            Index = Box.GetCharacterIndexFromPoint(P, True)
+        Catch
+        End Try
+        If Index < 0 Then
+            Index = If(P.Y * 2 < Box.ActualHeight, 0, Box.Text.Length)
+        Else
+            '落在「这个字之前」还是「之后」：取前后两个光标位置，比距离
+            Dim Before As Double = Double.NaN
+            Dim After As Double = Double.NaN
+            Try
+                Before = Box.GetRectFromCharacterIndex(Index, False).Left
+            Catch
+            End Try
+            Try
+                After = Box.GetRectFromCharacterIndex(Math.Min(Index + 1, Box.Text.Length), False).Left
+            Catch
+            End Try
+            If Not Double.IsNaN(Before) AndAlso Not Double.IsNaN(After) AndAlso P.X > (Before + After) / 2 Then Index += 1
+        End If
+        Box.CaretIndex = Math.Max(0, Math.Min(Index, Box.Text.Length))
+        e.Handled = True
+    End Sub
+
+    ''' <summary>这次点击是不是落在文字区（模板里的 PART_ContentHost）里。</summary>
+    Private Function IsInsideContentHost(Blank As Border, Source As DependencyObject) As Boolean
+        Dim Current As DependencyObject = Source
+        Do While Current IsNot Nothing
+            If TypeOf Current Is ScrollViewer Then Return True
+            If ReferenceEquals(Current, Blank) Then Return False
+            If TypeOf Current Is Visual Then
+                Current = VisualTreeHelper.GetParent(Current)
+            Else
+                Current = LogicalTreeHelper.GetParent(Current)
+            End If
+        Loop
+        Return False
+    End Function
+
+    ''' <summary>
     ''' 全局悬浮提示延迟的根治方案：直接覆写 ToolTipService 附加属性的元数据默认值。
     ''' 之前尝试过「页面切换时遍历可视化树逐个设置」和「MouseEnter 时补写」，都会失效：
     ''' 前者覆盖不到 Popup 与后来创建的元素；后者与 ToolTipService 内部的计时逻辑存在
@@ -144,6 +201,20 @@ Public Class Application
                 MyMsgBox("缘启无法访问缓存文件夹，可能导致程序出错或无法正常使用！" & vbCrLf & vbCrLf & "错误原因：" & ex.GetDisplay(True), "缓存文件夹不可用")
             End Try
             DirectoryUtils.Create(PathTemp & "Cache\")
+            DirectoryUtils.Create(PathCache)
+            '把旧版留在临时目录的缓存搬过来，避免升级后第一次还要重新算一遍
+            For Each CacheName In {"ModHash.ini", "LocalMod.json"}
+                Try
+                    Dim OldPath As String = PathTemp & "Cache\" & CacheName
+                    Dim NewPath As String = PathCache & CacheName
+                    If Not FileUtils.Exists(NewPath) AndAlso FileUtils.Exists(OldPath) Then
+                        FileUtils.Copy(OldPath, NewPath)
+                        Logger.Info($"已迁移旧缓存：{CacheName}")
+                    End If
+                Catch ex As Exception
+                    Logger.Warn(ex, $"迁移旧缓存失败：{CacheName}")
+                End Try
+            Next
             DirectoryUtils.Create(Paths.AppDataThenName)
             '设置网络配置默认值
             ServicePointManager.Expect100Continue = False

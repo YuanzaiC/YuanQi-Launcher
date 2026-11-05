@@ -42,7 +42,9 @@ Public Class PageInstanceMod
         Try
             ResourceProject.Cache.Clear()
             ResourceVersion.ProjectFilesCache.Clear()
-            FileUtils.Delete(PathTemp & "Cache\LocalMod.json")
+            '强制刷新：把临时与持久化的本地 Mod 信息缓存都清掉
+        FileUtils.Delete(PathTemp & "Cache\LocalMod.json")
+        FileUtils.Delete(Paths.Base & "YQL\Cache\LocalMod.json")
             Logger.Info("由于点击刷新按钮，清理本地 Mod 信息缓存")
         Catch ex As Exception
             Logger.Warn(ex, "强制刷新时清理本地 Mod 信息缓存失败")

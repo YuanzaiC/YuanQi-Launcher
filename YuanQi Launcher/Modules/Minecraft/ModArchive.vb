@@ -244,8 +244,12 @@ Public Module InstanceSizeStore
                 Dim Entry As SizeEntry = Nothing
                 If Not Entries.TryGetValue(VersionPath, Entry) Then Return -1
                 If Entry.Bytes <= 0 Then Return -1
-                If (Date.Now - Entry.Saved).TotalDays > MaxAgeDays Then Return -1
-                If IO.Directory.GetLastWriteTimeUtc(VersionPath).Ticks <> Entry.Ticks Then Return -1
+                Dim Age As Double = (Date.Now - Entry.Saved).TotalDays
+                If Age > MaxAgeDays Then Return -1
+                If IO.Directory.GetLastWriteTimeUtc(VersionPath).Ticks <> Entry.Ticks Then
+                    '目录时间变了（启动游戏会往里写日志/配置），3 天内仍先信任缓存，超过再重算
+                    If Age > 3 Then Return -1
+                End If
                 Return Entry.Bytes
             End SyncLock
         Catch

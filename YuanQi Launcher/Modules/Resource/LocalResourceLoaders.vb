@@ -1,5 +1,15 @@
 Public Module LocalResourceLoaders
 
+    ''' <summary>
+    ''' 本地 Mod 信息缓存的持久化路径。
+    ''' 不要用 PathTemp：那个目录每次启动都会被清空，缓存等于没有。
+    ''' </summary>
+    Private ReadOnly Property LocalModCachePath As String
+        Get
+            Return Paths.Base & "YQL\Cache\LocalMod.json"
+        End Get
+    End Property
+
     '加载 Mod 列表
     Public LocalResourceLoader As New LoaderTask(Of String, List(Of LocalResourceFile))("LocalResourceLoader", AddressOf LocalResourceFileLoad)
     Private Sub LocalResourceFileLoad(Loader As LoaderTask(Of String, List(Of LocalResourceFile)))
@@ -44,7 +54,8 @@ Public Module LocalResourceLoaders
             End If
 
             '获取本地文件缓存
-            Dim CachePath As String = PathTemp & "Cache\LocalMod.json"
+            '缓存放到 YQL\Cache 而不是 PathTemp：PathTemp 每次启动都会被清理，导致 Mod 信息每次都要重新读
+            Dim CachePath As String = LocalModCachePath
             Dim Cache As New JObject
             Try
                 Dim CacheContent As String = FileUtils.TryReadAsString(CachePath)
@@ -60,6 +71,7 @@ Public Module LocalResourceLoaders
                 Cache = New JObject
             End Try
             Cache("version") = Versions.LocalModCacheVersion
+            Logger.Info($"本地 Mod 信息缓存：已载入 {Math.Max(Cache.Count - 1, 0)} 项（{CachePath}）")
 
             '加载 Mod 列表
             Dim ModList As New List(Of LocalResourceFile)
@@ -336,7 +348,7 @@ Public Module LocalResourceLoaders
             Entry.OnlineDataLoaded = Not IsFailed
             Cache(Entry.ModrinthHash & VanillaVersion & ModLoaders) = Entry.ToJson()
         Next
-        FileUtils.Write(PathTemp & "Cache\LocalMod.json", Cache.ToString(If(ModeDebug, Newtonsoft.Json.Formatting.Indented, Newtonsoft.Json.Formatting.None)))
+        FileUtils.Write(LocalModCachePath, Cache.ToString(If(ModeDebug, Newtonsoft.Json.Formatting.Indented, Newtonsoft.Json.Formatting.None)))
         '刷新边栏
         If Loader.IsCanceled Then Return
         If FrmInstanceMod?.Filter = PageInstanceMod.FilterType.CanUpdate Then

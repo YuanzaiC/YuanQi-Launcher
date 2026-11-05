@@ -1,0 +1,892 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>缘启 · 休眠观赏页 · 设计预览 v2</title>
+<style>
+/* ============================================================
+   缘启 YuanQi · 休眠观赏页（设计预览 v2）
+
+   背景 = 游戏原版全景（panorama_0..5），CSS 3D 六面立方体，
+          相机置于立方体内部，缓慢绕 Y 轴旋转 —— 与游戏标题界面同款
+   UI   = 只有三样东西：字标 / 时间 / 当前版本，零控件
+
+   v2 相对 v1 的改动：
+     1. 字标改为「超采样 → 下采样 → 二值化 → 整数块填充」，
+        笔画不再糊（v1 直接 32px 渲染再二值化，缘的笔画会粘成块）
+     2. 字宽改用原版字符推进表（不再统一 .78）：cell=96 时 .78 会算出 74.88px，
+        字形落在半像素上被抗锯齿糊掉；改成整数像素后字距也回到原版
+     3. 左下信息重建层级：时钟(96) / 日期(14px) / 细分隔线 / 实例名(32)+真实版本(12.5px)，
+        实例名与版本信息是两个字段，中间加竖线分开（不是重复信息）
+     4. 多分辨率：字格按视口宽度取整，并在 21:9 / 720p 下单独校验
+     5. 截图友好：支持 ?state= ?yaw= ?hud= 参数，便于批量出对照图
+   ============================================================ */
+
+:root{
+  --sans:"Microsoft YaHei UI","Microsoft YaHei","PingFang SC",sans-serif;
+
+  --mc-stone:#8B8B8B;
+  --mc-stone-hi:#C6C6C6;
+  --mc-stone-lo:#2E2E2E;
+
+  --ink-1:rgba(255,255,255,.94);
+  --ink-2:rgba(255,255,255,.80);
+  --ink-3:rgba(255,255,255,.56);
+
+  --pad:clamp(28px, min(4.2vw, 7.2vh), 84px);
+  --S:2400px;            /* 立方体边长 */
+  --ease:cubic-bezier(.2,.8,.25,1);
+  /* 慢速落位：中段仍在动，尾巴收得软。
+     试过 .16/.84/.24/1 —— 前 300ms 就走完 80% 位移，
+     2000ms 的时长白给，看着反而"快"。 */
+  --settle:cubic-bezier(.25,.6,.4,1);
+  --exit:cubic-bezier(.4,0,.2,1);
+}
+
+*{ box-sizing:border-box; }
+
+html,body{
+  height:100%; margin:0;
+  background:#0B0F0A;
+  overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+body{ font-family:var(--sans); color:#fff; cursor:default; }
+body.idle{ cursor:none; }
+body.is-sleep{ cursor:none; }
+body.is-sleep .hud__btn{ cursor:pointer; }
+body.no-hud .hud{ display:none !important; }
+
+.stage{ position:fixed; inset:0; overflow:hidden; }
+
+/* ============================================================
+   全景世界：六面立方体，相机在内部
+   ============================================================ */
+.world{
+  position:absolute; inset:0;
+  perspective:1700px;
+  perspective-origin:50% 50%;
+  overflow:hidden;
+}
+/* 进场时相机轻微回正（-5° → 0°），和场景缩放同步，做出"镜头转进来"的感觉 */
+.yaw{
+  position:absolute; inset:0;
+  transform-style:preserve-3d;
+  transform:rotateY(0deg);
+  transition:transform 2000ms cubic-bezier(.16,.84,.24,1);
+}
+body.is-launcher .yaw{
+  transform:rotateY(-5deg);
+  transition-duration:320ms;
+}
+.pitch{
+  position:absolute; left:50%; top:50%;
+  width:0; height:0;
+  transform-style:preserve-3d;
+  animation:pitch-bob 52s ease-in-out infinite alternate;
+}
+.cube{
+  position:absolute; left:0; top:0;
+  width:0; height:0;
+  transform-style:preserve-3d;
+  animation:spin 190s linear infinite;
+}
+.face{
+  position:absolute;
+  /* 每面各多 2px 并居中，配合 will-change 消除相邻面之间的亚像素发丝缝 */
+  width:calc(var(--S) + 2px); height:calc(var(--S) + 2px);
+  left:calc(var(--S) / -2 - 1px); top:calc(var(--S) / -2 - 1px);
+  background-size:100% 100%;
+  background-repeat:no-repeat;
+  backface-visibility:hidden;
+  will-change:transform;
+}
+/* 每个面都朝内。CSS 相机位于 +Z 并朝 -Z 看，所以正前方那面放在 z = -S/2 且无需旋转 */
+.f0{ background-image:url("assets/panorama/panorama_0.png"); transform:translateZ(calc(var(--S) / -2)); }
+.f1{ background-image:url("assets/panorama/panorama_1.png"); transform:translateX(calc(var(--S) / 2)) rotateY(-90deg); }
+.f2{ background-image:url("assets/panorama/panorama_2.png"); transform:translateZ(calc(var(--S) / 2)) rotateY(180deg); }
+.f3{ background-image:url("assets/panorama/panorama_3.png"); transform:translateX(calc(var(--S) / -2)) rotateY(90deg); }
+.f4{ background-image:url("assets/panorama/panorama_4.png"); transform:translateY(calc(var(--S) / -2)) rotateX(-90deg); }
+.f5{ background-image:url("assets/panorama/panorama_5.png"); transform:translateY(calc(var(--S) / 2)) rotateX(90deg); }
+
+@keyframes spin{
+  from{ transform:rotateY(0deg); }
+  to  { transform:rotateY(360deg); }
+}
+@keyframes pitch-bob{
+  from{ transform:rotateX(3.2deg); }
+  to  { transform:rotateX(-1.4deg); }
+}
+
+/* 调色 + 暗角 + 颗粒：把游戏截图压成「待机屏」的亮度
+   这三层在进场时比场景晚落 —— 先看到干净的风景，再慢慢"调"到位 */
+.grade{
+  position:absolute; inset:0; pointer-events:none;
+  background:
+    radial-gradient(115% 95% at 50% 46%, transparent 40%, rgba(6,10,6,.42) 100%),
+    linear-gradient(180deg, rgba(24,32,20,.20) 0%, transparent 26%, transparent 62%, rgba(8,12,8,.40) 100%);
+  opacity:1;
+  transition:opacity 1400ms linear 240ms;
+}
+body.is-launcher .grade{ opacity:0; transition:opacity 320ms linear; }
+
+.grain{
+  position:absolute; inset:0; pointer-events:none;
+  opacity:.05; mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+  transition:opacity 1200ms linear 900ms;
+}
+body.is-launcher .grain{ opacity:0; transition:opacity 320ms linear; }
+
+/* 两角托底：全景转到任何角度，左上字标与左下文字都要读得清 */
+.scrim{
+  position:absolute; inset:0; pointer-events:none;
+  background:
+    radial-gradient(38% 40% at 0% 0%, rgba(4,8,4,.62) 0%, rgba(4,8,4,.30) 48%, transparent 80%),
+    radial-gradient(52% 56% at 8% 94%, rgba(4,8,4,.70) 0%, rgba(4,8,4,.32) 44%, transparent 76%);
+  opacity:1;
+  transition:opacity 1300ms linear 420ms;
+}
+body.is-launcher .scrim{ opacity:0; transition:opacity 320ms linear; }
+
+/* ============================================================
+   UI
+   ============================================================ */
+/* 界面层与场景层平级，两者用同一条缓动、不同的幅度一起落位 = 视差 */
+.ui{
+  position:absolute; inset:0;
+  transition:opacity 420ms linear;
+}
+body.is-launcher .ui{
+  opacity:0; pointer-events:none;
+  transition:opacity 120ms linear;   /* 退出时文字先走，避免残影 */
+}
+
+/* ---------- 左上：字标 ---------- */
+.brand{
+  position:absolute; top:var(--pad); left:var(--pad);
+  transform-origin:0 0;
+}
+.brand__lockup{
+  display:flex; flex-direction:column; align-items:flex-start;
+  gap:clamp(10px, 1.1vh, 18px);
+}
+/* 缘启：超采样下采样后二值化，再按整数块填充 —— 像素块严格 2×2 */
+.brand__mark{
+  display:block;
+  image-rendering:pixelated;
+  filter:drop-shadow(3px 3px 0 rgba(0,0,0,.55));
+  transform-origin:0 100%;
+}
+.brand__sub{
+  filter:drop-shadow(2px 2px 0 rgba(0,0,0,.78));
+  opacity:.88;
+}
+/* 溅射标语：整页背景是旋转的全景，小号细笔画黄字没有稳定的可读落点，
+   这一版依然不放。需要的话做成底部深色工具条里的一条静态标签。 */
+
+/* ---------- 左下：主信息 ---------- */
+.dock{
+  position:absolute;
+  left:var(--pad); bottom:var(--pad);
+  display:flex; flex-direction:column; align-items:flex-start;
+}
+.readout{
+  display:flex; flex-direction:column; align-items:flex-start;
+}
+
+/* ---- 我的世界位图字体：8×8 字形，16×16 图集，用 background-position 取字 ---- */
+.mc-text{
+  display:flex;
+  align-items:flex-end;
+  line-height:0;
+  filter:drop-shadow(3px 3px 0 rgba(0,0,0,.5));
+}
+.mc-text--big{ filter:drop-shadow(5px 5px 0 rgba(0,0,0,.44)); }
+.mc-text .g{
+  display:block;
+  width:calc(var(--cell, 16px) * var(--w, .78));
+  height:var(--cell, 16px);
+  background-image:url("assets/font/ascii.png");
+  background-size:calc(var(--cell, 16px) * 16) calc(var(--cell, 16px) * 16);
+  background-position:calc(var(--cell, 16px) * var(--col, 0) * -1) calc(var(--cell, 16px) * var(--row, 0) * -1);
+  background-repeat:no-repeat;
+  image-rendering:pixelated;
+}
+
+.clock{
+  --cell:96px;
+}
+
+.date{
+  margin-top:clamp(10px, 1.2vh, 18px);
+  font-size:clamp(12.5px, 1.5vh, 17px);
+  letter-spacing:.09em;
+  color:var(--ink-2);
+  text-shadow:2px 2px 0 rgba(0,0,0,.55);
+}
+
+/* 细分隔线：白线 + 下方暗线，压在明亮树叶上也分得开 */
+.rule{
+  width:clamp(40px, 3vh, 54px); height:1px;
+  margin-top:clamp(14px, 1.7vh, 22px);
+  background:linear-gradient(90deg, rgba(255,255,255,.62), rgba(255,255,255,.10));
+  box-shadow:0 1px 0 rgba(0,0,0,.50);
+  transform-origin:0 50%;
+}
+
+.instance{
+  display:flex; align-items:flex-end; gap:clamp(9px, 1vw, 14px);
+  margin-top:clamp(12px, 1.6vh, 20px);
+  max-width:min(78vw, 900px);
+}
+/* 实例名与真实版本信息是两个字段，用一根竖线分开，读起来不像重复 */
+.instance__sep{
+  flex:0 0 auto;
+  width:1px; height:clamp(18px, 2vh, 26px);
+  margin-bottom:.16em;
+  background:rgba(255,255,255,.26);
+  box-shadow:1px 0 0 rgba(0,0,0,.35);
+  transform-origin:0 100%;
+}
+.instance__name{ flex:0 0 auto; }
+/* 实例名过长（modpack 那种）时退回系统字体，避免位图字一路排到屏幕外 */
+.instance__name.is-text{
+  font-size:clamp(17px, 2.1vh, 26px);
+  font-weight:600;
+  line-height:1.2;
+  letter-spacing:.02em;
+  color:var(--ink-1);
+  text-shadow:2px 2px 0 rgba(0,0,0,.55);
+}
+.instance__meta{
+  padding-bottom:.18em;
+  font-size:clamp(11.5px, 1.3vh, 15px);
+  color:rgba(255,255,255,.68);
+  letter-spacing:.05em;
+  white-space:nowrap;
+  text-shadow:2px 2px 0 rgba(0,0,0,.55);
+}
+
+/* ---------- 右下：退出提示（整页最弱的位置，只在想离开时有用） ---------- */
+.hint{
+  position:absolute;
+  right:var(--pad); bottom:calc(var(--pad) + 10px);
+  display:flex; align-items:center; gap:9px;
+  /* 字号跟着键帽走，两者才不会一大一小 */
+  font-size:calc(var(--hint-cell, 16px) * .78);
+  letter-spacing:.06em;
+  color:rgba(255,255,255,.66);
+  text-shadow:2px 2px 0 rgba(0,0,0,.55);
+  transform-origin:100% 100%;
+}
+.hint kbd{
+  /* 注意：不要覆盖 .mc-text 的 display:flex，否则 E/S/C 三个字形会竖着堆叠 */
+  padding:4px 6px 5px;
+  background:#4E4E4E;
+  box-shadow:
+    inset 1px 1px 0 var(--mc-stone-hi),
+    inset -1px -1px 0 var(--mc-stone-lo),
+    0 0 0 1px rgba(0,0,0,.55),
+    2px 2px 0 rgba(0,0,0,.45);
+}
+
+/* ============================================================
+   进入动画：一次整体落位
+
+   所有元素共用 --settle 缓动，只错开时间与幅度，所以读起来是
+   一个动作而不是六段各自播放的淡入。
+     --rise    位移距离
+     --rise-s  起始缩放（场景 1.14 → UI 1.02~1.07，构成视差）
+   ============================================================ */
+@keyframes rise{
+  from{ opacity:0; transform:translate3d(0, var(--rise, 14px), 0) scale(var(--rise-s, 1.03)); }
+  to  { opacity:1; transform:translate3d(0, 0, 0) scale(1); }
+}
+/* 字标从左到右"写"出来，同时极轻微地放大到位 */
+@keyframes wipe{
+  from{ clip-path:inset(0 100% 0 0); transform:scale(.965); }
+  to  { clip-path:inset(0 0 0 0); transform:scale(1); }
+}
+/* 分隔线从左侧长出来 */
+@keyframes rule-grow{
+  from{ opacity:0; transform:scaleX(0); }
+  to  { opacity:1; transform:scaleX(1); }
+}
+
+/* 位图字的字形从自己的基线长出来 */
+.brand__sub .g, .clock .g, #instName .g{ transform-origin:50% 100%; }
+.date, .instance__meta{ transform-origin:0 100%; }
+
+body.intro .brand__mark{
+  animation:wipe 1050ms var(--settle) 520ms both;
+}
+/* YUANQI：逐字落下，跟在字标后面 */
+body.intro .brand__sub .g{
+  --rise:9px; --rise-s:1.02;
+  animation:rise 760ms var(--settle) both;
+  animation-delay:calc(1040ms + var(--i, 0) * 55ms);
+}
+/* 时钟：数字一个一个落位，像计数器停稳 */
+body.intro .clock .g{
+  --rise:16px; --rise-s:1.07;
+  animation:rise 900ms var(--settle) both;
+  animation-delay:calc(760ms + var(--i, 0) * 78ms);
+}
+body.intro .date{
+  animation:rise 880ms var(--settle) 980ms both;
+}
+body.intro .rule{
+  animation:rule-grow 900ms var(--settle) 1160ms both;
+}
+body.intro #instName .g{
+  --rise:11px; --rise-s:1.03;
+  animation:rise 820ms var(--settle) both;
+  animation-delay:calc(1280ms + var(--i, 0) * 62ms);
+}
+body.intro .instance__name.is-text{
+  animation:rise 820ms var(--settle) 1280ms both;
+}
+body.intro .instance__sep{
+  --rise:8px; --rise-s:1;
+  animation:rise 700ms var(--settle) 1400ms both;
+}
+body.intro .instance__meta{
+  --rise:9px;
+  animation:rise 820ms var(--settle) 1460ms both;
+}
+body.intro .hint{
+  --rise:9px;
+  animation:rise 820ms var(--settle) 1620ms both;
+}
+
+/* ============================================================
+   过场：启动器 → 休眠观赏页 → 启动器
+
+   进入是一次「整体落位」：场景、全景朝向、UI 三层同时起步，
+   共用同一条 --settle 缓动，幅度依次递减（1.14 / 5° / 1.04），
+   时间上再逐项错开 —— 观感是镜头穿过窗口后慢慢停稳。
+   退出相反：必须快，0.42s 走完。
+   ============================================================ */
+
+/* ---- 场景层：慢进快出 ----
+   缩放 + 轻微下沉一起走，观感是镜头穿过窗口后缓缓落下去 */
+.imm{
+  position:absolute; inset:0;
+  transform-origin:50% 50%;
+  transform:scale(1) translateY(0);
+  opacity:1;
+  transition:transform 2000ms var(--settle), opacity 750ms linear;
+}
+body.is-launcher .imm{
+  transform:scale(1.14) translateY(-1.4%);
+  opacity:0; pointer-events:none;
+  transition:transform 320ms var(--exit), opacity 320ms linear;
+}
+
+/* ---- 启动器窗口 ---- */
+.shell{
+  position:absolute; inset:0;
+  display:grid; place-items:center;
+  transition:opacity 260ms linear 80ms, visibility 0s linear 0s;
+}
+body.is-sleep .shell{
+  opacity:0; visibility:hidden; pointer-events:none;
+  transition:opacity 780ms var(--exit), visibility 0s linear 780ms;
+}
+
+.desktop{
+  position:absolute; inset:0;
+  background:radial-gradient(120% 100% at 50% 0%, #3A4250 0%, #232A35 55%, #171C24 100%);
+  transition:opacity 320ms linear;
+}
+body.is-sleep .desktop{ opacity:0; transition:opacity 700ms linear; }
+
+.win{
+  position:relative;
+  display:block;
+  width:auto; height:auto;
+  max-width:88vw;
+  max-height:88vh;
+  border-radius:8px;
+  box-shadow:0 50px 120px -40px rgba(0,0,0,.9), 0 0 0 1px rgba(255,255,255,.07);
+  transform-origin:50% 50%;
+  transition:transform 260ms var(--exit), opacity 260ms linear;
+}
+body.is-sleep .win{
+  transform:scale(1.09); opacity:0;
+  transition:transform 900ms var(--settle), opacity 700ms linear;
+}
+
+/* ---- 预览控制（只在鼠标活动时出现；正式实现里不存在） ---- */
+.hud{
+  position:absolute; left:50%; bottom:20px;
+  transform:translateX(-50%);
+  display:flex; gap:8px;
+  opacity:0; pointer-events:none;
+  transition:opacity .35s linear;
+}
+body:not(.idle) .hud{ opacity:1; pointer-events:auto; }
+.hud__btn{
+  font-family:var(--sans);
+  font-size:11.5px;
+  letter-spacing:.05em;
+  color:rgba(255,255,255,.82);
+  background:rgba(0,0,0,.52);
+  border:0; border-radius:0;
+  padding:7px 13px;
+  cursor:pointer;
+  box-shadow:0 0 0 1px rgba(255,255,255,.14);
+  transition:background-color .2s linear, color .2s linear;
+}
+.hud__btn:hover{ background:rgba(0,0,0,.75); color:#fff; }
+
+/* ---------- 省电 / 无障碍 ---------- */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{
+    animation-duration:.01ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.01ms !important;
+  }
+  .cube{ animation:none !important; transform:rotateY(120deg) !important; }
+  .pitch{ animation:none !important; }
+}
+
+/* ---------- 多分辨率 ---------- */
+/* 窄窗口：给长实例名留出换行余地 */
+@media (max-width:1100px){
+  .dock{ max-width:82vw; }
+  .instance{ max-width:82vw; }
+}
+</style>
+</head>
+<body class="is-launcher">
+<div class="stage">
+<!-- 场景层：全景 + 调色 + 托底 + 颗粒 -->
+<div class="imm" id="imm">
+
+  <!-- 全景世界 -->
+  <div class="world">
+    <div class="yaw">
+      <div class="pitch">
+        <div class="cube" id="cube">
+          <div class="face f0"></div>
+          <div class="face f1"></div>
+          <div class="face f2"></div>
+          <div class="face f3"></div>
+          <div class="face f4"></div>
+          <div class="face f5"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grade"></div>
+  <div class="scrim"></div>
+  <div class="grain"></div>
+</div><!-- /imm -->
+
+<!-- 界面层：和场景层平级，才能做视差（跟着全景一起落位，但幅度更小） -->
+<div class="ui" id="ui">
+
+  <header class="brand">
+    <div class="brand__lockup">
+      <canvas class="brand__mark" id="wordmark" aria-label="缘启"></canvas>
+      <span class="brand__sub mc-text" id="brandSub" style="--cell:16px"></span>
+    </div>
+  </header>
+
+  <main class="dock">
+    <div class="readout" id="readout">
+      <div class="clock mc-text mc-text--big" id="clock" aria-label="当前时间"></div>
+      <div class="date" id="date">—</div>
+      <div class="rule"></div>
+      <div class="instance">
+        <span class="instance__name mc-text" id="instName" style="--cell:32px"></span>
+        <span class="instance__sep" aria-hidden="true"></span>
+        <span class="instance__meta" id="instMeta">正式版 26.3</span>
+      </div>
+    </div>
+  </main>
+
+  <footer class="hint">
+    <kbd class="mc-text" id="kbdEsc" style="--cell:16px"></kbd><span>或点击任意处返回</span>
+  </footer>
+</div>
+
+<!-- 启动器窗口（用真实截图模拟，仅用于演示过场） -->
+<div class="shell" id="shell">
+  <div class="desktop"></div>
+  <img class="win" src="images/home.png" alt="启动器主页">
+</div>
+
+<!-- 预览控制（正式实现里没有这一段） -->
+<div class="hud" id="hud">
+  <button class="hud__btn" data-act="enter">进入待机</button>
+  <button class="hud__btn" data-act="exit">退出待机</button>
+</div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var Q = new URLSearchParams(location.search);
+  /* ?t=毫秒 —— 出图专用：把整条进场时间线冻结在指定时刻 */
+  var SEEK = Q.get('t');
+
+  /* ============================================================
+     我的世界位图字体渲染
+     图集 16×16 格，第 (code & 15) 列、第 (code >> 4) 行即该 ASCII 字符
+
+     字宽不能用统一的 .78：cell × .78 在 cell=96 时是 74.88px，
+     字形会落在半像素上被抗锯齿糊掉，而且字距也不对。
+     这里用原版的字符推进宽度（单位是 8px 字格里的像素），
+     cell 又是 8 的倍数，所以每个字形宽度一定是整数像素。
+     ============================================================ */
+  var ADV = {
+    ' ':4, '!':2, '"':4, '#':6, '$':6, '%':6, '&':6, "'":2, '(':4, ')':4,
+    '*':4, '+':6, ',':2, '-':6, '.':2, '/':6, ':':2, ';':2, '<':4, '=':6,
+    '>':4, '?':6, '@':6, '[':4, '\\':6, ']':4, '^':6, '_':6, '`':3,
+    '{':4, '|':2, '}':4, '~':7
+  };
+  function advOf(ch){
+    if (ADV[ch] !== undefined) return ADV[ch];
+    var c = ch.charCodeAt(0);
+    /* 0-9 / A-Z / a-z 在原版里都是 6 */
+    if ((c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122)) return 6;
+    return 6;
+  }
+
+  function mcText(el, text){
+    if (!el) return;
+    while (el.firstChild) el.removeChild(el.firstChild);
+    for (var i = 0; i < text.length; i++){
+      var ch = text.charAt(i);
+      var code = text.charCodeAt(i);
+      var g = document.createElement('i');
+      g.className = 'g';
+      g.style.setProperty('--col', code & 15);
+      g.style.setProperty('--row', code >> 4);
+      g.style.setProperty('--w', advOf(ch) / 8);
+      g.style.setProperty('--i', i);        /* 进场时逐字错开用 */
+      el.appendChild(g);
+    }
+  }
+
+  /* ============================================================
+     缘启字标：超采样 → 下采样到字格 → 二值化 → 整数块填充
+
+     v1 是直接 32px 渲染再二值化：32px 下「缘」的笔画只有 2~3px，
+     抗锯齿把相邻笔画糊在一起，二值化后就是一团白块。
+     v2 先在 4 倍分辨率下渲染，再平滑下采样到字格，
+     每个字格拿到的是真实覆盖率，阈值切下去笔画就分得开。
+     最后按整数倍（2×）用 fillRect 硬填充，像素块严格均匀。
+     ============================================================ */
+  function buildWordmark(SCALE){
+    var cv = document.getElementById('wordmark');
+    if (!cv) return;
+
+    var TEXT  = '缘启';
+    var BASE  = 40;                    /* 字格数：40 格宽，撑得住 12 画的「缘」 */
+    var SS    = 4;                     /* 超采样倍数 */
+    var TH    = 128;                   /* 二值化阈值 */
+    var FAM   = '"Microsoft YaHei UI","Microsoft YaHei",sans-serif';
+    var WEIGHT = 700;
+    /* SCALE = 输出像素块边长，与 YUANQI 的位图字颗粒保持一致（2/3/4px） */
+    SCALE = SCALE || 2;
+
+    /* ---- 1. 超采样渲染 ---- */
+    var probe = document.createElement('canvas').getContext('2d');
+    probe.font = WEIGHT + ' ' + BASE + 'px ' + FAM;
+    var adv = probe.measureText(TEXT).width;
+
+    var pad = BASE * SS;
+    var hw = Math.ceil(adv * SS) + pad * 2;
+    var hh = Math.ceil(BASE * 1.5 * SS) + pad * 2;
+
+    var hi = document.createElement('canvas');
+    hi.width = hw; hi.height = hh;
+    var hc = hi.getContext('2d');
+    hc.font = WEIGHT + ' ' + (BASE * SS) + 'px ' + FAM;
+    hc.textBaseline = 'alphabetic';
+    hc.fillStyle = '#fff';
+    hc.fillText(TEXT, pad, pad + BASE * SS * .82);
+
+    /* ---- 2. 收紧包围盒 ---- */
+    var hd = hc.getImageData(0, 0, hw, hh).data;
+    var minX = hw, minY = hh, maxX = -1, maxY = -1;
+    for (var y = 0; y < hh; y++){
+      for (var x = 0; x < hw; x++){
+        if (hd[(y * hw + x) * 4 + 3] > 8){
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+    if (maxX < 0) return;               /* 字体没加载出来就放弃，别画个空框 */
+    var bw = maxX - minX + 1, bh = maxY - minY + 1;
+
+    /* ---- 3. 下采样到字格 ---- */
+    var lw = Math.max(1, Math.round(bw / SS));
+    var lh = Math.max(1, Math.round(bh / SS));
+    var lo = document.createElement('canvas');
+    lo.width = lw; lo.height = lh;
+    var lc = lo.getContext('2d');
+    lc.imageSmoothingEnabled = true;
+    lc.imageSmoothingQuality = 'high';
+    lc.drawImage(hi, minX, minY, bw, bh, 0, 0, lw, lh);
+
+    /* ---- 4. 二值化 + 去孤点 ---- */
+    var ld = lc.getImageData(0, 0, lw, lh).data;
+    var a = new Uint8Array(lw * lh);
+    for (var i = 0; i < a.length; i++) a[i] = ld[i * 4 + 3] >= TH ? 1 : 0;
+
+    var clean = a.slice();
+    for (var yy = 0; yy < lh; yy++){
+      for (var xx = 0; xx < lw; xx++){
+        if (!a[yy * lw + xx]) continue;
+        var n = 0;
+        if (xx > 0      && a[yy * lw + xx - 1]) n++;
+        if (xx < lw - 1 && a[yy * lw + xx + 1]) n++;
+        if (yy > 0      && a[(yy - 1) * lw + xx]) n++;
+        if (yy < lh - 1 && a[(yy + 1) * lw + xx]) n++;
+        if (n < 2) clean[yy * lw + xx] = 0;
+      }
+    }
+
+    /* ---- 5. 整数块硬填充（1:1 输出，不靠 CSS 缩放） ---- */
+    cv.width  = lw * SCALE;
+    cv.height = lh * SCALE;
+    var oc = cv.getContext('2d');
+    oc.fillStyle = '#fff';
+    for (var cy = 0; cy < lh; cy++){
+      for (var cx = 0; cx < lw; cx++){
+        if (clean[cy * lw + cx]) oc.fillRect(cx * SCALE, cy * SCALE, SCALE, SCALE);
+      }
+    }
+    cv.style.width  = cv.width + 'px';
+    cv.style.height = cv.height + 'px';
+  }
+
+  var brandSub = document.getElementById('brandSub');
+  var kbdEsc   = document.getElementById('kbdEsc');
+  var clockEl  = document.getElementById('clock');
+  var dateEl   = document.getElementById('date');
+  var instName = document.getElementById('instName');
+  var instMeta = document.getElementById('instMeta');
+  var hintEl   = document.querySelector('.hint');
+
+  /* ---------- 当前实例（正式实现里从启动器读） ----------
+     name = 实例名（启动器里「当前实例」那一行，用户可改）
+     meta = 真实版本信息（通道 + 实际游戏版本），两者不是一回事 */
+  var INSTANCE = { name: '26.3', meta: '正式版 26.3' };
+
+  /* ============================================================
+     尺寸：全部按视口高度算
+     只按宽度算的话，21:9 上宽度多了 40% 而高度没变，
+     UI 会整体偏小（3440×1440 上尤其明显）。
+     ============================================================ */
+  function q8(v){ return Math.round(v / 8) * 8; }
+
+  /* 时钟字格：占高度 10.5%，再受宽度约束，夹在 56~160 */
+  function clockCell(){
+    return Math.max(56, Math.min(160,
+      q8(window.innerHeight * .105),
+      q8(window.innerWidth  * .075)));
+  }
+  /* 字标与 YUANQI 共用颗粒尺寸：16/24/32 → 位图字每个字形像素 2/3/4px */
+  function brandCell(){
+    return Math.max(16, Math.min(32, q8(window.innerHeight * .0178)));
+  }
+  /* 实例名字格 */
+  function versionCell(){
+    return Math.max(24, Math.min(48, q8(window.innerHeight * .0355)));
+  }
+
+  var lastBrandCell = 0;
+
+  function paintBrand(force){
+    var cell = brandCell();
+    if (!force && cell === lastBrandCell) return;
+    lastBrandCell = cell;
+
+    brandSub.style.setProperty('--cell', cell + 'px');
+    mcText(brandSub, 'YUANQI');
+
+    /* 右下提示：键帽字格 16~22，中文提示跟着它缩放 */
+    var hintCell = Math.max(16, Math.min(22, q8(window.innerHeight * .0155)));
+    hintEl.style.setProperty('--hint-cell', hintCell + 'px');
+    kbdEsc.style.setProperty('--cell', hintCell + 'px');
+    mcText(kbdEsc, 'ESC');
+
+    /* 字标的像素块跟位图字的颗粒同尺寸，两者才是同一套语言 */
+    buildWordmark(cell / 8);
+  }
+
+  function paintInstance(){
+    var n = INSTANCE.name;
+    var cell = versionCell();
+    instMeta.textContent = INSTANCE.meta;
+    if (n.length <= 8){
+      /* 短名字：位图字 */
+      instName.textContent = '';
+      instName.classList.add('mc-text');
+      instName.classList.remove('is-text');
+      instName.style.setProperty('--cell', cell + 'px');
+      mcText(instName, n);
+    } else {
+      /* 长名字（modpack）：退回系统字体，别让位图字排到屏幕外 */
+      while (instName.firstChild) instName.removeChild(instName.firstChild);
+      instName.classList.remove('mc-text');
+      instName.classList.add('is-text');
+      instName.textContent = n;
+    }
+  }
+
+  paintBrand(true);
+  paintInstance();
+
+  /* ============================================================
+     时间
+     ============================================================ */
+  var WEEK = ['周日','周一','周二','周三','周四','周五','周六'];
+  function two(n){ return n < 10 ? '0' + n : '' + n; }
+
+  function paintTime(){
+    var d = new Date();
+    clockEl.style.setProperty('--cell', clockCell() + 'px');
+    mcText(clockEl, two(d.getHours()) + ':' + two(d.getMinutes()));
+    dateEl.textContent = (d.getMonth() + 1) + '月' + d.getDate() + '日 · ' + WEEK[d.getDay()];
+  }
+  paintTime();
+  setInterval(paintTime, 15000);
+
+  /* 窗口尺寸变了要重算字格，否则改窗口大小后像素会糊 */
+  var resizeTimer;
+  window.addEventListener('resize', function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () {
+      paintTime();
+      paintBrand(false);
+      paintInstance();
+    }, 120);
+  });
+
+  /* ============================================================
+     过场引擎：启动器 ⇄ 休眠观赏页
+     进入靠 body.intro 上的逐项动画（见 CSS），总长约 2.4s；
+     退出靠 is-launcher 上的短 transition，0.42s 走完。
+     ============================================================ */
+  var INTRO_MS = 2500;      /* 进场动画总时长，跑完就摘掉 intro */
+  var mode = 'launcher';
+  var enteredAt = 0;
+  var introTimer;
+
+  function enterSleep(){
+    if (mode === 'sleep') return;
+    mode = 'sleep';
+    enteredAt = Date.now();
+
+    /* 先摘掉再重排再加回来，动画才会重播 */
+    document.body.classList.remove('intro', 'is-launcher');
+    void document.body.offsetWidth;
+    document.body.classList.add('is-sleep', 'intro');
+
+    clearTimeout(introTimer);
+    if (SEEK === null){
+      introTimer = setTimeout(function () {
+        document.body.classList.remove('intro');
+      }, INTRO_MS);
+    }
+  }
+
+  function exitSleep(){
+    if (mode !== 'sleep') return;
+    mode = 'launcher';
+    clearTimeout(introTimer);
+    document.body.classList.remove('is-sleep', 'intro');
+    document.body.classList.add('is-launcher');
+  }
+
+  /* 点一下就退出。刚进来的 0.9s 内忽略，
+     否则「进入的那一下」会被同一个 click 顺手带走；
+     0.9s 之后允许中途退出，退出动画本身够快，不会看出断点 */
+  document.addEventListener('click', function (e) {
+    if (mode !== 'sleep') return;
+    if (Date.now() - enteredAt < 900) return;
+    if (e.target.closest && e.target.closest('.hud')) return;
+    exitSleep();
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll('.hud__btn'), function (b) {
+    b.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (b.getAttribute('data-act') === 'enter') enterSleep();
+      else exitSleep();
+    });
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && mode === 'sleep') exitSleep();
+  });
+
+  /* ---------- 待机：2.6s 后隐藏鼠标 ---------- */
+  var idleTimer;
+  function wake(){
+    document.body.classList.remove('idle');
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(function(){ document.body.classList.add('idle'); }, 2600);
+  }
+  document.addEventListener('mousemove', wake);
+  document.addEventListener('mousedown', wake);
+  wake();
+
+  /* ============================================================
+     预览参数（正式实现里不存在）
+       ?state=sleep|launcher   初始状态
+       ?yaw=120                冻结旋转角度，便于出对照图
+       ?hud=0                  隐藏预览控制
+     ============================================================ */
+  if (Q.get('hud') === '0') document.body.classList.add('no-hud');
+
+  var yaw = Q.get('yaw');
+  if (yaw !== null && !isNaN(parseFloat(yaw))){
+    var cube = document.getElementById('cube');
+    var pitch = document.querySelector('.pitch');
+    var yawLayer = document.querySelector('.yaw');
+    if (yawLayer) yawLayer.style.transition = 'none';   /* 出图时别让它再回正 */
+    cube.style.animation = 'none';
+    cube.style.transform = 'rotateY(' + parseFloat(yaw) + 'deg)';
+    if (pitch) pitch.style.animation = 'none';
+  }
+
+  var st = Q.get('state');
+  if (st === 'sleep'){
+    enterSleep();
+  } else if (st === 'launcher'){
+    /* 停在启动器，不自动进场 */
+  } else {
+    /* 打开预览先看到启动器，1.7s 后自动走进休眠页 */
+    setTimeout(function () { if (mode === 'launcher') enterSleep(); }, 1700);
+  }
+
+  /* 出图：把进场时间线（transition + animation）统一冻在 ?t= 指定的毫秒 */
+  if (SEEK !== null && !isNaN(parseFloat(SEEK))){
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        var t = parseFloat(SEEK);
+        document.getAnimations().forEach(function (a) {
+          try { a.pause(); a.currentTime = t; } catch (e) {}
+        });
+      });
+    });
+  }
+})();
+</script>
+</body>
+</html>

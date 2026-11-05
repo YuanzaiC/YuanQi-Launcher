@@ -227,12 +227,23 @@
     <Content Include="Videos\*.webm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- 休眠页自带的全景套装：每套一个文件夹，内含 panorama_0..5.png。
+         随启动器一起发布，运行时不再去游戏目录里找。 -->
+    <Content Include="Resources\SleepPanorama\**\*.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Compile Include="Controls\MyNavItem.vb" />
     <Compile Include="Controls\MySkinHead.vb" />
     <Compile Include="Controls\MyExtraTextButton.xaml.vb">
       <DependentUpon>MyExtraTextButton.xaml</DependentUpon>
     </Compile>
     <Compile Include="Controls\MyImage.vb" />
+    <Compile Include="Controls\MyMcText.vb" />
+    <Compile Include="Controls\MyWordmark.vb" />
+    <Compile Include="Controls\MySleepOverlay.xaml.vb">
+      <DependentUpon>MySleepOverlay.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="Controls\MyPageRight.vb" />
     <Compile Include="Controls\MyPageLeft.vb" />
     <Compile Include="Controls\MyIconTextButton.xaml.vb">
@@ -248,6 +259,7 @@
     <Compile Include="Modules\Resource\ResourceVersion.vb" />
     <Compile Include="Modules\Resource\ResourceSearcher.vb" />
     <Compile Include="Modules\Minecraft\ModJava.vb" />
+    <Compile Include="Modules\Minecraft\ModImmersiveAssets.vb" />
     <Compile Include="Modules\Resource\LocalResourceLoaders.vb" />
     <Compile Include="Modules\Minecraft\ModModpack.vb" />
     <Compile Include="Modules\Minecraft\ModArchive.vb" />
@@ -263,6 +275,7 @@
     <Compile Include="Modules\ModEvent.vb" />
     <Compile Include="Modules\ModTools.vb" />
     <Compile Include="Modules\AccountPool.vb" />
+    <Compile Include="Modules\AccountSkin.vb" />
     <Compile Include="Modules\PlayLog.vb" />
     <Compile Include="Controls\MyExtraButton.xaml.vb">
       <DependentUpon>MyExtraButton.xaml</DependentUpon>
@@ -478,6 +491,10 @@
       <Generator>MSBuild:Compile</Generator>
     </Page>
     <Page Include="Controls\MyHint.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Controls\MySleepOverlay.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>

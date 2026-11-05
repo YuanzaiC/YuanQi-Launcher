@@ -127,37 +127,57 @@ Public Class PageDownloadLeft
                 ItemInstall.Checked = True
             Case FormMain.PageSubType.DownloadMod
                 If FrmDownloadMod IsNot Nothing Then
-                    FrmDownloadMod.Content.Storage = New ResourceSearcher.SearchResult
-                    FrmDownloadMod.Content.Page = 0
-                    FrmDownloadMod.PageLoaderRestart(IsForceRestart:=Force)
+                    '没有结果（或手动刷新）才重新搜索；已有结果就直接复用，避免每次进页面都“正在获取列表”
+                    If Force OrElse Not FrmDownloadMod.Content.Storage.Results.Any() Then
+                        FrmDownloadMod.Content.Storage = New ResourceSearcher.SearchResult
+                        FrmDownloadMod.Content.Page = 0
+                        If Force Then FrmDownloadMod.Content.InvalidateSearchCache()
+                        FrmDownloadMod.PageLoaderRestart(IsForceRestart:=Force)
+                    End If
                 End If
                 ItemMod.Checked = True
             Case FormMain.PageSubType.DownloadPack
                 If FrmDownloadPack IsNot Nothing Then
-                    FrmDownloadPack.Content.Storage = New ResourceSearcher.SearchResult
-                    FrmDownloadPack.Content.Page = 0
-                    FrmDownloadPack.PageLoaderRestart(IsForceRestart:=Force)
+                    '没有结果（或手动刷新）才重新搜索；已有结果就直接复用，避免每次进页面都“正在获取列表”
+                    If Force OrElse Not FrmDownloadPack.Content.Storage.Results.Any() Then
+                        FrmDownloadPack.Content.Storage = New ResourceSearcher.SearchResult
+                        FrmDownloadPack.Content.Page = 0
+                        If Force Then FrmDownloadPack.Content.InvalidateSearchCache()
+                        FrmDownloadPack.PageLoaderRestart(IsForceRestart:=Force)
+                    End If
                 End If
                 ItemPack.Checked = True
             Case FormMain.PageSubType.DownloadResourcePack
                 If FrmDownloadResourcePack IsNot Nothing Then
-                    FrmDownloadResourcePack.Content.Storage = New ResourceSearcher.SearchResult
-                    FrmDownloadResourcePack.Content.Page = 0
-                    FrmDownloadResourcePack.PageLoaderRestart(IsForceRestart:=Force)
+                    '没有结果（或手动刷新）才重新搜索；已有结果就直接复用，避免每次进页面都“正在获取列表”
+                    If Force OrElse Not FrmDownloadResourcePack.Content.Storage.Results.Any() Then
+                        FrmDownloadResourcePack.Content.Storage = New ResourceSearcher.SearchResult
+                        FrmDownloadResourcePack.Content.Page = 0
+                        If Force Then FrmDownloadResourcePack.Content.InvalidateSearchCache()
+                        FrmDownloadResourcePack.PageLoaderRestart(IsForceRestart:=Force)
+                    End If
                 End If
                 ItemResourcePack.Checked = True
             Case FormMain.PageSubType.DownloadShader
                 If FrmDownloadShader IsNot Nothing Then
-                    FrmDownloadShader.Content.Storage = New ResourceSearcher.SearchResult
-                    FrmDownloadShader.Content.Page = 0
-                    FrmDownloadShader.PageLoaderRestart(IsForceRestart:=Force)
+                    '没有结果（或手动刷新）才重新搜索；已有结果就直接复用，避免每次进页面都“正在获取列表”
+                    If Force OrElse Not FrmDownloadShader.Content.Storage.Results.Any() Then
+                        FrmDownloadShader.Content.Storage = New ResourceSearcher.SearchResult
+                        FrmDownloadShader.Content.Page = 0
+                        If Force Then FrmDownloadShader.Content.InvalidateSearchCache()
+                        FrmDownloadShader.PageLoaderRestart(IsForceRestart:=Force)
+                    End If
                 End If
                 ItemShader.Checked = True
             Case FormMain.PageSubType.DownloadDataPack
                 If FrmDownloadDataPack IsNot Nothing Then
-                    FrmDownloadDataPack.Content.Storage = New ResourceSearcher.SearchResult
-                    FrmDownloadDataPack.Content.Page = 0
-                    FrmDownloadDataPack.PageLoaderRestart(IsForceRestart:=Force)
+                    '没有结果（或手动刷新）才重新搜索；已有结果就直接复用，避免每次进页面都“正在获取列表”
+                    If Force OrElse Not FrmDownloadDataPack.Content.Storage.Results.Any() Then
+                        FrmDownloadDataPack.Content.Storage = New ResourceSearcher.SearchResult
+                        FrmDownloadDataPack.Content.Page = 0
+                        If Force Then FrmDownloadDataPack.Content.InvalidateSearchCache()
+                        FrmDownloadDataPack.PageLoaderRestart(IsForceRestart:=Force)
+                    End If
                 End If
                 ItemDataPack.Checked = True
         End Select

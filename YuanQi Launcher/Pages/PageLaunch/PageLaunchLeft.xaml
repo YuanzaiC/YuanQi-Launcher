@@ -197,14 +197,19 @@
                 <!-- 问候行 -->
                 <Grid Margin="2,2,0,16">
                     <StackPanel VerticalAlignment="Center">
-                        <TextBlock x:Name="LabGreetingTitle" Text="你好" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource BrushText1}" />
+                        <!-- 只有名字本身可点：TextBlock 默认横向拉伸，拉伸后整条横幅都算它的命中区，
+                             点空白处也会弹出改名对话框 -->
+                        <TextBlock x:Name="LabGreetingTitle" Text="你好" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource BrushText1}" Cursor="Hand" ToolTip="点击选择这里显示的名字"
+                                   HorizontalAlignment="Left" Padding="0,1,6,1" />
                         <TextBlock x:Name="LabGreetingSub" Text="" FontSize="12" Foreground="{DynamicResource BrushText3}" Margin="0,4,0,0" />
                     </StackPanel>
-                    <Button x:Name="BtnStatusFolder" HorizontalAlignment="Right" VerticalAlignment="Center" Style="{StaticResource BtnSmall}" ToolTip="打开实例或启动器所在目录">
+                    <!-- 全屏沉浸模式入口：待机 / 挂机时使用，点击后交给 FormMain.EnterImmersiveMode() -->
+                    <Button x:Name="BtnImmersive" HorizontalAlignment="Right" VerticalAlignment="Center" Style="{StaticResource BtnSmall}" ToolTip="全屏沉浸模式：适合挂机待机时使用">
                         <StackPanel Orientation="Horizontal">
-                            <Path Data="M1,3.5 h4.6 l1.4 1.8 H15 v7.2 H1 Z" Stroke="{DynamicResource BrushText1}" StrokeThickness="1.3" Fill="Transparent"
-                                  Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center" />
-                            <TextBlock Text="打开目录" FontSize="12" Margin="6,0,0,0" VerticalAlignment="Center" />
+                            <Path Data="M1,5 V1 H5 M11,1 H15 V5 M15,11 V15 H11 M5,15 H1 V11" Stroke="{DynamicResource BrushText1}" StrokeThickness="1.3" Fill="Transparent"
+                                  Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                            <TextBlock Text="全屏" FontSize="12" Margin="6,0,0,0" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
                 </Grid>

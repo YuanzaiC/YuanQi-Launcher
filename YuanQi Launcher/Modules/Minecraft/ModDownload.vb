@@ -1177,7 +1177,12 @@ Public Module ModDownload
                                  Optional Content As String = Nothing, Optional ContentType As String = Nothing) As JToken
         Dim Urls As New List(Of (Url As String, Timeout As Integer))
         Dim McimUrl As String = DlSourceModGet(Url)
-        If McimUrl <> Url Then
+        'CurseForge 官方接口必须带 API Key，没配 Key 时请求必定 403：
+        '直接默认走镜像，别白撞两次官方源（界面上"下载源"选项对 CF 不再适用）
+        If Url.Contains("api.curseforge.com") AndAlso String.IsNullOrWhiteSpace(CurseForgeAPIKey) Then
+            Urls.Add((McimUrl, 15))
+            Urls.Add((McimUrl, 30))
+        ElseIf McimUrl <> Url Then
             Select Case Settings.Get(Of Integer)("ToolDownloadMod")
                 Case 0
                     Urls.Add((McimUrl, 10))

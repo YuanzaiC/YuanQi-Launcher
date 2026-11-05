@@ -556,6 +556,97 @@ UnknownType:
 
 #End Region
 
+#Region "主页问候语的名字"
+
+    ''' <summary>取账户在界面上显示的名字：优先玩家名（如 LittleSkin 的角色名），而不是邮箱。</summary>
+    Private Function GetAccountDisplayName(Ref As AccountRef) As String
+        Try
+            If Ref Is Nothing Then Return ""
+            Dim LoginTypeNow As McLoginType = McLoginType.Legacy
+            Try
+                LoginTypeNow = Settings.Get(Of McLoginType)("LoginType")
+            Catch
+            End Try
+            If Ref.Type = LoginTypeNow Then
+                Dim PlayerName As String = ""
+                Select Case Ref.Type
+                    Case McLoginType.Ms
+                        PlayerName = Settings.Get(Of String)("CacheMsV2Name")
+                    Case McLoginType.Nide
+                        PlayerName = Settings.Get(Of String)("CacheNideName")
+                    Case McLoginType.Auth
+                        PlayerName = Settings.Get(Of String)("CacheAuthName")
+                End Select
+                If Not String.IsNullOrWhiteSpace(PlayerName) Then Return PlayerName.Trim()
+            End If
+            Return If(Ref.Name, "").Trim()
+        Catch ex As Exception
+            Logger.Warn(ex, "获取账户显示名失败")
+            Return ""
+        End Try
+    End Function
+
+    ''' <summary>按设置决定主页问候语里显示的名字。</summary>
+    Private Function GetGreetingName() As String
+        Try
+            Dim Mode As Integer = 0
+            Try
+                Mode = Settings.Get(Of Integer)("UiGreetingNameMode")
+            Catch
+            End Try
+            Select Case Mode
+                Case 2
+                    Dim Custom As String = Settings.Get(Of String)("UiGreetingNameCustom")
+                    If Not String.IsNullOrWhiteSpace(Custom) Then Return Custom.Trim()
+                Case 1
+                    Dim GlobalName As String = GetAccountDisplayName(AccountPool.GetDefaultAccount())
+                    If Not String.IsNullOrWhiteSpace(GlobalName) Then Return GlobalName
+                Case Else
+                    Dim VersionName As String = GetAccountDisplayName(AccountPool.GetVersionAccount())
+                    If Not String.IsNullOrWhiteSpace(VersionName) Then Return VersionName
+            End Select
+        Catch ex As Exception
+            Logger.Warn(ex, "计算问候语名字失败")
+        End Try
+        Return LabAccountName.Text
+    End Function
+
+    ''' <summary>点击问候语：选择这里显示的名字。</summary>
+    Private Sub LabGreetingTitle_Click() Handles LabGreetingTitle.MouseLeftButtonUp
+        Try
+            Dim Mode As Integer = 0
+            Try
+                Mode = Settings.Get(Of Integer)("UiGreetingNameMode")
+            Catch
+            End Try
+            Dim VersionRef = AccountPool.GetVersionAccount()
+            Dim GlobalRef = AccountPool.GetDefaultAccount()
+            Dim Options As New List(Of IMyRadio) From {
+                New MyRadioBox With {.Text = "当前实例的账户名称" & If(VersionRef Is Nothing, "（未设置）", "：" & GetAccountDisplayName(VersionRef))},
+                New MyRadioBox With {.Text = "全局账户名称" & If(GlobalRef Is Nothing, "（未设置）", "：" & GetAccountDisplayName(GlobalRef))},
+                New MyRadioBox With {.Text = "自定义显示名称"}
+            }
+            Dim Index As Integer? = MyMsgBoxSelect(Options, "主页问候语显示的名字", "确定", "取消")
+            If Index Is Nothing Then Return
+            If Index.Value = 2 Then
+                Dim Input As String = MyMsgBoxInput("自定义显示名称", "输入主页问候语里显示的名字（留空则恢复为账户名）：",
+                                                    Settings.Get(Of String)("UiGreetingNameCustom"), Button1:="确定", Button2:="取消")
+                If Input Is Nothing Then Return
+                Settings.Set("UiGreetingNameCustom", Input.Trim())
+                '自定义留空时退回账户名
+                Settings.Set("UiGreetingNameMode", If(String.IsNullOrWhiteSpace(Input), 0, 2))
+            Else
+                Settings.Set("UiGreetingNameMode", Index.Value)
+            End If
+            RefreshHomeInfo()
+            Hint("已更新主页显示的名字", HintType.Green)
+        Catch ex As Exception
+            Logger.Error(ex, "设置主页显示的名字失败")
+        End Try
+    End Sub
+
+#End Region
+
 #Region "离线用户名与存档"
 
     ''' <summary>
@@ -715,9 +806,34 @@ UnknownType:
 #Region "皮肤"
 
     ''' <summary>
+    ''' 把刚加载出来的皮肤按「账户名」记下来，供账户列表里各自的头像使用。
+    ''' 注意只能用登录时用的账户名（邮箱 / 玩家名）：角色名可能和另一个账户名重名，
+    ''' 按角色名记录会把头像串给别的账户，导致两个账户显示成同一张皮肤。
+    ''' </summary>
+    Private Shared Sub RememberSkinByName()
+        Try
+            If SkinMs IsNot Nothing AndAlso SkinMs.State = LoadState.Finished AndAlso Not String.IsNullOrWhiteSpace(SkinMs.Output) Then
+                AccountSkinStore.AccountSkinSaveFromSession(McLoginType.Ms, SkinMs.Output)
+            End If
+            If SkinNide IsNot Nothing AndAlso SkinNide.State = LoadState.Finished AndAlso Not String.IsNullOrWhiteSpace(SkinNide.Output) Then
+                AccountSkinStore.AccountSkinSaveFromSession(McLoginType.Nide, SkinNide.Output)
+            End If
+            If SkinAuth IsNot Nothing AndAlso SkinAuth.State = LoadState.Finished AndAlso Not String.IsNullOrWhiteSpace(SkinAuth.Output) Then
+                AccountSkinStore.AccountSkinSaveFromSession(McLoginType.Auth, SkinAuth.Output)
+            End If
+            If SkinLegacy IsNot Nothing AndAlso SkinLegacy.State = LoadState.Finished AndAlso Not String.IsNullOrWhiteSpace(SkinLegacy.Output) Then
+                AccountSkinStore.AccountSkinSave(McLoginType.Legacy, GetSessionName(McLoginType.Legacy), "", "", SkinLegacy.Output)
+            End If
+        Catch ex As Exception
+            Logger.Warn(ex, "记录账户头像失败")
+        End Try
+    End Sub
+
+    ''' <summary>
     ''' 皮肤加载状态改变时刷新头像。
     ''' </summary>
     Private Sub OnSkinLoaderStateChanged()
+        RememberSkinByName()
         RunInUi(Sub()
                     Try
                         RefreshHomeInfo()
@@ -1190,9 +1306,10 @@ ExitRefresh:
     Public Shared Function GetAccountSkinAddress() As String
         Try
             Dim AccountType As McLoginType = McLoginType.Legacy
+            Dim Ref As AccountRef = Nothing
             Try
                 '优先按账户池中当前账户的类型取皮肤，避免页面切换时 LoginType 被旧登录页逻辑改写导致头像回退默认
-                Dim Ref = AccountPool.GetVersionAccount()
+                Ref = AccountPool.GetVersionAccount()
                 If Ref IsNot Nothing Then
                     AccountType = Ref.Type
                 Else
@@ -1201,27 +1318,70 @@ ExitRefresh:
             Catch ex As Exception
                 Logger.Warn(ex, "读取账户类型失败")
             End Try
-            Dim Loader As LoaderTask(Of (String, String), String) = Nothing
-            Select Case AccountType
-                Case McLoginType.Ms
-                    Loader = SkinMs
-                Case McLoginType.Nide
-                    Loader = SkinNide
-                Case McLoginType.Auth
-                    Loader = SkinAuth
-                Case Else
-                    Loader = SkinLegacy
-            End Select
+
+            '所选账户已经不是当前登录着的账户时，先用它自己存档里的头像，
+            '否则会显示上一个账户的皮肤，看起来就是「一选中头像就变了」
+            If Ref IsNot Nothing AndAlso Not String.Equals(Ref.Name.Trim(), GetSessionName(AccountType), StringComparison.OrdinalIgnoreCase) Then
+                Dim AccountSkin As String = AccountSkinStore.AccountSkinGetSkin(AccountType, Ref.Name)
+                If Not String.IsNullOrWhiteSpace(AccountSkin) AndAlso IO.File.Exists(AccountSkin) Then Return AccountSkin
+            End If
+            Dim Loader As LoaderTask(Of (String, String), String) = GetSkinLoader(AccountType)
             If Loader IsNot Nothing Then
                 If Loader.State <> LoadState.Loading AndAlso Loader.State <> LoadState.Finished Then Loader.Start()
                 If Not String.IsNullOrWhiteSpace(Loader.Output) Then Return Loader.Output
             End If
             If SkinLegacy IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(SkinLegacy.Output) Then Return SkinLegacy.Output
+            '皮肤还在重新加载时，先用这个账户存档里的头像顶着，别闪成默认皮肤
+            If Ref IsNot Nothing Then
+                Dim CachedSkin As String = AccountSkinStore.AccountSkinGetSkin(AccountType, Ref.Name)
+                If Not String.IsNullOrWhiteSpace(CachedSkin) AndAlso IO.File.Exists(CachedSkin) Then Return CachedSkin
+            End If
         Catch ex As Exception
             Logger.Warn(ex, "获取当前皮肤地址失败")
         End Try
         Return PathImage & "Skins/Steve.png"
     End Function
+
+    ''' <summary>
+    ''' 全局账户（默认账户）自己的头像文件；没有设置全局账户或没有记录时返回空串。
+    ''' </summary>
+    Public Shared Function GetDefaultAccountSkin() As String
+        Try
+            Dim Ref As AccountRef = AccountPool.GetDefaultAccount()
+            If Ref Is Nothing Then Return ""
+            Dim Skin As String = AccountSkinStore.AccountSkinGetSkin(Ref.Type, Ref.Name)
+            If Not String.IsNullOrWhiteSpace(Skin) AndAlso IO.File.Exists(Skin) Then Return Skin
+            '离线账户共用本机选择的离线皮肤
+            If Ref.Type = McLoginType.Legacy AndAlso SkinLegacy IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(SkinLegacy.Output) Then Return SkinLegacy.Output
+        Catch ex As Exception
+            Logger.Warn(ex, "读取全局账户头像失败")
+        End Try
+        Return ""
+    End Function
+
+    ''' <summary>按账户类型取对应的皮肤加载器。</summary>
+    Public Shared Function GetSkinLoader(Type As McLoginType) As LoaderTask(Of (String, String), String)
+        Select Case Type
+            Case McLoginType.Ms
+                Return SkinMs
+            Case McLoginType.Nide
+                Return SkinNide
+            Case McLoginType.Auth
+                Return SkinAuth
+            Case Else
+                Return SkinLegacy
+        End Select
+    End Function
+
+    ''' <summary>强制重新加载某个类型的皮肤（切换账号后用）。</summary>
+    Public Shared Sub RestartSkinLoader(Type As McLoginType)
+        Try
+            Dim Loader As LoaderTask(Of (String, String), String) = GetSkinLoader(Type)
+            If Loader IsNot Nothing Then Loader.Start(IsForceRestart:=True)
+        Catch ex As Exception
+            Logger.Warn(ex, "刷新账户皮肤失败")
+        End Try
+    End Sub
 
     ''' <summary>
     ''' 时间差转换为「X 前」。
@@ -1310,7 +1470,7 @@ ExitRefresh:
             Try
                 Dim HourNow = Date.Now.Hour
                 Dim Greeting As String = If(HourNow >= 5 AndAlso HourNow < 11, "早上好", If(HourNow < 13, "中午好", If(HourNow < 18, "下午好", "晚上好")))
-                Dim GreetName As String = LabAccountName.Text
+                Dim GreetName As String = GetGreetingName()
                 If GreetName = "未登录" OrElse GreetName = "点击注册账号" OrElse String.IsNullOrWhiteSpace(GreetName) Then GreetName = "冒险家"
                 LabGreetingTitle.Text = Greeting & "，" & GreetName
                 Dim WeekNames = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"}
@@ -1443,8 +1603,14 @@ ExitRefresh:
         End Try
     End Sub
 
+    '进入全屏沉浸模式：本页只负责转发，界面与行为由主窗口接口实现
+    Private Sub BtnImmersive_Click() Handles BtnImmersive.Click
+        If FrmMain Is Nothing Then Return
+        FrmMain.EnterImmersiveMode()
+    End Sub
+
     '打开当前实例目录
-    Private Sub BtnInstanceFolder_Click() Handles BtnInstanceFolder.Click, BtnStatusFolder.Click
+    Private Sub BtnInstanceFolder_Click() Handles BtnInstanceFolder.Click
         Try
             If McInstanceSelected Is Nothing Then
                 OpenExplorer(Paths.Base)
@@ -1626,6 +1792,7 @@ ExitRefresh:
         Else
             AccountPool.SetVersionAccount(Ref)
         End If
+        RestartSkinLoader(Ref.Type)
         RefreshAccountMenu()
         RefreshHomeInfo()
         PulseAccountCapsule()
@@ -1943,25 +2110,38 @@ ExitRefresh:
         End Sub, "Add Ms Account")
     End Sub
 
+    ''' <summary>账户下拉里的一行（先收集再统一排序，避免边收集边插入）。</summary>
+    Private Class AccountRowInfo
+        Public Ref As AccountRef
+        Public TypeText As String
+        Public OnSelect As Action
+        Public OnRemove As Action
+    End Class
+
     ''' <summary>
-    ''' 重建账号下拉面板：列出「全版本通用账户池」中所有类型的已保存账号。
+    ''' 重建账号下拉面板：列出「全版本通用账户池」中所有类型的已保存账号，按最近使用排序。
     ''' </summary>
     Private Sub RefreshAccountMenu()
         If PanAccountList Is Nothing Then Return
         Try
+            EnsureSkinNameCacheVersion()
+            AccountPool.EnsureDefaultAccount() '全局账户只初始化一次，不随版本账户变
+            '没有头像记录的第三方账户会在后台补一次（只补缺的，之后一直用缓存）
+            AccountSkinStore.AccountSkinEnsureAll()
             PanAccountList.Children.Clear()
             Dim CurrentRef = AccountPool.GetVersionAccount()
-            Dim CurName As String = If(CurrentRef IsNot Nothing, CurrentRef.Name, "")
+            Dim Rows As New List(Of AccountRowInfo)
             '微软正版
             Try
                 Dim MsJson As JObject = Settings.Get(Of String)("LoginMsJson").DeserializeJson()
                 If MsJson IsNot Nothing Then
                     For Each Account In MsJson
                         Dim Name As String = Account.Key
-                        If CurrentRef IsNot Nothing AndAlso CurrentRef.Type = McLoginType.Ms AndAlso String.Equals(Name, CurName, StringComparison.Ordinal) Then Continue For
+                        If IsCurrentAccount(CurrentRef, McLoginType.Ms, Name) Then Continue For
                         Dim Token As String = If(Account.Value Is Nothing, "", Account.Value.ToString)
-                        PanAccountList.Children.Add(BuildAccountRow(Name, "正版", GetPoolAccountSkin(McLoginType.Ms, Name),
-                            Sub() SwitchMsAccount(Name, Token), Sub() RemoveAccount(Name, McLoginType.Ms)))
+                        Rows.Add(New AccountRowInfo With {.Ref = New AccountRef With {.Type = McLoginType.Ms, .Name = Name},
+                            .TypeText = "正版", .OnSelect = Sub() SwitchMsAccount(Name, Token),
+                            .OnRemove = Sub() RemoveAccount(Name, McLoginType.Ms)})
                     Next
                 End If
             Catch ex As Exception
@@ -1974,32 +2154,48 @@ ExitRefresh:
             End If
             For Each RawName As String In LegacyNames
                 Dim Name As String = RawName.Trim
-                If CurrentRef IsNot Nothing AndAlso CurrentRef.Type = McLoginType.Legacy AndAlso String.Equals(Name, CurName, StringComparison.Ordinal) Then Continue For
-                PanAccountList.Children.Add(BuildAccountRow(Name, "离线", GetPoolAccountSkin(McLoginType.Legacy, Name),
-                    Sub() SwitchLegacyAccount(Name), Sub() RemoveAccount(Name, McLoginType.Legacy)))
+                If IsCurrentAccount(CurrentRef, McLoginType.Legacy, Name) Then Continue For
+                Rows.Add(New AccountRowInfo With {.Ref = New AccountRef With {.Type = McLoginType.Legacy, .Name = Name},
+                    .TypeText = "离线", .OnSelect = Sub() SwitchLegacyAccount(Name),
+                    .OnRemove = Sub() RemoveAccount(Name, McLoginType.Legacy)})
             Next
             '统一通行证 / Authlib-Injector
-            AddThirdPartyToMenu("Nide", "统一通行证", McLoginType.Nide)
-            AddThirdPartyToMenu("Auth", "第三方登录", McLoginType.Auth)
+            CollectThirdPartyRows(Rows, CurrentRef, "Nide", "统一通行证", McLoginType.Nide)
+            CollectThirdPartyRows(Rows, CurrentRef, "Auth", "第三方登录", McLoginType.Auth)
+            '最近用过的账户排在最前面
+            Dim RowMap As New Dictionary(Of AccountRef, AccountRowInfo)
+            For Each Row As AccountRowInfo In Rows
+                RowMap(Row.Ref) = Row
+            Next
+            For Each Ref As AccountRef In AccountPool.SortByLastUsed(Rows.Select(Function(R) R.Ref).ToList())
+                Dim Row As AccountRowInfo = Nothing
+                If Not RowMap.TryGetValue(Ref, Row) Then Continue For
+                PanAccountList.Children.Add(BuildAccountRow(Row.Ref.Name, Row.TypeText, GetPoolAccountSkin(Row.Ref.Type, Row.Ref.Name), Row.OnSelect, Row.OnRemove))
+            Next
         Catch ex As Exception
             Logger.Error(ex, "刷新账号下拉列表失败")
         End Try
     End Sub
 
-    ''' <summary>把某一第三方登录方式的账号加入下拉面板。</summary>
-    Private Sub AddThirdPartyToMenu(Token As String, TypeText As String, Type As McLoginType)
+    ''' <summary>该账户是否就是当前正在使用的账户（版本选中的，或当前登录着的），它不进下拉列表。</summary>
+    Private Function IsCurrentAccount(CurrentRef As AccountRef, Type As McLoginType, Name As String) As Boolean
+        If CurrentRef IsNot Nothing AndAlso CurrentRef.Type = Type AndAlso String.Equals(Name, CurrentRef.Name, StringComparison.OrdinalIgnoreCase) Then Return True
+        Return String.Equals(If(Name, "").Trim(), GetSessionName(Type), StringComparison.OrdinalIgnoreCase)
+    End Function
+
+    ''' <summary>收集某一第三方登录方式的账户行。</summary>
+    Private Sub CollectThirdPartyRows(Rows As List(Of AccountRowInfo), CurrentRef As AccountRef, Token As String, TypeText As String, Type As McLoginType)
         Try
             Dim Names As New List(Of String), Passs As New List(Of String)
             If Not Settings.Get(Of String)("Login" & Token & "Email") = "" Then Names.AddRange(Settings.Get(Of String)("Login" & Token & "Email").Split("¨"))
             If Not Settings.Get(Of String)("Login" & Token & "Pass") = "" Then Passs.AddRange(Settings.Get(Of String)("Login" & Token & "Pass").Split("¨"))
-            Dim Ref = AccountPool.GetVersionAccount()
             For i As Integer = 0 To Names.Count - 1
                 Dim Name As String = Names(i)
                 If Name.Trim = "" Then Continue For
-                If Ref IsNot Nothing AndAlso Ref.Type = Type AndAlso String.Equals(Name, Ref.Name, StringComparison.Ordinal) Then Continue For
+                If IsCurrentAccount(CurrentRef, Type, Name) Then Continue For
                 Dim Pass As String = If(i < Passs.Count, Passs(i), "")
-                PanAccountList.Children.Add(BuildAccountRow(Name, TypeText, GetPoolAccountSkin(Type, Name),
-                    Sub() SwitchThirdPartyAccount(Token, Name, Pass), Sub() RemoveAccount(Name, Type)))
+                Rows.Add(New AccountRowInfo With {.Ref = New AccountRef With {.Type = Type, .Name = Name}, .TypeText = TypeText,
+                    .OnSelect = Sub() SwitchThirdPartyAccount(Token, Name, Pass), .OnRemove = Sub() RemoveAccount(Name, Type)})
             Next
         Catch ex As Exception
             Logger.Warn(ex, "读取第三方账号列表失败")
@@ -2086,21 +2282,88 @@ ExitRefresh:
     End Sub
 
     ''' <summary>
-    ''' 获取账户池行要显示的皮肤：离线用离线皮肤，其余尽量用已下载的皮肤，否则回退 Steve/Alex。
+    ''' 获取账户池行要显示的皮肤：当前登录的那个账户用最新加载的皮肤，
+    ''' 其余账户用各自记下的皮肤，都没有则回退到 Steve/Alex 兜底头像。
     ''' </summary>
     Private Function GetPoolAccountSkin(Type As McLoginType, Name As String) As String
-        Select Case Type
-            Case McLoginType.Legacy
+        Try
+            '离线账户共用本机选择的离线皮肤
+            If Type = McLoginType.Legacy Then
                 If SkinLegacy IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(SkinLegacy.Output) Then Return SkinLegacy.Output
-            Case McLoginType.Ms
-                If SkinMs IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(SkinMs.Output) Then Return SkinMs.Output
-            Case McLoginType.Nide
-                If SkinNide IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(SkinNide.Output) Then Return SkinNide.Output
-            Case McLoginType.Auth
-                If SkinAuth IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(SkinAuth.Output) Then Return SkinAuth.Output
-        End Select
+            End If
+            '正在登录的那个账户：用刚加载出来的皮肤，并顺手记到它自己名下
+            If String.Equals(GetSessionName(Type), If(Name, "").Trim(), StringComparison.OrdinalIgnoreCase) Then
+                Dim Live As String = ""
+                Select Case Type
+                    Case McLoginType.Ms
+                        If SkinMs IsNot Nothing Then Live = SkinMs.Output
+                    Case McLoginType.Nide
+                        If SkinNide IsNot Nothing Then Live = SkinNide.Output
+                    Case McLoginType.Auth
+                        If SkinAuth IsNot Nothing Then Live = SkinAuth.Output
+                End Select
+                If Not String.IsNullOrWhiteSpace(Live) Then
+                    AccountSkinStore.AccountSkinSaveFromSession(Type, Live)
+                    Return Live
+                End If
+            End If
+            '其余账户用各自记录的头像，绝不借用别的账户的皮肤
+            Dim CachedSkin As String = AccountSkinStore.AccountSkinGetSkin(Type, Name)
+            If Not String.IsNullOrWhiteSpace(CachedSkin) AndAlso IO.File.Exists(CachedSkin) Then Return CachedSkin
+        Catch ex As Exception
+            Logger.Warn(ex, "获取账户头像失败")
+        End Try
         Return GetAccountFallbackSkin(Name)
     End Function
+
+    ''' <summary>
+    ''' 当前会话登录着的「账户名」（账户列表里的那一串：正版是玩家名，Nide / Auth 是登录用的邮箱，
+    ''' 离线是下拉框里选中的名字）；没有登录则返回空串。
+    ''' </summary>
+    Public Shared Function GetSessionName(Type As McLoginType) As String
+        Try
+            Select Case Type
+                Case McLoginType.Ms
+                    Return If(Settings.Get(Of String)("CacheMsV2Name"), "").Trim()
+                Case McLoginType.Nide
+                    Return If(Settings.Get(Of String)("CacheNideUsername"), "").Trim()
+                Case McLoginType.Auth
+                    Return If(Settings.Get(Of String)("CacheAuthUsername"), "").Trim()
+                Case Else
+                    If FrmLaunchLeft IsNot Nothing AndAlso FrmLaunchLeft.ComboName IsNot Nothing Then
+                        Return If(FrmLaunchLeft.ComboName.Text, "").Trim()
+                    End If
+                    Return ""
+            End Select
+        Catch
+            Return ""
+        End Try
+    End Function
+
+    Private Shared SkinNameCacheChecked As Boolean = False
+
+    ''' <summary>
+    ''' 旧版本按角色名记录过头像，角色名和别的账户名重名时会把头像串错，这里一次性清掉重记。
+    ''' </summary>
+    Private Shared Sub EnsureSkinNameCacheVersion()
+        If SkinNameCacheChecked Then Return
+        SkinNameCacheChecked = True
+        Try
+            If Settings.Get(Of String)("SkinNameCacheVersion") = "3" Then Return
+            For Each Type As McLoginType In {McLoginType.Ms, McLoginType.Nide, McLoginType.Auth, McLoginType.Legacy}
+                Dim CacheFile As String = GetSkinNameCachePath(Type)
+                If IO.File.Exists(CacheFile) Then IO.File.Delete(CacheFile)
+            Next
+            Settings.Set("SkinNameCacheVersion", "3")
+        Catch ex As Exception
+            Logger.Warn(ex, "重置账户头像缓存失败")
+        End Try
+    End Sub
+
+    Private Shared Function GetSkinNameCachePath(Type As McLoginType) As String
+        Return PathCache & "Skin\ByName" & Type.ToString() & ".ini"
+    End Function
+
 
     ''' <summary>
     ''' 依据玩家名生成确定的 Steve / Alex 头像兜底。
@@ -2122,6 +2385,10 @@ ExitRefresh:
                 BtnAccount.RenderTransform = New ScaleTransform(1, 1)
             End If
             AniStop("Account Capsule Pulse")
+            '缩放动画是相对当前值的，动画被打断时缩放会残留，必须复位回 1，否则每切换一次账户就变大一点
+            Dim PulseScale As ScaleTransform = DirectCast(BtnAccount.RenderTransform, ScaleTransform)
+            PulseScale.ScaleX = 1
+            PulseScale.ScaleY = 1
             AniStart({
                 AaScaleTransform(BtnAccount, -0.05, 90, 0, New AniEaseOutFluent(AniEasePower.Weak)),
                 AaScaleTransform(BtnAccount, 0.08, 200, 90, New AniEaseOutBack(AniEasePower.Weak)),
@@ -2142,7 +2409,6 @@ ExitRefresh:
         End If
         PanAccountMenu.Visibility = Visibility.Collapsed
         AccountPool.SetVersionAccount(New AccountRef With {.Type = McLoginType.Ms, .Name = Name})
-        Hint($"正在切换账号 {Name}…")
         RunInNewThread(
         Sub()
             Try
@@ -2154,6 +2420,7 @@ ExitRefresh:
                         RefreshHomeInfo()
                         PulseAccountCapsule()
                         SkinMs.Start(IsForceRestart:=True) '强制刷新新账号皮肤头像
+                        Hint($"已切换到 {Name}", HintType.Green)
                     Catch ex As Exception
                         Logger.Error(ex, "切换正版账号后刷新失败")
                     End Try
@@ -2184,6 +2451,7 @@ ExitRefresh:
                 End If
             Next
             ComboName.SelectedItem = If(FoundItem, Name)
+            RestartSkinLoader(McLoginType.Legacy)
             RefreshHomeInfo()
             PulseAccountCapsule()
             Hint($"已切换到离线账号 {Name}", HintType.Green)
@@ -2198,10 +2466,27 @@ ExitRefresh:
     Private Sub SwitchThirdPartyAccount(Token As String, Name As String, Pass As String)
         Try
             PanAccountMenu.Visibility = Visibility.Collapsed
-            AccountPool.SetVersionAccount(New AccountRef With {.Type = If(Token = "Nide", McLoginType.Nide, McLoginType.Auth), .Name = Name})
+            Dim Ref As New AccountRef With {.Type = If(Token = "Nide", McLoginType.Nide, McLoginType.Auth), .Name = Name}
+            AccountPool.SetVersionAccount(Ref)
             RefreshHomeInfo()
-            PulseAccountCapsule()
-            Hint($"已切换到 {Name}", HintType.Green)
+
+            '真正登录这个账户：登录成功后皮肤会按这个账户重新加载，头像也就跟着对了，
+            '不用先启动一次游戏
+            RunInNewThread(
+            Sub()
+                Try
+                    Dim LoginData As McLoginData = AccountPool.ResolveLoginData(Ref)
+                    If LoginData Is Nothing Then Throw New Exception("无法解析该账户的登录信息")
+                    McLoginLoader.WaitForExit(LoginData, IsForceRestart:=True)
+                    RunInUi(Sub()
+                                RestartSkinLoader(Ref.Type) '用新账户的角色重新取一次皮肤
+                                RefreshAccountUi()
+                                Hint($"已切换到 {Name}", HintType.Green)
+                            End Sub)
+                Catch ex As Exception
+                    If Not ex.IsCanceled Then Logger.Error(ex, $"切换账户失败（{Name}）", LogBehavior.Toast)
+                End Try
+            End Sub, "ThirdParty Switch Account")
         Catch ex As Exception
             Logger.Error(ex, "切换第三方账号失败")
         End Try

@@ -54,7 +54,65 @@ Public Module AccountPool
                 Next
             End If
         Next
-        Return Result
+        '最近用过的账户排在最前面
+        Return SortByLastUsed(Result)
+    End Function
+
+    ''' <summary>
+    ''' 记录账户刚被使用（切换账户、添加账户都算），用于账户池按最近使用排序。
+    ''' </summary>
+    Public Sub TouchAccount(Ref As AccountRef)
+        Try
+            If Ref Is Nothing OrElse String.IsNullOrWhiteSpace(Ref.Name) Then Return
+            Dim Map As JObject = GetAccountUsedMap()
+            Map(GetAccountUsedKey(Ref)) = GetTimeMs()
+            Settings.Set("AccountLastUsed", Map.ToString(Newtonsoft.Json.Formatting.None))
+        Catch ex As Exception
+            Logger.Warn(ex, "记录账户最近使用时间失败")
+        End Try
+    End Sub
+
+    ''' <summary>账户最近使用时间（毫秒时间戳）；从未使用过返回 0。</summary>
+    Public Function GetAccountLastUsed(Ref As AccountRef) As Long
+        Return GetAccountLastUsed(GetAccountUsedMap(), Ref)
+    End Function
+
+    Private Function GetAccountLastUsed(Map As JObject, Ref As AccountRef) As Long
+        Try
+            If Map Is Nothing OrElse Ref Is Nothing Then Return 0
+            Dim Token As JToken = Map(GetAccountUsedKey(Ref))
+            If Token Is Nothing Then Return 0
+            Return Token.Value(Of Long)()
+        Catch
+            Return 0
+        End Try
+    End Function
+
+    ''' <summary>按最近使用排序：最近用过的在最前，没用过的保持原有顺序排在后面。</summary>
+    Public Function SortByLastUsed(Items As List(Of AccountRef)) As List(Of AccountRef)
+        If Items Is Nothing OrElse Items.Count <= 1 Then Return Items
+        Try
+            Dim Map As JObject = GetAccountUsedMap()
+            Dim Pairs = Items.Select(Function(R, I) New With {.Ref = R, .Seq = I, .Ticks = GetAccountLastUsed(Map, R)})
+            Return Pairs.OrderByDescending(Function(P) P.Ticks).ThenBy(Function(P) P.Seq).Select(Function(P) P.Ref).ToList()
+        Catch ex As Exception
+            Logger.Warn(ex, "账户池排序失败")
+            Return Items
+        End Try
+    End Function
+
+    Private Function GetAccountUsedKey(Ref As AccountRef) As String
+        Return Ref.Type.ToString() & "|" & Ref.Name
+    End Function
+
+    Private Function GetAccountUsedMap() As JObject
+        Try
+            Dim Map As JObject = Settings.Get(Of String)("AccountLastUsed").DeserializeJson()
+            If Map Is Nothing Then Return New JObject
+            Return Map
+        Catch
+            Return New JObject
+        End Try
     End Function
 
     ''' <summary>当前版本的选中账户；未单独设置时回退到全局默认账户，都没有则返回 Nothing。</summary>
@@ -64,7 +122,7 @@ Public Module AccountPool
                 Dim V = Settings.Get(Of String)(VersionAccountKey, Instance:=McInstanceSelected)
                 If Not String.IsNullOrWhiteSpace(V) Then
                     Dim Ref = ParseRef(V)
-                    If Ref IsNot Nothing Then Return Ref
+                    If Ref IsNot Nothing AndAlso AccountExists(Ref) Then Return Ref
                 End If
             End If
             Return GetDefaultAccount()
@@ -78,6 +136,7 @@ Public Module AccountPool
         If McInstanceSelected Is Nothing OrElse Ref Is Nothing Then Return
         Settings.Set(VersionAccountKey, Ref.Type.ToString() & "|" & Ref.Name, Instance:=McInstanceSelected)
         Settings.Set("LoginType", Ref.Type) '同步全局登录方式，兼容旧逻辑
+        TouchAccount(Ref) '选过就算最近使用
     End Sub
 
     ''' <summary>清除当前版本的选中账户。</summary>
@@ -91,11 +150,32 @@ Public Module AccountPool
         Try
             Dim Raw = Settings.Get(Of String)(DefaultAccountKey)
             If String.IsNullOrWhiteSpace(Raw) Then Return Nothing
-            Return ParseRef(Raw)
+            Dim Ref = ParseRef(Raw)
+            '账户被改名或删除后，旧名字就不该再当默认账户用
+            If Ref Is Nothing OrElse Not AccountExists(Ref) Then Return Nothing
+            Return Ref
         Catch
             Return Nothing
         End Try
     End Function
+
+    Private DefaultAccountChecked As Boolean = False
+
+    ''' <summary>
+    ''' 还没设过全局账户时，用当前账户初始化一次。
+    ''' 这样左下角的「全局账户」就有了独立的值，不会随启动页切换版本账户而变。
+    ''' </summary>
+    Public Sub EnsureDefaultAccount()
+        If DefaultAccountChecked Then Return
+        DefaultAccountChecked = True
+        Try
+            If GetDefaultAccount() IsNot Nothing Then Return
+            Dim Ref = GetVersionAccount()
+            If Ref IsNot Nothing AndAlso AccountExists(Ref) Then SetDefaultAccount(Ref)
+        Catch ex As Exception
+            Logger.Warn(ex, "初始化全局账户失败")
+        End Try
+    End Sub
 
     ''' <summary>设置全局默认账户（传 Nothing 清除）。</summary>
     Public Sub SetDefaultAccount(Ref As AccountRef)
@@ -104,8 +184,40 @@ Public Module AccountPool
         Else
             Settings.Set(DefaultAccountKey, Ref.Type.ToString() & "|" & Ref.Name)
             Settings.Set("LoginType", Ref.Type)
+            TouchAccount(Ref) '选过就算最近使用
         End If
     End Sub
+
+    ''' <summary>账户名是否仍存在于已保存的账户里（防止改名、删号后一直用旧名字）。</summary>
+    Public Function AccountExists(Ref As AccountRef) As Boolean
+        If Ref Is Nothing OrElse String.IsNullOrWhiteSpace(Ref.Name) Then Return False
+        Try
+            Select Case Ref.Type
+                Case McLoginType.Ms
+                    Dim MsJson As JObject = Settings.Get(Of String)("LoginMsJson").DeserializeJson()
+                    If MsJson Is Nothing Then Return False
+                    Return MsJson(Ref.Name) IsNot Nothing
+                Case McLoginType.Legacy
+                    Return NameInList(Settings.Get(Of String)("LoginLegacyName"), Ref.Name)
+                Case McLoginType.Nide
+                    Return NameInList(Settings.Get(Of String)("LoginNideEmail"), Ref.Name)
+                Case McLoginType.Auth
+                    Return NameInList(Settings.Get(Of String)("LoginAuthEmail"), Ref.Name)
+                Case Else
+                    Return False
+            End Select
+        Catch
+            Return False
+        End Try
+    End Function
+
+    Private Function NameInList(Raw As String, Name As String) As Boolean
+        If String.IsNullOrWhiteSpace(Raw) OrElse String.IsNullOrWhiteSpace(Name) Then Return False
+        For Each Item In Raw.Split("¨")
+            If String.Equals(Item.Trim(), Name.Trim(), StringComparison.OrdinalIgnoreCase) Then Return True
+        Next
+        Return False
+    End Function
 
     Private Function ParseRef(Raw As String) As AccountRef
         If String.IsNullOrWhiteSpace(Raw) Then Return Nothing
@@ -133,11 +245,11 @@ Public Module AccountPool
             Case McLoginType.Nide
                 Dim Server = GetNideServerName()
                 If Server = "" Then Throw New Exception("尚未配置统一通行证服务器，请先在登录页选择服务器并登录一次")
-                Return New McLoginServer(McLoginType.Nide) With {.Token = "Nide", .UserName = GetThirdPartyStoredName("Nide", Ref.Name), .Password = GetThirdPartyPass("Nide", Ref.Name), .Description = "统一通行证", .Type = McLoginType.Nide, .BaseUrl = "https://auth.mc-user.com:233/" & Server & "/authserver"}
+                Return New McLoginServer(McLoginType.Nide) With {.Token = "Nide", .UserName = GetThirdPartyStoredName("Nide", Ref.Name), .Password = GetThirdPartyPass("Nide", Ref.Name), .Description = "统一通行证", .Type = McLoginType.Nide, .BaseUrl = "https://auth.mc-user.com:233/" & Server & "/authserver", .ProfileUuid = AccountSkinStore.AccountSkinGetUuid(McLoginType.Nide, Ref.Name)}
             Case McLoginType.Auth
                 Dim Server = GetAuthServerUrl()
                 If Server = "" Then Throw New Exception("尚未配置 Authlib-Injector 服务器，请先在登录页填写服务器地址并登录一次")
-                Return New McLoginServer(McLoginType.Auth) With {.Token = "Auth", .BaseUrl = Server & "/authserver", .UserName = GetThirdPartyStoredName("Auth", Ref.Name), .Password = GetThirdPartyPass("Auth", Ref.Name), .Description = "Authlib-Injector", .Type = McLoginType.Auth}
+                Return New McLoginServer(McLoginType.Auth) With {.Token = "Auth", .BaseUrl = Server & "/authserver", .UserName = GetThirdPartyStoredName("Auth", Ref.Name), .Password = GetThirdPartyPass("Auth", Ref.Name), .Description = "Authlib-Injector", .Type = McLoginType.Auth, .ProfileUuid = AccountSkinStore.AccountSkinGetUuid(McLoginType.Auth, Ref.Name)}
             Case Else
                 Return Nothing
         End Select
@@ -148,7 +260,7 @@ Public Module AccountPool
     ''' 设置里可能同时存在 Yuanzai_c@outlook.com 与 Yuanzai_C@outlook.com 两种写法，
     ''' 严格比较会取不到密码，导致启动时报「密码不能为空」。
     ''' </summary>
-    Private Function GetThirdPartyPass(Token As String, Name As String) As String
+    Public Function GetThirdPartyPass(Token As String, Name As String) As String
         Try
             Dim Names = If(Settings.Get(Of String)("Login" & Token & "Email"), "").Split("¨")
             Dim Passs = If(Settings.Get(Of String)("Login" & Token & "Pass"), "").Split("¨")

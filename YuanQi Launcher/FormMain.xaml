@@ -290,17 +290,17 @@
                 </Grid>
 
                 <!-- ==================== 内容区 ==================== -->
-                <Grid x:Name="PanMain" Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="72,0,0,0">
+                <Grid x:Name="PanMain" Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="72,0,0,0" ClipToBounds="True">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="1*"/>
                     </Grid.ColumnDefinitions>
-                    <Border Grid.Column="1" Grid.IsSharedSizeScope="True" UseLayoutRounding="True" SnapsToDevicePixels="True">
-                        <Border x:Name="PanMainRight" RenderOptions.BitmapScalingMode="NearestNeighbor" UseLayoutRounding="False" SnapsToDevicePixels="False">
+                    <Border Grid.Column="1" Grid.IsSharedSizeScope="True" UseLayoutRounding="True" SnapsToDevicePixels="True" ClipToBounds="True">
+                        <Border x:Name="PanMainRight" RenderOptions.BitmapScalingMode="NearestNeighbor" UseLayoutRounding="False" SnapsToDevicePixels="False" ClipToBounds="True">
                         </Border>
                     </Border>
-                    <Border Grid.IsSharedSizeScope="True" UseLayoutRounding="True" SnapsToDevicePixels="True">
-                        <Border x:Name="PanMainLeft" RenderOptions.BitmapScalingMode="NearestNeighbor" UseLayoutRounding="False" SnapsToDevicePixels="False">
+                    <Border Grid.IsSharedSizeScope="True" UseLayoutRounding="True" SnapsToDevicePixels="True" ClipToBounds="True">
+                        <Border x:Name="PanMainLeft" RenderOptions.BitmapScalingMode="NearestNeighbor" UseLayoutRounding="False" SnapsToDevicePixels="False" ClipToBounds="True">
                         </Border>
                     </Border>
                 </Grid>
@@ -415,6 +415,10 @@
                                                     Visibility="Collapsed" IsHitTestVisible="False" />
                 </Grid>
                 <Grid x:Name="PanMsg" Grid.RowSpan="2" Background="#00000000" Visibility="Collapsed" />
+                <!-- ==================== 休眠观赏页（全屏待机） ====================
+                     由主页右上角的「全屏」按钮触发，见 FormMain.EnterImmersiveMode()。
+                     页面本身零控件：只有风景、时间、日期和当前版本，点一下任意处或按 ESC 返回。 -->
+
             </Grid>
         </Border>
     </Grid>
