@@ -1,3 +1,4 @@
+<!-- PageSetupAdvanced —— 设置 · 高级页：调试模式、下载不复用文件、随机延迟、动画边界。 -->
 <local:MyPageRight
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"

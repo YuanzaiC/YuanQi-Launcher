@@ -1,3 +1,8 @@
+' =============================================================================
+'  PageSetupAdvanced —— 设置 · 高级页
+'  内容：调试相关的四个开关（调试模式、下载不复用文件、随机延迟、动画边界）。
+'  说明：该页设置会明显影响性能，只用于排查问题；滑条文案在页面加载时挂上。
+' =============================================================================
 Public Class PageSetupAdvanced
 
     Private Sub PageSetupAdvanced_Loaded(sender As Object, e As RoutedEventArgs) Handles Me.Loaded

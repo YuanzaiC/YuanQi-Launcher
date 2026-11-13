@@ -1,3 +1,13 @@
+' =============================================================================
+'  PageLinkMain —— 联机页（陶瓦 / Terracotta）
+'  结构：整页只有一张卡片，卡片内分三层——
+'        ① PanSelect  选择联机方式（创建房间 / 加入房间）
+'        ② PanRoom    连接中与失败（步骤条、进度、取消 / 重试 / 返回）
+'        ③ PanDone    已连接（房主看邀请码，访客看服务器地址）
+'        三层通过 ShowLayer 在同一张卡片内互换，卡片外框不动。
+'  状态：Waiting / Loading / Failed / Finished，由 LinkStates 驱动；
+'        加载三步（准备下载 → 下载模块 → 启动并建房/入房）由 LinkLoader 执行。
+' =============================================================================
 Imports System.Collections.ObjectModel
 Imports System.Runtime.InteropServices
 Imports 缘启

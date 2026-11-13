@@ -1,3 +1,4 @@
+<!-- PageLinkMain —— 联机页：单卡片三层（选择 / 连接中 / 已连接）结构。 -->
 <local:MyPageRight
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"

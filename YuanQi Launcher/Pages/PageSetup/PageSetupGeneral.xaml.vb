@@ -1,3 +1,9 @@
+' =============================================================================
+'  PageSetupGeneral —— 设置 · 通用页
+'  内容：更新提醒（含立即检查更新）、启动器行为、性能、设置与体检。
+'  说明：整页控件均通过 SettingService.Key 直接绑定设置项，页面本身只负责
+'        「刷新显示」（Reload）、「重置本页」（Reset）与几个按钮的点击处理。
+' =============================================================================
 Public Class PageSetupGeneral
 
     Private Sub PageSetupGeneral_Loaded(sender As Object, e As RoutedEventArgs) Handles Me.Loaded
