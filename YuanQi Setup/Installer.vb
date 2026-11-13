@@ -18,7 +18,7 @@ Public Module Installer
     Private Const RegUninstallKey As String = "Software\Microsoft\Windows\CurrentVersion\Uninstall\YuanQiLauncher"
     ' 属于「程序」的根目录文件与子目录；其余（YQL、.minecraft）都是用户数据，更新时绝不触碰
     Private ReadOnly ProgramFileExts As String() = {".exe", ".dll", ".config", ".pdb", ".xml"}
-    Private ReadOnly ProgramDirs As String() = {"Terracotta", "Videos"}
+    Private ReadOnly ProgramDirs As String() = {"Terracotta", "Videos", "Resources"}
 
     ' 命令行状态
     Public Silent As Boolean
@@ -341,7 +341,9 @@ Public Module Installer
                 Key.SetValue("Publisher", "缘栽", RegistryValueKind.String)
                 Key.SetValue("InstallLocation", Target, RegistryValueKind.String)
                 Key.SetValue("DisplayIcon", Path.Combine(Target, AppExeName), RegistryValueKind.String)
-                Key.SetValue("UninstallString", "cmd /c """"" & Path.Combine(Target, "Uninstall.bat") & """""", RegistryValueKind.String)
+                Key.SetValue("UninstallString",
+                             "cmd /c " & Chr(34) & Chr(34) & Path.Combine(Target, "Uninstall.bat") & Chr(34) & Chr(34),
+                             RegistryValueKind.String)
                 Key.SetValue("NoModify", 1, RegistryValueKind.DWord)
                 Key.SetValue("NoRepair", 1, RegistryValueKind.DWord)
             End Using
@@ -361,22 +363,54 @@ Public Module Installer
                 "set ""DIR=%~dp0""",
                 "echo Stopping YuanQi Launcher...",
                 "taskkill /f /im ""YuanQi Launcher.exe"" >nul 2>&1",
+                "taskkill /f /im ""terracotta.exe"" >nul 2>&1",
                 "echo Removing program files...",
                 "for %%E in (exe dll config pdb xml) do del /f /q ""%DIR%*.%%E"" >nul 2>&1",
-                "rd /s /q ""%DIR%Terracotta"" >nul 2>&1",
-                "rd /s /q ""%DIR%Videos"" >nul 2>&1",
+                "for %%D in (Terracotta Videos Resources) do if exist ""%DIR%%%D"" rd /s /q ""%DIR%%%D"" >nul 2>&1",
+                "echo Removing shortcuts...",
+                "if exist ""%DIR%Uninstall.ps1"" powershell -NoProfile -ExecutionPolicy Bypass -File ""%DIR%Uninstall.ps1"" >nul 2>&1",
+                "echo Removing registry entries...",
                 "reg delete ""HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\YuanQiLauncher"" /f >nul 2>&1",
                 "reg delete ""HKCU\Software\YuanQiLauncher"" /f >nul 2>&1",
                 "choice /c YN /n /m ""Delete user data too (YQL, .minecraft)? [Y/N] """,
                 "if errorlevel 2 goto keep",
+                "echo Removing user data...",
                 "rd /s /q ""%DIR%YQL"" >nul 2>&1",
                 "rd /s /q ""%DIR%.minecraft"" >nul 2>&1",
+                "echo All done.",
+                "echo Cleaning up...",
+                "cd /d ""%TEMP%""",
+                "powershell -NoProfile -ExecutionPolicy Bypass -Command ""Start-Sleep -Milliseconds 600; Remove-Item -LiteralPath ('%DIR%'.TrimEnd([char]92)) -Recurse -Force -ErrorAction SilentlyContinue""",
+                "exit /b",
                 ":keep",
-                "echo Done.",
-                "timeout /t 2 >nul",
-                "del /f /q ""%~f0"" >nul 2>&1"
+                "echo Done. User data kept in %DIR%",
+                "echo Cleaning up...",
+                "powershell -NoProfile -ExecutionPolicy Bypass -Command ""Start-Sleep -Milliseconds 500; Remove-Item -LiteralPath '%~f0' -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath '%DIR%Uninstall.ps1' -Force -ErrorAction SilentlyContinue""",
+                "exit /b"
             }
             File.WriteAllLines(Path.Combine(Target, "Uninstall.bat"), Lines, Encoding.ASCII)
+            '清理快捷方式交给 PowerShell：.lnk 里是 Unicode 路径，批处理里写不了中文文件名
+            Dim PsLines As String() = {
+                "$target = 'YuanQi Launcher.exe'",
+                "$shell = New-Object -ComObject WScript.Shell",
+                "$dirs = @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('Programs'))",
+                "foreach ($dir in $dirs) {",
+                "    if (-not (Test-Path -LiteralPath $dir)) { continue }",
+                "    Get-ChildItem -LiteralPath $dir -Filter *.lnk -Recurse -ErrorAction SilentlyContinue | ForEach-Object {",
+                "        try {",
+                "            $sc = $shell.CreateShortcut($_.FullName)",
+                "            if ($sc.TargetPath -like ('*' + $target)) {",
+                "                Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue",
+                "                $parent = Split-Path $_.FullName -Parent",
+                "                if ((Test-Path -LiteralPath $parent) -and -not (Get-ChildItem -LiteralPath $parent -Force -ErrorAction SilentlyContinue) -and ($parent -ne $dir)) {",
+                "                    Remove-Item -LiteralPath $parent -Force -ErrorAction SilentlyContinue",
+                "                }",
+                "            }",
+                "        } catch { }",
+                "    }",
+                "}"
+            }
+            File.WriteAllLines(Path.Combine(Target, "Uninstall.ps1"), PsLines, Encoding.ASCII)
         Catch
         End Try
     End Sub

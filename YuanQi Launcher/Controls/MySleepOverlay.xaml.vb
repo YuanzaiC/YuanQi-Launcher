@@ -30,7 +30,6 @@ Public Class MySleepOverlay
     ''' <summary>进入时刻，用来忽略「进入的那一下」被同一个点击顺手带走。</summary>
     Private _EnteredAt As Long = 0
     ''' <summary>资源加载令牌：退出或重新进入后，迟到的加载结果直接丢掉。</summary>
-    Private _LoadToken As Integer = 0
     Private _LastMinute As Integer = -1
     Private _LastInstance As McInstance
     ''' <summary>进入前抓下的启动器画面，用来遮住窗口尺寸突变的那一帧。</summary>
@@ -76,7 +75,6 @@ Public Class MySleepOverlay
         _PhantomRect = PhantomRect
         _Active = True
         _EnteredAt = GetTimeMs()
-        _LoadToken += 1
 
         Visibility = Visibility.Visible
         ResetVisualState()
@@ -105,6 +103,26 @@ Public Class MySleepOverlay
         RefreshClock(True)
         RefreshInstance(Instance)
         UpdateLayout()
+        '全景在进场之前就建好：进场第一帧就是真背景，不会先闪一下渐变底再「换掉」
+        TryBuildPanoramaNow()
+    End Sub
+
+    ''' <summary>
+    ''' 立刻把全景搭起来。素材在启动器里预热过，这里只是拼六个面，很快；
+    ''' 万一没预热，也在这里同步读一次（一次性代价），换来的是进场第一帧就对。
+    ''' </summary>
+    Private Sub TryBuildPanoramaNow()
+        '先收掉上一次留下的场景，免得这一套读不出来时还挂着上一套
+        Viewport.Visibility = Visibility.Collapsed
+        Viewport.Children.Clear()
+        RectFallback.Visibility = Visibility.Visible
+        RectFallbackGlow.Visibility = Visibility.Visible
+        Try
+            Dim Faces As BitmapSource() = ModImmersiveAssets.GetPanoramaFaces(_LastInstance)
+            If Faces IsNot Nothing Then BuildPanorama(Faces)
+        Catch ex As Exception
+            Logger.Warn(ex, "休眠页：构建全景失败")
+        End Try
     End Sub
 
     ''' <summary>窗口已经贴到全屏，开始播进场动画。</summary>
@@ -114,7 +132,6 @@ Public Class MySleepOverlay
         PanUi.Opacity = 1
         PlayIntro()
         TimerClock.Start()
-        LoadAssetsAsync(_LastInstance, _LoadToken)
     End Sub
 
     ''' <summary>
@@ -151,7 +168,6 @@ Public Class MySleepOverlay
     Public Sub [End]()
         If Not _Active Then Return
         _Active = False
-        _LoadToken += 1
         TimerClock.Stop()
         PlayOutro()
     End Sub
@@ -302,27 +318,6 @@ Public Class MySleepOverlay
 #Region "全景"
 
     ''' <summary>
-    ''' 全景与字体都在后台读盘、解码，读不到就保留自绘渐变，页面不会空、也不会卡。
-    ''' </summary>
-    Private Sub LoadAssetsAsync(Instance As McInstance, Token As Integer)
-        RunInNewThread(
-        Sub()
-            Dim Faces As BitmapSource() = Nothing
-            Try
-                Faces = ModImmersiveAssets.GetPanoramaFaces(Instance)
-            Catch ex As Exception
-                Logger.Warn(ex, "休眠页：读取全景贴图失败")
-            End Try
-            If Faces Is Nothing Then Return
-            RunInUi(
-            Sub()
-                If Token <> _LoadToken OrElse Not _Active Then Return
-                BuildPanorama(Faces)
-            End Sub)
-        End Sub, "休眠页 全景加载", ThreadPriority.BelowNormal)
-    End Sub
-
-    ''' <summary>
     ''' 相机水平视角。立方体每个面张角 90°，70° 时一屏约看到一个面的 7 成宽，
     ''' 与预览页的取景基本一致；调小会明显「推近」，画面只剩几个方块。
     ''' </summary>
@@ -421,15 +416,22 @@ Public Class MySleepOverlay
     ''' 全部走 GPU；静止时 CPU 基本为 0，这正是待机页需要的。
     ''' </summary>
     Private Sub StartPanoramaSpin(Yaw As AxisAngleRotation3D)
-        '省电 / 无障碍：不转，固定在 120°，画面依然完整
+        '每次进场从随机方向开始：同一个机位看久了太死板
+        Dim StartAngle As Double = SpinRandom.Next(0, 360)
+        Logger.Info($"休眠页：全景起始方向 {StartAngle:0}°")
+        '省电 / 无障碍：不转，随机停在一个方向，画面依然完整
         If Not SystemParameters.ClientAreaAnimation OrElse (RenderCapability.Tier >> 16) < 2 Then
-            Yaw.Angle = 120
+            Yaw.Angle = StartAngle
             Return
         End If
-        Dim Spin As New DoubleAnimation(0, 360, New Duration(TimeSpan.FromSeconds(190))) With {
+        Yaw.Angle = StartAngle
+        Dim Spin As New DoubleAnimation(StartAngle, StartAngle + 360, New Duration(TimeSpan.FromSeconds(190))) With {
             .RepeatBehavior = RepeatBehavior.Forever}
         Yaw.BeginAnimation(AxisAngleRotation3D.AngleProperty, Spin)
     End Sub
+
+    ''' <summary>随机起始方向用（每次进场换一个机位）。</summary>
+    Private Shared ReadOnly SpinRandom As New Random()
 
 #End Region
 

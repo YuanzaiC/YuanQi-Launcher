@@ -1,4 +1,4 @@
-﻿Public Class MyImage
+Public Class MyImage
     Inherits Image
 
 #Region "公开属性"
@@ -137,18 +137,22 @@
                 Catch
                 End Try
                 '加载本地备用图片
+                '注意：网络图片（网站图标之类）失败只记日志，不要弹错误提示——
+                '很多站点禁止外部引用，用户既看不懂也帮不上忙，弹出来只是打扰。
                 If IsLocalFallback Then
                     Try
                         ActualSource = FallbackSource
                         Logger.Warn(ex, $"下载图片失败，使用本地备用图片（{Source}）")
                         Return
                     Catch exx As Exception
-                        Logger.Error(ex, $"下载图片失败（{Source}）", LogBehavior.Toast)
-                        Logger.Error(exx, $"加载备用图片失败（{FallbackSource}）", LogBehavior.Toast)
+                        Logger.Warn(ex, $"下载图片失败（{Source}）")
+                        Logger.Warn(exx, $"加载备用图片失败（{FallbackSource}）")
                     End Try
                 Else
-                    Logger.Error(ex, $"下载图片失败（{Source}，备用：{FallbackSource}）", LogBehavior.Toast)
+                    Logger.Warn(ex, $"下载图片失败（{Source}，备用：{FallbackSource}）")
                 End If
+                '没有可用图片时清空，避免一直停在"加载中"占位上
+                ActualSource = Nothing
             End Try
         End Sub, "MyImage PicLoader " & GetUuid() & "#", ThreadPriority.BelowNormal)
     End Sub

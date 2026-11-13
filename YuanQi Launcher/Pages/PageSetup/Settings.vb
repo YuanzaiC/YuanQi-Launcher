@@ -12,7 +12,6 @@ Public Class Settings
         New Setting("HintDownload", 0, Source:=Sources.Registry),
         New Setting("HintHide", False, Source:=Sources.Registry),
         New Setting("HintHandInstall", False, Source:=Sources.Registry),
-        New Setting("HintBuy", False, Source:=Sources.Registry),
         New Setting("HintClearRubbish", 0, Source:=Sources.Registry),
         New Setting("HintUpdateMod", False, Source:=Sources.Registry),
         New Setting("HintCustomCommand", False, Source:=Sources.Registry),
@@ -38,6 +37,7 @@ Public Class Settings
         New Setting("CacheDrops", "", Source:=Sources.Registry),
         New Setting("CacheConfig", 0, Source:=Sources.Registry),
         New Setting("CacheExportConfig", "", Source:=Sources.Registry),
+        New Setting("CacheSetupConfig", "", Source:=Sources.Registry), '设置导出/导入上次选择的文件位置
         New Setting("CacheSavedPageUrl", "", Source:=Sources.Registry),
         New Setting("CacheSavedPageVersion", "", Source:=Sources.Registry),
         New Setting("CacheMsOAuthRefresh", "", Source:=Sources.Registry, Encrypted:=True),
@@ -159,11 +159,30 @@ Public Class Settings
         New Setting("UiUiScale", 100), '界面缩放百分比
         New Setting("UiGreetingNameMode", 0), '主页问候语显示的名字：0=当前实例账户 1=全局账户 2=自定义
         New Setting("UiGreetingNameCustom", ""), '主页问候语的自定义名字
-        New Setting("UiPerfMode", 0, OnChanged:=AddressOf ModRenderPerf.ApplySetting), '界面渲染性能档位：0 自动 / 1 流畅优先 / 2 画质优先
+        New Setting("UiPerfMode", 0, OnChanged:=AddressOf ModRenderPerf.ApplySetting),
+        New Setting("UiWindowAccelerated", False),          '关闭分层透明窗口以启用硬件加速（需重启后生效）
+        New Setting("WindowLeft", 0),               '窗口位置 X
+        New Setting("WindowTop", 0),                '窗口位置 Y
+        New Setting("SeedMapQuality", 2),
+    New Setting("SeedMapDiskCache", True),        '种子地图：把采样结果缓存到磁盘（默认开）           '种子地图清晰度：0 低 / 1 中 / 2 高
+        New Setting("SeedMapStructNamesAlways", True), '种子地图结构名字常显
+    New Setting("SeedMapCopyFormat", 0),        '种子地图右键复制格式：0 坐标文本 / 1 X空格Z / 2 X逗号Z / 3 /tp / 4 /tp @s / 5 三点坐标
+            New Setting("NotifyDownloadDone", True),    '下载完成后提醒
         New Setting("SystemEnvCheckVersion", 0, Source:=Sources.Registry), '环境体检已执行的版本
         New Setting("UiHiddenPageDownload", False, OnChanged:=AddressOf PageSetupUI.HiddenRefresh),
         New Setting("UiHiddenPageLink", False, OnChanged:=AddressOf PageSetupUI.HiddenRefresh),
         New Setting("UiHiddenPageSeedMap", False, OnChanged:=AddressOf PageSetupUI.HiddenRefresh),
+        New Setting("SeedMapLayerVisible", True),   '种子地图：地形图层显示
+        New Setting("SeedMapGridVisible", True),    '种子地图：网格显示
+        New Setting("SeedMapSlimeVisible", False),  '种子地图：史莱姆区块
+        New Setting("SeedMapRelief", False),        '种子地图：浮雕
+        New Setting("SeedMapHighDetail", True),     '种子地图：高精度
+        New Setting("SeedMapStructs0", ""),         '种子地图：主世界结构勾选
+        New Setting("SeedMapStructs1", ""),         '种子地图：下界结构勾选
+        New Setting("SeedMapStructs2", ""),         '种子地图：末地结构勾选
+        New Setting("SeedMapBiomes0", ""),          '种子地图：主世界群系筛选
+        New Setting("SeedMapBiomes1", ""),          '种子地图：下界群系筛选
+        New Setting("SeedMapBiomes2", ""),          '种子地图：末地群系筛选
         New Setting("UiHiddenPageToolbox", False, OnChanged:=AddressOf PageSetupUI.HiddenRefresh),
         New Setting("UiHiddenPageSetup", False, OnChanged:=AddressOf PageSetupUI.HiddenRefresh),
         New Setting("UiHiddenPageOther", False, OnChanged:=AddressOf PageSetupUI.HiddenRefresh),

@@ -11,7 +11,7 @@
                 <TextBlock Text="启动器与游戏配置" Style="{StaticResource PageSub}" />
             </StackPanel>
 
-            <local:MyCard Margin="0,15" Title="基础" x:Name="CardLauncher">
+            <local:MyCard Margin="0,15" Title="主题" x:Name="CardLauncher">
                 <Grid Margin="25,40,25,17">
                     <StackPanel>
                         <Grid Margin="0,0,0,6">
@@ -112,23 +112,15 @@
                                 <local:MyComboBoxItem Content="150%" local:SettingService.Value="150" />
                             </local:MyComboBox>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                            <TextBlock Text="渲染性能" VerticalAlignment="Center" Margin="0,0,12,0" Foreground="{StaticResource ColorBrushGray2}" />
-                            <local:MyComboBox x:Name="ComboUiPerfMode" local:SettingService.Key="UiPerfMode" Width="150" Height="28" VerticalAlignment="Center" HorizontalAlignment="Left"
-                                              ToolTip="启动器用的是分层透明窗口，Windows 只能对界面做软件渲染，后台跑大型游戏时会明显掉帧。&#xa;自动：动画期间自动加快绘制，掉帧时临时降低阴影等特效。&#xa;流畅优先：始终按低开销绘制。&#xa;画质优先：不做任何自动降级，保持原有观感。">
-                                <local:MyComboBoxItem Content="自动（默认）" local:SettingService.Value="0" IsSelected="True" />
-                                <local:MyComboBoxItem Content="流畅优先" local:SettingService.Value="1" />
-                                <local:MyComboBoxItem Content="画质优先" local:SettingService.Value="2" />
-                            </local:MyComboBox>
-                        </StackPanel>
-                        <local:MyCheckBox x:Name="CheckLauncherSplash" local:SettingService.Key="UiLauncherSplash" Text="打开启动器时播放主页苏醒动画" Margin="-1,0,0,1" Height="22" />
+                        
+                                                <local:MyCheckBox x:Name="CheckLauncherSplash" local:SettingService.Key="UiLauncherSplash" Text="打开启动器时播放主页苏醒动画" Margin="-1,0,0,1" Height="22" />
                         <local:MyCheckBox x:Name="CheckLauncherLogo" local:SettingService.Key="UiLauncherLogo" Text="打开启动器时显示 缘启 图标" Margin="-1,0,0,1" Height="22" />
                         <local:MyCheckBox x:Name="CheckLauncherSpecialSplash" local:SettingService.Key="UiLauncherSpecialSplash" Text="节日与彩蛋期间使用特殊苏醒动画" Margin="-1,0,0,1" Height="22"
                                           ToolTip="春节、国庆期间自动使用对应的节日苏醒动画；平时有 2% 概率出现彩蛋动画。&#xa;关闭后始终使用普通的苏醒动画。&#xa;&#xa;想在任意时候预览某个特殊动画，可以给启动器快捷方式加上参数：&#xa;-spring（春节）、-national（国庆）、-egg（彩蛋）" />
                     </StackPanel>
                 </Grid>
             </local:MyCard>
-            <local:MyCard x:Name="CardBackground" Margin="0,0,0,15" Title="背景图片">
+            <local:MyCard x:Name="CardBackground" Margin="0,0,0,15" Title="背景">
                 <StackPanel Margin="25,40,25,20">
                     <Grid x:Name="PanBackgroundSuit" Height="28" Margin="0,0,0,10" Visibility="Collapsed">
                         <Grid.ColumnDefinitions>
@@ -176,13 +168,13 @@
                             <ColumnDefinition Width="Auto" SharedSizeGroup="Button" />
                             <ColumnDefinition Width="Auto" SharedSizeGroup="Button" />
                         </Grid.ColumnDefinitions>
-                        <local:MyButton x:Name="BtnBackgroundOpen" MinWidth="140" Text="打开文件夹" Padding="13,0" Margin="0,0,20,0" ToolTip="将背景图片放到该文件夹，缘启 将会在每次打开时随机加载其中的一张图片"/>
-                        <local:MyButton x:Name="BtnBackgroundRefresh" MinWidth="140" Text="刷新背景图片" Padding="13,0" Margin="0,0,20,0" ToolTip="随机加载文件夹内的一张背景图片" Grid.Column="1"/>
-                        <local:MyButton x:Name="BtnBackgroundClear" MinWidth="140" Text="清空背景图片" Visibility="Collapsed" Padding="13,0" Margin="0,0,20,0" ColorType="Red" Grid.Column="2"/>
+                        <local:MyButton Height="35" x:Name="BtnBackgroundOpen" MinWidth="140" Text="打开文件夹" Padding="13,0" Margin="0,0,20,0" ToolTip="将背景图片放到该文件夹，缘启 将会在每次打开时随机加载其中的一张图片"/>
+                        <local:MyButton Height="35" x:Name="BtnBackgroundRefresh" MinWidth="140" Text="刷新背景图片" Padding="13,0" Margin="0,0,20,0" ToolTip="随机加载文件夹内的一张背景图片" Grid.Column="1"/>
+                        <local:MyButton Height="35" x:Name="BtnBackgroundClear" MinWidth="140" Text="清空背景图片" Visibility="Collapsed" Padding="13,0" Margin="0,0,20,0" ColorType="Red" Grid.Column="2"/>
                     </Grid>
                 </StackPanel>
             </local:MyCard>
-            <local:MyCard x:Name="CardMusic" Margin="0,0,0,15" Title="背景音乐">
+            <local:MyCard x:Name="CardMusic" Margin="0,0,0,15" Title="音乐">
                 <StackPanel Margin="25,42,25,20">
                     <Grid x:Name="PanMusicVolume" Visibility="Collapsed" Height="22" Margin="0,0,0,10">
                         <Grid.ColumnDefinitions>
@@ -204,9 +196,9 @@
                             <ColumnDefinition Width="Auto" SharedSizeGroup="Button" />
                             <ColumnDefinition Width="Auto" SharedSizeGroup="Button" />
                         </Grid.ColumnDefinitions>
-                        <local:MyButton x:Name="BtnMusicOpen" Text="打开文件夹" MinWidth="140" Padding="13,0" Margin="0,0,20,0" ToolTip="将背景音乐放到该文件夹，缘启 将会播放其中的所有音乐"/>
-                        <local:MyButton x:Name="BtnMusicRefresh" Text="刷新背景音乐" MinWidth="140" Padding="13,0" Margin="0,0,20,0" ToolTip="刷新播放列表，并播放列表中的音乐" Grid.Column="1"/>
-                        <local:MyButton x:Name="BtnMusicClear" Text="清空背景音乐" MinWidth="140" Visibility="Collapsed" Padding="13,0" Margin="0,0,20,0" ColorType="Red" Grid.Column="2"/>
+                        <local:MyButton Height="35" x:Name="BtnMusicOpen" Text="打开文件夹" MinWidth="140" Padding="13,0" Margin="0,0,20,0" ToolTip="将背景音乐放到该文件夹，缘启 将会播放其中的所有音乐"/>
+                        <local:MyButton Height="35" x:Name="BtnMusicRefresh" Text="刷新背景音乐" MinWidth="140" Padding="13,0" Margin="0,0,20,0" ToolTip="刷新播放列表，并播放列表中的音乐" Grid.Column="1"/>
+                        <local:MyButton Height="35" x:Name="BtnMusicClear" Text="清空背景音乐" MinWidth="140" Visibility="Collapsed" Padding="13,0" Margin="0,0,20,0" ColorType="Red" Grid.Column="2"/>
                     </Grid>
                 </StackPanel>
             </local:MyCard>
@@ -239,8 +231,8 @@
                             <ColumnDefinition Width="Auto" SharedSizeGroup="Button" />
                             <ColumnDefinition Width="Auto" SharedSizeGroup="Button" />
                         </Grid.ColumnDefinitions>
-                        <local:MyButton x:Name="BtnLogoChange" Text="更改图片" MinWidth="140" Padding="13,0" Margin="0,0,20,0" />
-                        <local:MyButton x:Name="BtnLogoDelete" Text="清空图片" MinWidth="140" Padding="13,0" Margin="0,0,20,0" ColorType="Red" Grid.Column="1" />
+                        <local:MyButton Height="35" x:Name="BtnLogoChange" Text="更改图片" MinWidth="140" Padding="13,0" Margin="0,0,20,0" />
+                        <local:MyButton Height="35" x:Name="BtnLogoDelete" Text="清空图片" MinWidth="140" Padding="13,0" Margin="0,0,20,0" ColorType="Red" Grid.Column="1" />
                     </Grid>
                 </StackPanel>
             </local:MyCard>
@@ -324,7 +316,9 @@
                     </Grid>
                 </StackPanel>
             </local:MyCard>
-            <local:MyCard x:Name="CardSwitch" Margin="0,0,0,15" Title="功能隐藏">
+            
+
+<local:MyCard x:Name="CardSwitch" Margin="0,0,0,15" Title="页面与功能隐藏（高级）">
                 <StackPanel Margin="25,38,15,15">
                     <TextBlock Margin="0,1,0,1" Text="你可以隐藏不需要的页面或关闭特定功能。在任意界面按 F12 可以暂时显示被隐藏的功能。" TextWrapping="Wrap" />
                     <Grid>

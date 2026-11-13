@@ -56,7 +56,7 @@ Public Class PageDownloadModify
         Dim Manifest = Configs.McInstallManifest.Get(Task.Input.Config)
         If Manifest IsNot Nothing AndAlso Manifest.SchemaVersion > Versions.McInstallManifestVersion Then
             Logger.Warn($"安装清单由更新版本的缘启创建（清单版本：{Manifest.SchemaVersion}，当前版本：{Versions.McInstallManifestVersion}）")
-            Throw New Exception($"更新缘启后才能修改它！点击【设置 → 其他 → 检查更新】以更新。")
+            Throw New Exception($"更新缘启后才能修改它！点击【设置 → 通用 → 启动器更新】以更新。")
         End If
         If Manifest IsNot Nothing Then
             Dim LatestManifest = Manifest.RefreshModComponents(Task.Input.PathIndie)
@@ -713,7 +713,7 @@ Public Class PageDownloadModify
                 If PageInstanceLeft.Instance IsNot Nothing AndAlso PathUtils.IsSame(PageInstanceLeft.Instance.PathVersion, OldPath) Then PageInstanceLeft.Instance = RenamedInstance
                 If McInstanceSelected IsNot Nothing AndAlso PathUtils.IsSame(McInstanceSelected.PathVersion, OldPath) Then McInstanceSelected = RenamedInstance
                 PageInstanceLeft.ReloadCurrentJava()
-                Hint("重命名成功！", HintType.Green)
+                '重命名后列表里立刻能看到，不再弹提示
                 LoaderFolderRun(McInstanceListLoader, McFolderSelected, LoaderFolderRunType.ForceRun, MaxDepth:=1, ExtraPath:="versions\")
                 FrmMain.PageBack()
             Catch ex As Exception

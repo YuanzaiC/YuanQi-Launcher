@@ -304,15 +304,17 @@
                         </Border>
                     </Border>
                 </Grid>
-                <!-- 浮动返回键：用 Popup 承载以覆盖 WebView2 原生窗口（子页面时显示于内容区左下角） -->
+                <!-- 浮动返回键：用 Popup 承载以覆盖 WebView2 原生窗口（子页面时显示于内容区右下角） -->
                 <Popup x:Name="PopFloatingBack" AllowsTransparency="True" Placement="Bottom" PlacementTarget="{Binding ElementName=PanForm}"
-                       HorizontalOffset="88" VerticalOffset="-48" StaysOpen="True" IsOpen="False">
-                    <Button x:Name="BtnFloatingBack" Width="34" Height="34"
+                       HorizontalOffset="0" VerticalOffset="-48" StaysOpen="True" IsOpen="False">
+                    <!-- 与原版启动器一致的浮动圆钮：40×40、白色实心、1px 浅边框、轻微投影 -->
+                    <Button x:Name="BtnFloatingBack" Width="40" Height="40"
                             Cursor="Hand" ToolTip="返回上一页" Focusable="False">
                     <Button.Template>
                         <ControlTemplate TargetType="Button">
                             <Border x:Name="Bd" Background="{DynamicResource BrushSurface}" BorderBrush="{DynamicResource BrushBorder}"
-                                    BorderThickness="1" CornerRadius="17">
+                                    BorderThickness="1" CornerRadius="20">
+
                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Border>
                             <ControlTemplate.Triggers>
@@ -325,13 +327,13 @@
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
                     </Button.Template>
-                    <Path Data="M8,3 L4,7.5 L8,12" Stroke="{DynamicResource BrushText1}" StrokeThickness="1.6"
+                    <Path Data="M9,3 L4.5,8 L9,13" Stroke="{DynamicResource BrushText1}" StrokeThickness="1.8"
                           StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
-                          Width="8" Height="14" Stretch="Uniform" />
+                          Width="9" Height="15" Stretch="Uniform" />
                     </Button>
                 </Popup>
                 <Popup x:Name="PopHint" AllowsTransparency="True" Placement="Bottom" PlacementTarget="{Binding ElementName=PanForm}"
-                       HorizontalOffset="88" VerticalOffset="-220" StaysOpen="True" IsOpen="True">
+                       HorizontalOffset="96" VerticalOffset="-224" StaysOpen="True" IsOpen="True">
                     <Grid Width="480" Height="200" IsHitTestVisible="False" UseLayoutRounding="True" SnapsToDevicePixels="True">
                         <StackPanel x:Name="PanHint" IsHitTestVisible="False" VerticalAlignment="Bottom" />
                     </Grid>

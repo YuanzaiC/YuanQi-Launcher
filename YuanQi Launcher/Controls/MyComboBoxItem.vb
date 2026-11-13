@@ -14,45 +14,17 @@ Public Class MyComboBoxItem
     Private Const AnimationTimeOut As Integer = 300
     Private BackColorName As String, FontOpacity As Double
 
-    Private Sub RefreshColor() Handles Me.Unselected, Me.MouseMove, Me.MouseLeave, Me.Selected, Me.IsEnabledChanged
-        '判断当前颜色
-        Dim NewBackColorName As String, NewFontOpacity As Double
-        Dim Time As Integer
-        If IsSelected Then
-            NewBackColorName = "ColorBrush6"
-            NewFontOpacity = 1
-            Time = AnimationTimeIn
-        ElseIf IsMouseOver Then
-            NewBackColorName = "ColorBrush8"
-            NewFontOpacity = 1
-            Time = AnimationTimeIn
-        ElseIf IsEnabled Then
-            NewBackColorName = "ColorBrushTransparent"
-            NewFontOpacity = 1
-            Time = AnimationTimeOut
-        Else
-            NewBackColorName = "ColorBrushTransparent"
-            NewFontOpacity = 0.4
-            Time = AnimationTimeOut
-        End If
-        If BackColorName = NewBackColorName AndAlso FontOpacity = NewFontOpacity Then Return
-        BackColorName = NewBackColorName
-        FontOpacity = NewFontOpacity
-        '触发颜色动画
-        If IsLoaded AndAlso AniControlEnabled = 0 Then '防止默认属性变更触发动画
-            '有动画
-            AniStart({
-                AaColor(Me, BackgroundProperty, BackColorName, Time),
-                AaOpacity(Me, FontOpacity - Opacity, Time)
-            }, "ComboBoxItem Color " & Uuid)
-        Else
-            '无动画
+    Private Sub RefreshColor() Handles Me.IsEnabledChanged
+        '悬停 / 选中的底色改由控件模板的触发器负责：
+        '  1) 原来用的 ColorBrush8 就是纯白，悬停等于没变化，只看到文字在动；
+        '  2) 原来靠 MouseMove / MouseLeave + 300ms 动画切换，鼠标快速移开时容易漏掉、停留不消失。
+        '这里只保留"被禁用时整体变淡"。
+        Try
             AniStop("ComboBoxItem Color " & Uuid)
-            SetResourceReference(BackgroundProperty, BackColorName)
-            Opacity = FontOpacity
-        End If
+            Opacity = If(IsEnabled, 1.0, 0.4)
+        Catch ex As Exception
+        End Try
     End Sub
-
     Public Overrides Function Tostring() As String
         Return Content.ToString
     End Function
@@ -60,8 +32,5 @@ Public Class MyComboBoxItem
         Return Value.Content.ToString
     End Operator
 
-    Private Sub MyComboBoxItem_MouseLeftButtonUp(sender As Object, e As MouseButtonEventArgs) Handles Me.MouseLeftButtonUp
-        Logger.Info($"选择下拉列表项：{Tostring()}")
-    End Sub
 
 End Class

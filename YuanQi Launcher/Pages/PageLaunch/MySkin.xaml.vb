@@ -62,7 +62,7 @@ Public Class MySkin
                 Else
                     FileUtils.Copy(Address, FileAddress)
                 End If
-                Hint("皮肤保存成功！", HintType.Green)
+                '皮肤变更画面上直接可见，不再弹提示
             End If
         Catch ex As Exception
             Logger.Error(ex, "保存皮肤失败", LogBehavior.Toast)
@@ -185,7 +185,7 @@ Public Class MySkin
                     SkinLoader.WaitForExit(IsForceRestart:=True)
                 Next
                 '完成提示
-                Hint("更改皮肤成功！", HintType.Green)
+                '皮肤变更画面上直接可见，不再弹提示
             Catch ex As Exception
                 Logger.Error(ex, "更改正版皮肤后刷新皮肤失败")
             End Try
@@ -271,7 +271,7 @@ Retry:
                     Hint("更改披风失败：" & Result.DeserializeJson()("errorMessage").ToString, HintType.Red)
                     Return
                 Else
-                    Hint("更改披风成功！", HintType.Green)
+                    '披风变更画面上直接可见，不再弹提示
                     '更新当前选择的披风
                     For Each Cape In SkinData("capes")
                         Cape("state") = "INACTIVE"

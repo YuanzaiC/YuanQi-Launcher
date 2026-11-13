@@ -191,7 +191,6 @@ Public Class CustomEvent
                         MyMsgBox("EventData 必须为一个网址。" & vbCrLf & "如果想要启动程序，请将 EventType 改为 打开文件。", "事件执行失败")
                         Return
                     End If
-                    Hint("正在开启，请稍候：" & Arg)
                     RunInThread(Sub() OpenWebsite(Arg))
 
                 Case EventType.打开帮助

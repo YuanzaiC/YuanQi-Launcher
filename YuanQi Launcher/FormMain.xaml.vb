@@ -312,7 +312,18 @@ Public Class FormMain
         [AddHandler](DragDrop.DragOverEvent, New DragEventHandler(AddressOf HandleDrag), handledEventsToo:=True)
         '加载 UI
         InitializeComponent()
-        Opacity = 0
+        ApplyWindowAccelerationMode()
+        '硬件加速模式的窗口是不透明的：Show 之后到首帧渲染之间会露出"启动器本体页面"一瞬。
+        '透明模式下这段被窗口 Opacity=0 挡住了，这里改用开屏白幕先盖上（Show 之前设置），
+        '后面的开屏动画 / 白幕淡出流程会照常把它收掉；异常兜底时 SplashFinishInstant 也会收起它。
+        If AccelWindowMode AndAlso PanSplash IsNot Nothing Then PanSplash.Visibility = Visibility.Visible
+        '窗口先按设计尺寸出现、Loaded 后再改成上次的尺寸与位置，中间那一下跳动会在右下角闪过一道阴影
+        '（不透明窗口更明显）。这里在 Show 之前就把尺寸与位置摆好，整个启动过程窗口不再跳。
+        ApplySavedWindowGeometry()
+        AddHandler LocationChanged, AddressOf FormMain_SavePosition
+        '硬件加速模式下窗口是不透明的：启动时若把 Opacity 置 0，WPF 会把不足 1 的部分与黑色混合，
+        '表现为启动先黑一下。所以这个模式直接满不透明出现，淡入动画在 ContentRendered 里也会跳过。
+        If AccelWindowMode Then Opacity = 1 Else Opacity = 0
         '开启管理员权限下的文件拖拽
         If WindowsUtils.HasAdminRole() Then
             Static Helper As New DragHelper
@@ -333,6 +344,205 @@ Public Class FormMain
         McFolderListLoader.Start(0) '为了让下载已存在文件检测可以正常运行，必须跑一次；为了让启动按钮尽快可用，需要尽早执行；为了与 PageLaunchLeft 联动，需要为 0 而不是 GetUuid
 
         Logger.Info($"第二阶段加载用时：{GetTimeMs() - ApplicationStartTick} ms")
+    End Sub
+
+    '---- 硬件加速模式：摘掉系统非客户区边框 ----
+
+    <Runtime.InteropServices.DllImport("user32.dll")>
+    Private Shared Function AccelGetWindowLong(hWnd As IntPtr, nIndex As Integer) As Integer
+    End Function
+    <Runtime.InteropServices.DllImport("user32.dll")>
+    Private Shared Function AccelSetWindowLong(hWnd As IntPtr, nIndex As Integer, dwNewLong As Integer) As Integer
+    End Function
+    <Runtime.InteropServices.DllImport("user32.dll")>
+    Private Shared Function SetWindowPos(hWnd As IntPtr, hWndInsertAfter As IntPtr, X As Integer, Y As Integer,
+                                          cx As Integer, cy As Integer, uFlags As Integer) As Boolean
+    End Function
+
+
+    Private Const GWL_STYLE As Integer = -16
+    Private Const DWMWA_TRANSITIONS_FORCEDISABLED As Integer = 3
+    Private Const WS_CAPTION As Integer = &HC00000
+    Private Const WS_THICKFRAME As Integer = &H40000
+    Private Const WS_BORDER As Integer = &H800000
+    Private Const WS_DLGFRAME As Integer = &H400000
+    Private Const SWP_NOSIZE As Integer = &H1
+    Private Const SWP_NOMOVE As Integer = &H2
+    Private Const SWP_NOZORDER As Integer = &H4
+    Private Const SWP_FRAMECHANGED As Integer = &H20
+
+    ''' <summary>是否处于"关闭分层窗口以启用硬件加速"模式：布局上的 8px 内缩要一并去掉。</summary>
+    Private AccelWindowMode As Boolean = False
+    Private AccelModeHooked As Boolean = False
+
+    ''' <summary>窗口句柄创建后，把系统边框样式摘掉——那圈黑边就是它画的。</summary>
+    Private Sub AccelMode_StripFrame(sender As Object, e As EventArgs)
+        Try
+            Dim H As IntPtr = New WindowInteropHelper(Me).Handle
+            If H = IntPtr.Zero Then Return
+            'DWM 会给带边框的窗口画一圈投影；摘掉边框后这圈投影是"淡出"消失的，
+            '淡的那一两百毫秒就是启动时右下角闪过的黑影。先关掉本窗口的 DWM 过渡动画，投影立刻消失。
+            Try
+                Dim NoTransitions As Integer = 1
+                DwmSetWindowAttribute(H, DWMWA_TRANSITIONS_FORCEDISABLED, NoTransitions, 4)
+            Catch ex As Exception
+            End Try
+            Dim Style As Integer = AccelGetWindowLong(H, GWL_STYLE)
+            Dim NewStyle As Integer = Style And Not (WS_THICKFRAME Or WS_CAPTION Or WS_BORDER Or WS_DLGFRAME)
+            If NewStyle <> Style Then
+                AccelSetWindowLong(H, GWL_STYLE, NewStyle)
+                SetWindowPos(H, IntPtr.Zero, 0, 0, 0, 0, SWP_NOSIZE Or SWP_NOMOVE Or SWP_NOZORDER Or SWP_FRAMECHANGED)
+            End If
+            '摘掉边框后客户区变大（多出边框那一圈），WPF 默认要等下一次布局才把内容铺满，
+            '中间那一帧就是内容比窗口小一圈、右边和下边露出底色。这里立刻按新尺寸重排一次，
+            '让首帧就是铺满的。
+            Try
+                Dispatcher.BeginInvoke(New Action(
+                    Sub()
+                        Me.UpdateLayout()
+                        FormMain_SizeChanged()
+                    End Sub), System.Windows.Threading.DispatcherPriority.Send)
+            Catch ex As Exception
+            End Try
+        Catch ex As Exception
+            Logger.Warn(ex, "摘掉窗口边框失败")
+        End Try
+    End Sub
+
+
+    ''' <summary>Show 之前按配置文件里的 WindowWidth/Height/Left/Top 摆好窗口，避免启动时窗口跳动闪出阴影。</summary>
+    Private Sub ApplySavedWindowGeometry()
+        Try
+            Dim IniPath As String = Paths.Base & "YQL\Setup.ini"
+            If Not IO.File.Exists(IniPath) Then Return
+            Dim W As Integer = 0, H As Integer = 0, L As Integer = 0, T As Integer = 0
+            For Each Line As String In IO.File.ReadAllLines(IniPath)
+                Dim S As String = Line.Trim()
+                Dim C As Integer = S.IndexOf(":"c)
+                If C <= 0 Then Continue For
+                Select Case S.Substring(0, C).Trim()
+                    Case "WindowWidth" : Integer.TryParse(S.Substring(C + 1).Trim(), W)
+                    Case "WindowHeight" : Integer.TryParse(S.Substring(C + 1).Trim(), H)
+                    Case "WindowLeft" : Integer.TryParse(S.Substring(C + 1).Trim(), L)
+                    Case "WindowTop" : Integer.TryParse(S.Substring(C + 1).Trim(), T)
+                End Select
+            Next
+            If W >= MinWidth AndAlso W <= 20000 Then Width = W
+            If H >= MinHeight AndAlso H <= 20000 Then Height = H
+            If L <> 0 OrElse T <> 0 Then
+                Dim Vt As New Rect(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
+                                   SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight)
+                If Vt.Contains(New Point(L + 120, T + 60)) Then
+                    WindowStartupLocation = WindowStartupLocation.Manual
+                    Left = L
+                    Top = T
+                End If
+            End If
+        Catch ex As Exception
+            Logger.Warn(ex, "提前恢复窗口尺寸失败")
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' 关闭分层窗口（AllowsTransparency=False）以恢复 WPF 硬件加速。
+    ''' 必须在窗口 Show 之前设置，所以放在构造函数里；需重启生效。
+    ''' </summary>
+    Private Sub ApplyWindowAccelerationMode()
+        Try
+            '设置是 Loaded 后才从磁盘加载的，构造函数里 Settings.Get 只会拿到默认值。
+            '所以这里直接按文本读配置文件（不依赖 ReadIni 的缓存与路径推断），并写诊断日志。
+            Dim IniPath As String = Paths.Base & "YQL\Setup.ini"
+            Dim Accel As Boolean = False
+            Dim RawVal As String = "(文件不存在)"
+            Try
+                If IO.File.Exists(IniPath) Then
+                    RawVal = "(未找到键)"
+                    For Each IniLine As String In IO.File.ReadAllLines(IniPath)
+                        Dim Trimmed As String = IniLine.Trim()
+                        If Trimmed.StartsWith("UiWindowAccelerated:", StringComparison.OrdinalIgnoreCase) Then
+                            RawVal = Trimmed.Substring(Trimmed.IndexOf(":"c) + 1).Trim()
+                            Accel = RawVal.Equals("True", StringComparison.OrdinalIgnoreCase)
+                            Exit For
+                        End If
+                    Next
+                End If
+            Catch ex As Exception
+                RawVal = "(读取异常)"
+            End Try
+            If Not Accel Then
+                Try
+                    Accel = Settings.Get(Of Boolean)("UiWindowAccelerated")
+                Catch ex As Exception
+                End Try
+            End If
+            If Not Accel Then Return
+            AccelWindowMode = True
+            'AllowsTransparency 只能在窗口句柄创建前设置，之后设置会抛异常；单独用 Try 包住，
+            '不能让它把后面的背景/边距/WindowChrome 一起跳过（否则会出现黑边）
+            Try
+                If AllowsTransparency Then AllowsTransparency = False
+            Catch ex As Exception
+            End Try
+            '窗口模板是裸 ContentPresenter，Window.Background 压根不会被绘制（这就是之前改背景没反应的原因）。
+            '真正要铺的是内容根容器 PanBack：卡片外侧露出的区域全靠它兜底，否则露黑。
+            '底色用白色而不是浅灰：这层只在"内容还没铺满"的瞬间露出来（右边、下边那一圈），
+            '和开屏白幕同色就不会被看出来；界面铺满后它完全被内容盖住，正常使用时看不到。
+            Dim BackBrush As New SolidColorBrush(Colors.White)
+            BackBrush.Freeze()
+            Background = BackBrush
+            '只在自己没有背景时才铺底，避免盖掉用户自定义的界面背景图
+            If PanBack IsNot Nothing AndAlso PanBack.Background Is Nothing Then PanBack.Background = BackBrush
+            If BorderForm IsNot Nothing Then
+                If BorderForm.Margin <> New Thickness(0) Then BorderForm.Margin = New Thickness(0)
+                '1px 描边在不透明窗口下就是一圈细线，边缘那圈"黑线"也有它的一份，直接去掉
+                BorderForm.BorderThickness = New Thickness(0)
+                BorderForm.BorderBrush = Nothing
+            End If
+            '裁切几何原本是 8px 圆角：不透明窗口下圆角外侧那一点点没有元素覆盖，会露出窗口底色（右下角最明显）。
+            '这个模式本来就是硬边直角，直接把圆角改成 0。
+            If RectForm IsNot Nothing Then
+                RectForm.RadiusX = 0
+                RectForm.RadiusY = 0
+            End If
+            '开屏白幕原本只盖 2 行，窗口不透明时没盖到的行会先露出界面
+            If PanSplash IsNot Nothing AndAlso PanForm IsNot Nothing Then
+                Grid.SetRowSpan(PanSplash, Math.Max(2, PanForm.RowDefinitions.Count))
+            End If
+            '四周那圈深色渐变原本是缩放热区的"阴影"，铺在透明边缘上看不出来；
+            '窗口不透明后它就变成一圈黑边，这里把它们的填充清掉（仍然保留拖拽缩放）
+            '这些矩形本来是给"圆角透明窗口"画的边缘投影：四条边各一条渐变，四个角各一块径向渐变，
+            '每条两端还内缩 13px。窗口不透明后它们就是一圈黑边，其中右下角那两块（右边 + 下边）
+            '在这块区域拼出一条直角阴影——只清填充还会留下 1px 描边，所以整个隐藏掉。
+            '缩放不靠它们：WindowChrome.ResizeBorderThickness = 6 已经接管了拖边改大小。
+            For Each Elem In New FrameworkElement() {ResizerT, ResizerB, ResizerL, ResizerR, ResizerLT, ResizerLB, ResizerRB, ResizerRT, RectLeftShadow}
+                Dim Rc = TryCast(Elem, Shapes.Rectangle)
+                If Rc IsNot Nothing Then
+                    Rc.Fill = Brushes.Transparent
+                    Rc.Visibility = Visibility.Collapsed
+                ElseIf Elem IsNot Nothing Then
+                    Elem.Visibility = Visibility.Collapsed
+                End If
+            Next
+            '---- 核心：去掉 Windows 绘制的非客户区边框（黑边就在这层，客户区背景盖不住）----
+            '1) 整窗玻璃化：GlassFrameThickness=-1 让 DWM 不再画那圈黑色边框
+            '2) 同时把 WS_THICKFRAME / WS_CAPTION 从窗口样式里摘掉
+            '   缩放仍交给 WindowChrome 的 ResizeBorderThickness 处理，所以不会失去拖边改大小
+            Dim Chrome As New System.Windows.Shell.WindowChrome With {
+                .CaptionHeight = 0,
+                .ResizeBorderThickness = New Thickness(6),
+                .GlassFrameThickness = New Thickness(-1),
+                .CornerRadius = New CornerRadius(0),
+                .UseAeroCaptionButtons = False}
+            System.Windows.Shell.WindowChrome.SetWindowChrome(Me, Chrome)
+            If Not AccelModeHooked Then
+                AccelModeHooked = True
+                AddHandler SourceInitialized, AddressOf AccelMode_StripFrame
+            End If
+        Catch ex As Exception
+            Logger.Warn(ex, "应用硬件加速窗口模式失败")
+        End Try
+            '布局里的裁剪矩形按 8px 内缩计算，这里立刻重排一次，让卡片铺满窗口
+            FormMain_SizeChanged()
     End Sub
     ''' <summary>
     ''' 构建并挂载主页。因主页首次构建约需 1 秒，默认推迟到窗口首帧后的空闲时机执行，
@@ -373,7 +583,9 @@ Public Class FormMain
         '（原来线性 340ms 会显得“慢慢渗出来”）
         Dim ShowAnims As New List(Of AniData) From {
             AaCode(Sub() AniControlEnabled -= 1, 30),
-            AaOpacity(Me, Settings.Get(Of Integer)("UiLauncherTransparent") / 1000 + 0.4, 180, 20, New AniEaseOutFluent(AniEasePower.Middle)),
+            If(AccelWindowMode,
+                AaCode(Sub() Opacity = 1, 20),
+                AaOpacity(Me, Settings.Get(Of Integer)("UiLauncherTransparent") / 1000 + 0.4, 180, 20, New AniEaseOutFluent(AniEasePower.Middle))),
             AaCode(
             Sub()
                 IsWindowLoadFinished = True
@@ -413,6 +625,20 @@ Public Class FormMain
         Catch ex As Exception
             Logger.Warn(ex, "启动界面刷新失败")
         End Try
+        '顺手把休眠页要用的全景在后台解好：第一次点「全屏」时背景是现成的，不会先闪一下渐变底
+        WarmSleepPanorama()
+    End Sub
+
+    ''' <summary>后台预热一套休眠页全景（已预热过就直接返回）。</summary>
+    Private Sub WarmSleepPanorama()
+        RunInNewThread(
+        Sub()
+            Try
+                ModImmersiveAssets.WarmPanorama(McInstanceSelected)
+            Catch ex As Exception
+                Logger.Warn(ex, "休眠页：预热全景失败")
+            End Try
+        End Sub, "休眠页 全景预热", ThreadPriority.BelowNormal)
     End Sub
 
     Private Sub FormMain_Loaded(sender As Object, e As RoutedEventArgs) Handles Me.Loaded
@@ -458,6 +684,22 @@ Public Class FormMain
         Try
             Height = Settings.Get(Of Integer)("WindowHeight")
             Width = Settings.Get(Of Integer)("WindowWidth")
+        '恢复窗口位置（之前只记了宽高）。换了显示器/分辨率后不能把窗口丢到屏幕外，所以做一次可见性校验
+        Try
+            Dim WL As Integer = Settings.Get(Of Integer)("WindowLeft")
+            Dim WT As Integer = Settings.Get(Of Integer)("WindowTop")
+            If WL <> 0 OrElse WT <> 0 Then
+                Dim Vt As New Rect(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
+                                   SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight)
+                If Vt.Contains(New Point(WL + 120, WT + 60)) Then
+                    WindowStartupLocation = WindowStartupLocation.Manual
+                    Left = WL
+                    Top = WT
+                End If
+            End If
+        Catch ex As Exception
+            Logger.Warn(ex, "恢复窗口位置失败")
+        End Try
             '若上次退出时处于最大化状态，窗口尺寸可能等于屏幕尺寸，这里收缩回可用区域
             Dim WorkArea = System.Windows.Forms.Screen.PrimaryScreen.WorkingArea
             Dim MaxWidth As Double = Math.Max(MinWidth, GetWPFSize(WorkArea.Width) - 40)
@@ -508,6 +750,10 @@ Public Class FormMain
         End Sub, "初始化", ThreadPriority.Lowest)
 
         Logger.Info($"第三阶段加载用时：{GetTimeMs() - ApplicationStartTick} ms")
+        '设置是在 Loaded 之后才从磁盘加载的，这里排到空闲时机再应用一次，
+        '否则构造函数与 Loaded 开头读到的都是默认值（False），开关等于没生效
+        Dispatcher.BeginInvoke(New Action(AddressOf ApplyWindowAccelerationMode),
+                               System.Windows.Threading.DispatcherPriority.ApplicationIdle)
     End Sub
     ''' <summary>
     ''' 启动后执行的初始化：协议授权、Java 初始化与各加载池。
@@ -1724,6 +1970,33 @@ Public Class FormMain
     ''' 是否可以向注册表储存尺寸改变信息。以此避免初始化时误储存。
     ''' </summary>
     Public IsSizeSaveable As Boolean = False
+    ''' <summary>记住窗口位置（最小化时 Left/Top 会变成 -32000，不保存）。</summary>
+    ''' <summary>最小化时让种子地图释放缓存、停止后台刷新；还原时重新加载。</summary>
+    Private Sub FormMain_StateChanged(sender As Object, e As EventArgs) Handles Me.StateChanged
+        Try
+            If FrmSeedMapMain Is Nothing Then Return
+            If WindowState = WindowState.Minimized Then
+                FrmSeedMapMain.OnHostMinimized()
+            Else
+                FrmSeedMapMain.OnHostRestored()
+            End If
+        Catch ex As Exception
+            Logger.Warn(ex, "通知种子地图窗口状态失败")
+        End Try
+    End Sub
+
+
+    Private Sub FormMain_SavePosition(sender As Object, e As EventArgs)
+        Try
+            If WindowState <> WindowState.Normal Then Return
+            If Not IsSizeSaveable Then Return
+            Settings.Set("WindowLeft", CInt(Left))
+            Settings.Set("WindowTop", CInt(Top))
+        Catch ex As Exception
+        End Try
+    End Sub
+
+
     Private Sub FormMain_SizeChanged() Handles Me.SizeChanged, Me.Loaded
         '最小化时的尺寸不是真实尺寸，既不保存也不参与布局计算
         If WindowState = WindowState.Minimized Then Return
@@ -1734,7 +2007,7 @@ Public Class FormMain
         '先更新圆角与透明边缘状态，再据此计算内容尺寸（避免依赖可能滞后的 ActualWidth）
         RefreshWindowChrome()
         '休眠页现在是独立窗口，启动器窗口在休眠期间完全不变形，所以这里只看最大化
-        Dim Margin = If(IsMaximizedCustom, 0.0, 8.0)
+        Dim Margin = If(IsMaximizedCustom OrElse AccelWindowMode, 0.0, 8.0)
         '界面缩放时，根容器的布局尺寸要放大为「窗口尺寸 ÷ 缩放比例」，
         '这样 LayoutTransform 缩小后的画面正好铺满窗口，不会留白也不会被裁掉
         Dim S As Double = If(UiScaleFactor <= 0, 1.0, UiScaleFactor)
@@ -1864,6 +2137,21 @@ Public Class FormMain
         '休眠态下的窗口外观（无圆角、无透明边缘、无缩放热区）由 EnterImmersiveMode 自己接管，
         '这里若继续按最大化状态刷新，会把圆角和 8px 边缘又加回去
         If IsSleeping Then Return
+        '硬件加速模式：窗口恒为硬边直角、铺满整个窗口、不显示自定义缩放条。
+        '必须在下面的"状态没变就返回"之前处理——否则窗口状态一变，这里会把 8px 透明边缘、
+        '8px 圆角和那八条缩放热区重新加回去，表现就是启动时先出现一圈灰边、界面再往外缩回。
+        If AccelWindowMode Then
+            RectForm.RadiusX = 0
+            RectForm.RadiusY = 0
+            If BorderForm IsNot Nothing Then
+                BorderForm.Margin = New Thickness(0)
+                BorderForm.BorderThickness = New Thickness(0)
+                BorderForm.BorderBrush = Nothing
+            End If
+            ResizeMode = System.Windows.ResizeMode.CanResize '拖边改大小交给 WindowChrome.ResizeBorderThickness
+            SetResizers(False) '连热区也一起藏掉，否则它们的渐变会再画出一圈黑边
+            Return
+        End If
         '状态没变就不重复改窗口样式：反复重建 HWND 样式会打断系统的还原/激活流程
         Dim Target As Boolean = IsMaximizedCustom
         If _ChromeIsMaximized.HasValue AndAlso _ChromeIsMaximized.Value = Target Then Return
@@ -1987,6 +2275,64 @@ Public Class FormMain
     Private Sub RepositionHintPopup()
         RepositionPopup(PopHint)
         RepositionPopup(PopFloatingBack)
+        RepositionFloatingBack()
+    End Sub
+
+    ''' <summary>
+    ''' 浮动返回键贴在内容区右下角。右下角还有「下载 / 回到顶部 / 关机」等浮动按钮，
+    ''' 所以要把它们当前占用的高度算进去，把返回键抬到它们上方，否则会叠在一起。
+    ''' </summary>
+    Private Sub RepositionFloatingBack()
+        Try
+            If PopFloatingBack Is Nothing OrElse PanForm Is Nothing Then Return
+            Const ButtonSize As Double = 40
+            Const EdgeMargin As Double = 15
+            Const BaseBottomMargin As Double = 14
+            Const ExtraGap As Double = 8
+            '量那一列自身的实际高度：子项收起时它会真的变小，也不会留下边距残差
+            Dim ExtraHeight As Double = 0
+            If PanExtraButtons IsNot Nothing AndAlso PanExtraButtons.Visibility = Visibility.Visible Then
+                ExtraHeight = PanExtraButtons.ActualHeight + PanExtraButtons.Margin.Bottom
+            End If
+            PopFloatingBack.HorizontalOffset = Math.Max(0, PanForm.ActualWidth - ButtonSize - EdgeMargin)
+            '有附加按钮时贴近那一列的上沿（只留 ExtraGap）；没有时才按基础下边距贴底
+            Dim BottomMargin As Double
+            If ExtraHeight > 0 Then
+                BottomMargin = ExtraHeight + ExtraGap
+            Else
+                BottomMargin = BaseBottomMargin
+            End If
+            PopFloatingBack.VerticalOffset = -(ButtonSize + BottomMargin)
+        Catch ex As Exception
+        End Try
+    End Sub
+
+    ''' <summary>右下角附加按钮的出现/消失会改变堆叠高度，返回键要跟着重新定位。</summary>
+    Private Sub PanExtraButtons_SizeChanged(sender As Object, e As SizeChangedEventArgs) Handles PanExtraButtons.SizeChanged
+        '逐帧跟随，看起来是平滑移动
+        RepositionFloatingBack()
+        '子项的高度动画结束后还会把可见性切成收起，那一次不会再触发尺寸变化；
+        '不补这一次收尾定位的话，返回键会先停在半路，等下次事件才"瞬移"到位。
+        ScheduleFloatingBackSettle()
+    End Sub
+
+    ''' <summary>附加按钮尺寸稳定后（动画 200ms 左右）再定位一次。</summary>
+    Private _FloatingBackSettleTimer As Threading.DispatcherTimer
+
+    Private Sub ScheduleFloatingBackSettle()
+        Try
+            If _FloatingBackSettleTimer Is Nothing Then
+                _FloatingBackSettleTimer = New Threading.DispatcherTimer With {.Interval = TimeSpan.FromMilliseconds(260)}
+                AddHandler _FloatingBackSettleTimer.Tick,
+                    Sub(Sender As Object, Args As EventArgs)
+                        _FloatingBackSettleTimer.Stop()
+                        RepositionFloatingBack()
+                    End Sub
+            End If
+            _FloatingBackSettleTimer.Stop()
+            _FloatingBackSettleTimer.Start()
+        Catch ex As Exception
+        End Try
     End Sub
 
     ''' <summary>
@@ -2004,7 +2350,10 @@ Public Class FormMain
         Try
             Dim Active As Boolean = IsActive AndAlso WindowState <> WindowState.Minimized AndAlso Visibility = Visibility.Visible AndAlso Not IsSleeping
             If PopHint IsNot Nothing Then PopHint.IsOpen = Active
-            If PopFloatingBack IsNot Nothing Then PopFloatingBack.IsOpen = Active AndAlso _FloatingBackWanted
+            If PopFloatingBack IsNot Nothing Then
+                RepositionFloatingBack()
+                PopFloatingBack.IsOpen = Active AndAlso _FloatingBackWanted
+            End If
         Catch ex As Exception
             Logger.Warn(ex, "同步浮层弹窗状态失败")
         End Try
@@ -2021,7 +2370,9 @@ Public Class FormMain
     Private Sub UpdateHintOffset()
         Try
             If PopHint Is Nothing Then Return
-            PopHint.VerticalOffset = If(_FloatingBackWanted, -270, -220)
+            '96 = 左侧导航栏 72 + 内容区留白 24；-224 = 底部留白 24 + 气泡容器高度 200
+            PopHint.HorizontalOffset = 96
+            PopHint.VerticalOffset = -224
         Catch
         End Try
     End Sub
@@ -2029,9 +2380,13 @@ Public Class FormMain
     Private Sub RepositionPopup(P As System.Windows.Controls.Primitives.Popup)
         Try
             If P Is Nothing OrElse Not P.IsOpen Then Return
-            Dim Offset = P.HorizontalOffset
-            P.HorizontalOffset = Offset + 0.001
-            P.HorizontalOffset = Offset
+            'Popup 会把屏幕坐标缓存起来：横纵都要动一下，窗口移动/缩放后才会重新计算
+            Dim OffsetX = P.HorizontalOffset
+            Dim OffsetY = P.VerticalOffset
+            P.HorizontalOffset = OffsetX + 0.001
+            P.VerticalOffset = OffsetY + 0.001
+            P.HorizontalOffset = OffsetX
+            P.VerticalOffset = OffsetY
         Catch
         End Try
     End Sub
@@ -2770,6 +3125,8 @@ Public Class FormMain
         SetupLink = 1
         SetupUI = 2
         SetupSystem = 3
+        SetupGeneral = 4
+        SetupAdvanced = 5
         LinkMain = 0
         OtherAbout = 0
         OtherTools = 1
@@ -3161,6 +3518,9 @@ Public Class FormMain
             If PanSleep IsNot Nothing Then PanSleep.Visibility = Visibility.Collapsed
             Activate()
             Logger.Info($"已退出休眠观赏页（启动器窗口 {Left:0},{Top:0} {Width:0}x{Height:0}，{WindowState}）")
+            '下次进场换一套，并且提前解好：下次点开就是现成的背景
+            ModImmersiveAssets.ClearPanoramaCache()
+            WarmSleepPanorama()
         Catch ex As Exception
             Logger.Error(ex, "退出休眠观赏页失败", LogBehavior.Toast)
         Finally
@@ -3232,6 +3592,10 @@ Public Class FormMain
     ''' 通过点击返回按钮或手动触发返回来改变页面。
     ''' </summary>
     Public Sub PageBack() Handles BtnTitleInner.Click, BtnFloatingBack.Click
+        '当前页面自己还有一层（如下载页的版本详情 → 版本列表）时，先让页面处理，
+        '否则会直接退到上一个主页面（看起来就像"回到首页"）
+        Dim CurrentRight As MyPageRight = TryCast(PageRight, MyPageRight)
+        If CurrentRight IsNot Nothing AndAlso CurrentRight.PageBackInner() Then Return
         If PageStack.Any() Then
             PageChangeActual(PageStack(0))
         Else

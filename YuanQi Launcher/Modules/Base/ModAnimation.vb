@@ -891,8 +891,7 @@ Public Module ModAnimation
     ''' </summary>
     Public Sub AniTimer(DeltaTick As Double)
         Try
-            '掉帧时不要逐帧写日志：每条日志都要落盘，会反过来把 UI 线程拖得更慢
-            If DeltaTick / AniSpeed > 100 Then ModRenderPerf.LogSlowFrame(DeltaTick / AniSpeed)
+
             Dim i As Integer = -1
             '循环每个动画组
             Do While i + 1 < AniGroups.Count

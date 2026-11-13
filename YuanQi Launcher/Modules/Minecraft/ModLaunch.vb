@@ -168,7 +168,7 @@ Public Module ModLaunch
                     End If
                 Case LoadState.Canceled
                     If CanceledHint Is Nothing Then
-                        Hint(If(IsSavingBatch, "已取消导出启动脚本！", "已取消启动！"), HintType.Blue)
+                        If IsSavingBatch Then Hint("已取消导出启动脚本！", HintType.Blue)
                     Else
                         Hint(CanceledHint, HintType.Green)
                     End If
@@ -244,48 +244,8 @@ NextInner:
         Dim CheckResult As String = ""
         RunInUiWait(Sub() CheckResult = McLoginAble(McLoginInput()))
         If CheckResult <> "" Then Throw New ArgumentException(CheckResult)
-        '求赞助
-        If BuildType = BuildTypes.Release AndAlso CurrentLaunchOptions?.SaveBatch Is Nothing Then '保存脚本时不提示
-            RunInNewThread(
-            Sub()
-                Select Case Settings.Get(Of Integer)("SystemLaunchCount")
-                    Case 10, 20, 40, 60, 80, 100, 120, 150, 200, 250, 300, 350, 400, 500, 600, 700, 800, 900, 1000, 1200, 1400, 1600, 1800, 2000
-                        If MyMsgBox("缘启已经为你启动了 " & Settings.Get(Of Integer)("SystemLaunchCount") & " 次游戏啦！" & vbCrLf &
-                                    "如果缘启还算好用的话，能不能考虑支持一下缘启……" & vbCrLf &
-                                    "如果没有大家的支持，缘启很难在免费、无任何广告的情况下持续维护下去……！",
-                                    Settings.Get(Of Integer)("SystemLaunchCount") & " 次启动！", "支持缘启！", "但是我拒绝") = 1 Then
-                            OpenWebsite("https://meloong.com/afd/a/LTCat")
-                        End If
-                End Select
-            End Sub, "Donate")
-        End If
-        '正版购买提示
-        If CurrentLaunchOptions?.SaveBatch Is Nothing AndAlso '保存脚本时不提示
-           Not Settings.Get(Of Boolean)("HintBuy") AndAlso Settings.Get(Of McLoginType)("LoginType") <> McLoginType.Ms Then
-            If Globalization.CultureInfo.CurrentCulture.Name.StartsWithF("zh") OrElse Globalization.CultureInfo.CurrentUICulture.Name.StartsWithF("zh") Then '中文？
-                RunInNewThread(
-                Sub()
-                    Select Case Settings.Get(Of Integer)("SystemLaunchCount")
-                        Case 3, 8, 15, 30, 50, 70, 90, 110, 130, 180, 220, 280, 330, 380, 450, 550, 660, 750, 880, 950, 1100, 1300, 1500, 1700, 1900
-                            If MyMsgBox("你已经启动了 " & Settings.Get(Of Integer)("SystemLaunchCount") & " 次 Minecraft 啦！" & vbCrLf &
-                                "如果觉得 Minecraft 还不错，可以购买正版支持一下，毕竟开发游戏也真的很不容易……不要一直白嫖啦。" & vbCrLf & vbCrLf &
-                                "在登录一次正版账号后，就不会再出现这个提示了！",
-                                "考虑一下正版？", "支持正版游戏！", "下次一定") = 1 Then
-                                OpenWebsite("https://www.xbox.com/zh-cn/games/store/minecraft-java-bedrock-edition-for-pc/9nxp44l49shj")
-                            End If
-                    End Select
-                End Sub, "Buy Minecraft")
-            ElseIf Settings.Get(Of McLoginType)("LoginType") = McLoginType.Legacy Then
-                Select Case MyMsgBox("你必须先登录正版账号，才能进行离线登录！", "正版验证", "购买正版", "试玩", "返回",
-                    Button1Action:=Sub() OpenWebsite("https://www.xbox.com/zh-cn/games/store/minecraft-java-bedrock-edition-for-pc/9nxp44l49shj"))
-                    Case 2
-                        Hint("游戏将以试玩模式启动！", HintType.Red)
-                        CurrentLaunchOptions.ExtraGameArgs.Add("--demo")
-                    Case 3
-                        Throw New OperationCanceledException
-                End Select
-            End If
-        End If
+
+
     End Sub
 
 #End Region
@@ -614,7 +574,6 @@ Relogin:
         '结束
 SkipLogin:
         McLaunchLog($"微软登录结束，AccessToken 将在 {DateTimeOffset.FromUnixTimeSeconds(ExpiresAt).LocalDateTime} 过期")
-        Settings.Set("HintBuy", True) '关闭正版购买提示
     End Sub
     Private Sub McLoginServerStart(Data As LoaderTask(Of McLoginServer, McLoginResult))
         Dim Input As McLoginServer = Data.Input

@@ -57,7 +57,12 @@ Public Class PageLinkMain
 
     '让加载器的 成功/失败 事件触发状态切换
     Private Sub LoaderInit() Handles Me.Initialized
-        PageLoaderInit(Load, PanLoad, PanContent, PanAlways, LinkLoader, AutoRun:=False)
+        '本页不用框架的"加载面板/内容面板"切换（那会把整块界面换掉、看起来像跳页面），
+        '改为同一张卡片内部三层互换，所以这里只接管加载器事件。
+        PanSelect.Visibility = Visibility.Visible
+        PanRoom.Visibility = Visibility.Collapsed
+        PanDone.Visibility = Visibility.Collapsed
+        PanAlways.Visibility = Visibility.Visible
         AddHandler LinkLoader.OnStateChangedUi,
         Sub(Loader As LoaderBase, NewState As LoadState, OldState As LoadState)
             Select Case NewState
@@ -72,8 +77,14 @@ Public Class PageLinkMain
 
     '页面动画兼容
     Private Sub UpdatePanelVisibility() Handles Me.PageEnter
-        FrmLinkMain.PanSelect.Visibility = If(LinkState = LinkStates.Waiting, Visibility.Visible, Visibility.Collapsed)
-        FrmLinkMain.PanFinish.Visibility = If(LinkState = LinkStates.Finished, Visibility.Visible, Visibility.Collapsed)
+        Select Case LinkState
+            Case LinkStates.Waiting
+                FrmLinkMain.ShowLayer(FrmLinkMain.PanSelect)
+            Case LinkStates.Loading, LinkStates.Failed
+                FrmLinkMain.ShowLayer(FrmLinkMain.PanRoom)
+            Case LinkStates.Finished
+                FrmLinkMain.ShowLayer(FrmLinkMain.PanDone)
+        End Select
     End Sub
 
 #End Region
@@ -92,12 +103,8 @@ Public Class PageLinkMain
         CurrentState = Nothing
         FailCount = 0
         '页面切换
-        If OldState <> LinkStates.Finished Then
-            '从完成页面退出时，PageOnContentExit 结束会触发 PageEnter 事件，这会调用 UpdatePanelVisibility
-            '如果在现在提前调用了，会丢失完成页面的退出动画
-            UpdatePanelVisibility()
-        End If
-        PageOnContentExit()
+        '回到"选择联机方式"层（同一张卡片内切换，用更短的时长）
+        ShowLayer(PanSelect, Fast:=True)
     End Sub
 
     '===============================
@@ -118,12 +125,52 @@ Public Class PageLinkMain
     ''' <summary>
     ''' 输入邀请码，切换到联机页并立即加入房间。
     ''' </summary>
-    Public Shared Sub Join() Handles PanSelectJoin.MouseLeftButtonUp
-        Dim Code As String = MyMsgBoxInput("输入邀请码",
-            $"输入房主发给你的邀请码，它一般形如 U/XXXX-XXXX-XXXX-XXXX。{vbCrLf}你可以直接粘贴整条消息，缘启 会自动提取其中的邀请码。",
-            DefaultInput:=If(LastCode, ""), HintText:="邀请码")
-        If String.IsNullOrWhiteSpace(Code) Then Return
-        Join(Code)
+    ''' <summary>
+    ''' 外部入口（自定义事件「加入房间」等）：切到联机页，并把光标放进邀请码输入框。
+    ''' 邀请码本身由玩家粘贴，或走下面的 Join(Code) 重载直接加入。
+    ''' </summary>
+    Public Shared Sub Join()
+        Try
+            If FrmMain.PageCurrent <> FormMain.PageType.Link Then FrmMain.PageChange(FormMain.PageType.Link)
+            If FrmLinkMain IsNot Nothing AndAlso FrmLinkMain.TextJoinCode IsNot Nothing Then FrmLinkMain.TextJoinCode.Focus()
+        Catch ex As Exception
+            Logger.Warn(ex, "打开联机页失败")
+        End Try
+    End Sub
+    ''' <summary>
+    ''' 回退键 / 侧键：联机页是左侧导航的一级页面，按返回不应该跳回首页
+    ''' （正在建房或已进房时跳走还会把界面状态丢掉）。有页面栈时仍按正常返回处理。
+    ''' </summary>
+    Public Overrides Function PageBackInner() As Boolean
+        Try
+            If FrmMain.PageStack Is Nothing OrElse FrmMain.PageStack.Count = 0 Then
+                Hint("联机页请用左侧导航切换页面", HintType.Blue, Key:="LinkBack")
+                Return True '吃掉这次返回
+            End If
+        Catch ex As Exception
+        End Try
+        Return False
+    End Function
+    ''' <summary>把输入框里的内容当作邀请码加入（支持直接粘贴整条消息，会自动提取）。</summary>
+    Private Sub JoinFromInput()
+        Dim Code As String = If(TextJoinCode Is Nothing, "", TextJoinCode.Text)
+        If String.IsNullOrWhiteSpace(Code) Then
+            Hint("请先粘贴房主发来的邀请码", HintType.Blue)
+            If TextJoinCode IsNot Nothing Then TextJoinCode.Focus()
+            Return
+        End If
+        JoinInternal(Code)
+    End Sub
+
+    Private Sub BtnJoinInline_Click(sender As Object, e As MouseButtonEventArgs) Handles BtnJoinInline.Click
+        JoinFromInput()
+    End Sub
+
+    Private Sub TextJoinCode_KeyDown(sender As Object, e As KeyEventArgs) Handles TextJoinCode.KeyDown
+        If e.Key = Key.Enter Then
+            e.Handled = True
+            JoinFromInput()
+        End If
     End Sub
     Public Sub JoinInternal(Code As String)
         If Code Is Nothing Then Return
@@ -220,7 +267,11 @@ Public Class PageLinkMain
         'UI 更新
         UpdateProgressBar(0)
         LinkStartTick = GetTimeMs()
-        LabLoadTitle.Text = If(IsServerSide, "创建房间中", "加入房间中")
+        SetLoadDescStyle(True)
+        If BtnLoadCancel IsNot Nothing Then BtnLoadCancel.Visibility = Visibility.Visible
+        If PanLoadRetryGroup IsNot Nothing Then PanLoadRetryGroup.Visibility = Visibility.Collapsed
+        ShowLayer(PanRoom)
+        LabLoadTitle.Text = If(IsServerSide, "房间" & If(IsServerSide, "创建", "加入"), "加入房间")
         UpdateLoadingPage("正在准备联机模块……", "准备联机模块")
     End Sub
 
@@ -231,6 +282,7 @@ Public Class PageLinkMain
         ProcessStop(True)
         'UI 更新
         UpdateProgressBar(1)
+        UpdateStepBar(LinkLoader.Progress, IsFailed:=True)
         '显示错误信息
         LabLoadTitle.Text = FailReason
         Dim Brief As String = LinkLoader.Error.GetDisplay(False)
@@ -241,6 +293,8 @@ Public Class PageLinkMain
             If InnerEx.Message.StartsWithF("$") Then Brief = InnerEx.Message
         Loop
         LabLoadDesc.Text = If(Brief.StartsWithF("$"), Brief.TrimStart("$"), LinkLoader.Error.GetDisplay(True))
+        If BtnLoadCancel IsNot Nothing Then BtnLoadCancel.Visibility = Visibility.Collapsed
+        If PanLoadRetryGroup IsNot Nothing Then PanLoadRetryGroup.Visibility = Visibility.Visible
         '失败时收起等待操作提示条
         If HintLoad IsNot Nothing Then HintLoad.Visibility = Visibility.Collapsed
         Logger.Warn(LinkLoader.Error, LabLoadTitle.Text)
@@ -249,6 +303,30 @@ Public Class PageLinkMain
     '===============================
     '  页面 UI
     '===============================
+
+    '两行操作的悬停高亮
+    Private Sub Row_MouseEnter(sender As Object, e As MouseEventArgs) Handles PanSelectCreate.MouseEnter, PanSelectJoin.MouseEnter
+        Try
+            DirectCast(sender, Border).Opacity = 0.86
+        Catch ex As Exception
+        End Try
+    End Sub
+
+    Private Sub Row_MouseLeave(sender As Object, e As MouseEventArgs) Handles PanSelectCreate.MouseLeave, PanSelectJoin.MouseLeave
+        Try
+            DirectCast(sender, Border).Opacity = 1
+        Catch ex As Exception
+        End Try
+    End Sub
+
+    Private Sub SetLoadDescStyle(HintMode As Boolean)
+        Try
+            If LabLoadDesc Is Nothing Then Return
+            LabLoadDesc.FontWeight = If(HintMode, FontWeights.SemiBold, FontWeights.Normal)
+            LabLoadDesc.FontSize = If(HintMode, 17.0, 14.0)
+        Catch ex As Exception
+        End Try
+    End Sub
 
     Private Sub UpdateLoadingPage(Title As String, FailBrief As String, Optional WaitHint As String = Nothing)
         If FailReason = FailBrief & "失败" Then Return
@@ -270,19 +348,137 @@ Public Class PageLinkMain
     End Sub
     Private FailReason As String = "准备联机模块"
 
-    '取消加载
-    Private Sub BtnLoadCancel_Click() Handles BtnLoadCancel.Click
-        ChangeState(LinkStates.Waiting)
+    '取消加载 / 返回等待页
+    ''' <summary>
+    ''' 直接退回「未连接」面板。
+    ''' 之前只调了 ChangeState(Waiting)，它内部走的是页面级退出流程，取消后画面没有真的切回来，
+    ''' 看起来就是"点了没反应"。这里把加载器、模块和三个面板一起复位，保证一定回到选择界面。
+    ''' </summary>
+    Private Sub BackToWaiting()
+        Try
+            LinkLoader.Cancel()
+            SyncLock LinkLoader.LockState
+                LinkLoader.State = LoadState.Waiting
+            End SyncLock
+            ProcessStop(False)
+            CurrentState = Nothing
+            FailCount = 0
+            LinkState = LinkStates.Waiting
+            UpdatePanelVisibility()
+            '回到选择层（用更短的时长，卡片缩回不拖沓）
+            ShowLayer(PanSelect, Fast:=True)
+        Catch ex As Exception
+            Logger.Warn(ex, "取消联机失败")
+        End Try
     End Sub
 
-    '点击重试
-    Private Sub CardLoad_MouseLeftButtonUp() Handles CardLoad.MouseLeftButtonUp
-        ChangeState(LinkStates.Loading)
+    Private Sub BtnLoadCancel_Click() Handles BtnLoadCancel.Click
+        BackToWaiting()
     End Sub
+
+    '（原来"点整张卡片重试"已移除：鼠标抬起事件会从取消按钮冒泡上来，
+    '  点取消会立刻又被切回加载页，表现就是"点了没反应"。现在重试有独立按钮。）
 
     '进度条
+    ''' <summary>把 0~1 的进度映射到四步指示（准备 / 模块 / 房间 / 就绪）。</summary>
+    Private Sub UpdateStepBar(Progress As Double, Optional IsFailed As Boolean = False)
+        Try
+            If StepDot0 Is Nothing Then Return
+            Dim Index As Integer
+            If Progress < 0.05 Then
+                Index = 0
+            ElseIf Progress < 0.4 Then
+                Index = 1
+            ElseIf Progress < 0.55 Then
+                Index = 2
+            Else
+                Index = 3
+            End If
+            Dim Dots As Shapes.Ellipse() = {StepDot0, StepDot1, StepDot2, StepDot3}
+            If LabLoadStage IsNot Nothing Then
+                LabLoadStage.Text = {If(IsServerSide, "准备创建房间", "准备加入房间"), "检查联机模块", If(IsServerSide, "创建房间", "连接房主"), "房间已就绪"}(Index)
+            End If
+            Dim Accent As Brush = TryCast(Application.Current.FindResource(If(IsFailed, "ColorBrushRed", "ColorBrush3")), Brush)
+            Dim Pending As Brush = TryCast(Application.Current.FindResource("ColorBrushGray6"), Brush)
+            For i As Integer = 0 To 3
+                '走过的和当前节点上色，当前节点稍大，未到的节点是浅灰
+                Dots(i).Fill = If(i <= Index, Accent, Pending)
+                Dim Size As Double = If(i = Index, 16.0, 12.0)
+                Dots(i).Width = Size
+                Dots(i).Height = Size
+            Next
+        Catch ex As Exception
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' 在同一张卡片里换内容：旧层淡出+微缩，新层微缩到正常大小并淡入，卡片外框完全不动。
+    ''' </summary>
+    Public Sub ShowLayer(Target As FrameworkElement, Optional Fast As Boolean = False)
+        Try
+            If Target Is Nothing Then Return
+            '返回选择界面时用更短的时长：卡片需要缩回较小高度，慢了会显得拖沓
+            Dim TimeOut As Integer = If(Fast, 80, 150)
+            Dim TimeIn As Integer = If(Fast, 170, 300)
+            Dim TimeDelay As Integer = If(Fast, 20, 70)
+            Dim ScaleFrom As Double = If(Fast, 0.99, 0.975)
+            For Each Layer As FrameworkElement In New FrameworkElement() {PanSelect, PanRoom, PanDone}
+                If Layer Is Nothing OrElse Layer Is Target Then Continue For
+                If Layer.Visibility = Visibility.Visible Then
+                    AniStop("Link Layer " & Layer.Name)
+                    AniStart({
+                        AaOpacity(Layer, -Layer.Opacity, TimeOut, 0, New AniEaseOutFluent),
+                        AaCode(Sub() Layer.Visibility = Visibility.Collapsed, TimeOut + 20)
+                    }, "Link Layer " & Layer.Name)
+                End If
+            Next
+            AniStop("Link Layer " & Target.Name)
+            Target.Visibility = Visibility.Visible
+            Target.RenderTransformOrigin = New Point(0.5, 0.5)
+            Target.RenderTransform = New ScaleTransform(ScaleFrom, ScaleFrom)
+            Target.Opacity = 0
+            AniStart({
+                AaOpacity(Target, 1, TimeIn, TimeDelay, New AniEaseOutFluent),
+                AaScaleTransform(Target, 1 - ScaleFrom, TimeIn + 30, TimeDelay, New AniEaseOutFluent(AniEasePower.Middle))
+            }, "Link Layer " & Target.Name)
+        Catch ex As Exception
+            Logger.Warn(ex, "切换联机界面层失败")
+        End Try
+    End Sub
+
+    Private Sub PlayMorphIn(Target As FrameworkElement, Optional Delay As Integer = 0)
+        Try
+            If Target Is Nothing Then Return
+            Target.RenderTransformOrigin = New Point(0.5, 0.5)
+            Target.Opacity = 0
+            Dim Scale As New ScaleTransform(0.985, 0.985)
+            Target.RenderTransform = Scale
+            AniStart({
+                AaOpacity(Target, 1, 220, Delay, New AniEaseOutFluent),
+                AaScaleTransform(Target, 1 - 0.985, 240, Delay, New AniEaseOutFluent(AniEasePower.Middle))
+            }, "Link Morph " & GetUuid())
+        Catch ex As Exception
+        End Try
+    End Sub
+
+    ''' <summary>进入动画：淡入 + 从下方上浮，避免界面"啪"地一下出现。</summary>
+    Private Sub PlayEnterAnim(Target As FrameworkElement, Optional Delay As Integer = 0, Optional FromY As Double = 12)
+        Try
+            If Target Is Nothing Then Return
+            Target.Opacity = 0
+            Dim Move As New TranslateTransform(0, FromY)
+            Target.RenderTransform = Move
+            AniStart({
+                AaOpacity(Target, 1, 220, Delay, New AniEaseOutFluent),
+                AaTranslateY(Target, -FromY, 260, Delay, New AniEaseOutFluent(AniEasePower.Middle))
+            }, "Link Enter " & GetUuid())
+        Catch ex As Exception
+        End Try
+    End Sub
+
     Private Sub UpdateProgressBar(Optional Value As Double = -1)
         If Value = -1 Then Value = LinkLoader.Progress
+        UpdateStepBar(Value)
         Dim DisplayingProgress As Double = ColumnProgressA.Width.Value
         If Math.Round(Value - DisplayingProgress, 3) = 0 Then Return
         If DisplayingProgress <= Value Then
@@ -304,8 +500,9 @@ Public Class PageLinkMain
             Logger.Warn(ex, "更新联机进度百分比失败")
         End Try
     End Sub
-    Private Sub CardLoad_SizeChanged() Handles CardLoad.SizeChanged
-        RectProgressClip.Rect = New Rect(0, 0, CardLoad.ActualWidth, 16)
+    Private Sub PanRoom_SizeChanged() Handles PanRoom.SizeChanged
+        '高度必须与进度条实际高度一致，否则圆角矩形的下半个圆角落在条外，左上角会缺一块
+        RectProgressClip.Rect = New Rect(0, 0, PanRoom.ActualWidth, 8)
     End Sub
 
 #End Region
@@ -318,26 +515,25 @@ Public Class PageLinkMain
         UpdatePanelVisibility() '页面的实际切换会由 Loader 调用 MyPageRight 来触发
 
         'UI 更新
+        ShowLayer(PanDone)
         Dim CostText As String = ""
         If LinkStartTick > 0 Then CostText = $"{vbCrLf}连接耗时：{(GetTimeMs() - LinkStartTick) / 1000.0:0.0} 秒"
         If IsServerSide Then
-            LabFinishTitle.Text = "已创建房间"
-            LabFinishDesc.Text = $"把邀请码发给朋友，让大家在 缘启 的联机页面输入邀请码加入房间吧！{vbCrLf}邀请码：{RoomCode}{CostText}"
-            BtnFinishExit.Text = "关闭"
-            BtnFinishCopy.Visibility = Visibility.Visible
+            LabFinishTitle.Text = "房间已创建"
+            PanFinishCode.Visibility = Visibility.Visible
+            PanFinishHall.Visibility = Visibility.Collapsed
+            LabFinishCode.Text = If(String.IsNullOrWhiteSpace(RoomCode), "—", RoomCode)
+            BtnFinishExit.Text = "关闭房间"
+            HintFinish.Visibility = Visibility.Collapsed
             Copy() '立即复制邀请码
-            '下边栏
-            BtnFinishIp.Visibility = Visibility.Collapsed
-            LineFinishIp.Visibility = Visibility.Collapsed
         Else
-            LabFinishTitle.Text = "已加入房间"
-            LabFinishDesc.Text = $"在多人游戏页面的最下方双击「陶瓦联机大厅」即可加入房间！{vbCrLf}注意：使用离线登录时不要手动输入 IP。{CostText}"
-            BtnFinishExit.Text = "离开"
-            BtnFinishCopy.Visibility = Visibility.Collapsed
-            '下边栏
-            BtnFinishIp.Visibility = Visibility.Visible
-            LineFinishIp.Visibility = Visibility.Visible
-            LabFinishIp.Text = If(CurrentState Is Nothing OrElse String.IsNullOrWhiteSpace(CurrentState.Url), "未知", CurrentState.Url)
+            LabFinishTitle.Text = "已连接房主"
+            PanFinishCode.Visibility = Visibility.Collapsed
+            PanFinishHall.Visibility = Visibility.Visible
+            LabFinishIp.Text = If(CurrentState Is Nothing OrElse String.IsNullOrWhiteSpace(CurrentState.Url), "—", CurrentState.Url)
+            BtnFinishExit.Text = "离开房间"
+            '访客只需要知道入口在哪：单行提示条，不写解释
+            HintFinish.Text = "进游戏 → 多人游戏 → 最下方双击「陶瓦联机大厅」"
         End If
         '立即刷新（不使用网络请求，避免阻塞 UI 线程）
         If CurrentState IsNot Nothing Then RefreshFinishedUi(CurrentState)
@@ -430,6 +626,9 @@ Public Class PageLinkMain
 
 #Region "加载"
 
+    ''' <summary>本次下载的联机模块版本，解压完成后写进版本记录。</summary>
+    Private Shared PendingModuleVersion As String = Nothing
+
     Private WithEvents LinkLoader As New LoaderCombo(Of Integer)("联机", {
         New LoaderTask(Of Integer, List(Of NetFile))("准备下载联机模块", AddressOf InitPrepareDownload) With {.ProgressWeight = 5},
         New LoaderDownload("下载联机模块", New List(Of NetFile)) With {.ProgressWeight = 45},
@@ -454,16 +653,35 @@ Public Class PageLinkMain
         '检查联机模块
         UpdateLoadingPage("正在检查联机模块……", "检查联机模块")
         Dim RequiredFiles As New List(Of NetFile)
-        If ModTerracotta.IsCorePresent() Then
-            Logger.Info($"已找到联机模块：{ModTerracotta.BundledCorePath}")
+        '两侧启动器版本不同，自带的陶瓦版本也会不同；版本不一致时访客会一直卡在"正在建立连接"。
+        '这里把本地版本和官方最新版比一次，不一致就顺带更新。
+        Dim LatestModuleVersion As String = ""
+        Dim GotLatest As Boolean = ModTerracotta.TryGetLatestVersion(LatestModuleVersion)
+        If Not GotLatest Then Logger.Warn("获取联机模块最新版本失败，直接使用现有模块")
+        Dim LocalModuleVersion As String = ModTerracotta.GetEffectiveVersion()
+        '只有确实查到最新版、且确实比本地新时才更新：断网或本地更新（例如内测版）时不动它
+        Dim ModuleOutdated As Boolean = GotLatest AndAlso ModTerracotta.IsNewerVersion(LocalModuleVersion, LatestModuleVersion)
+        If ModuleOutdated Then
+            Logger.Info($"联机模块需要更新：本地 {LocalModuleVersion} → 最新 {LatestModuleVersion}")
+            UpdateLoadingPage($"正在更新联机模块（{LocalModuleVersion} → {LatestModuleVersion}）……", "更新联机模块")
+            DirectoryUtils.Create(ModTerracotta.DataPath)
+            RequiredFiles.Add(New NetFile(
+                ModTerracotta.GetDownloadUrls(Arch, LatestModuleVersion),
+                ModTerracotta.DataPath & "terracotta.tar.gz",
+                New FileChecker With {.MinSize = 1024 * 1024}))
+            PendingModuleVersion = LatestModuleVersion
+        ElseIf ModTerracotta.IsCorePresent() Then
+            Logger.Info($"已找到联机模块（版本 {LocalModuleVersion}）：{ModTerracotta.BundledCorePath}")
         Else
             Logger.Warn("未找到联机模块，将尝试下载")
             UpdateLoadingPage("正在获取联机模块下载地址……", "获取下载地址")
             DirectoryUtils.Create(ModTerracotta.DataPath)
             RequiredFiles.Add(New NetFile(
-                ModTerracotta.GetDownloadUrls(Arch),
+                ModTerracotta.GetDownloadUrls(Arch, If(GotLatest, LatestModuleVersion, Nothing)),
                 ModTerracotta.DataPath & "terracotta.tar.gz",
                 New FileChecker With {.MinSize = 1024 * 1024}))
+            '首次下载也要记下版本，否则下次还会以为"本地版本是内置版本"而重复下载
+            If GotLatest Then PendingModuleVersion = LatestModuleVersion
         End If
         '开始下载
         UpdateLoadingPage("正在下载联机模块……", "下载联机模块")
@@ -477,6 +695,11 @@ Public Class PageLinkMain
         If FileUtils.Exists(Package) Then
             UpdateLoadingPage("正在解压联机模块……", "解压联机模块")
             ModTerracotta.ExtractPackage(Package)
+            If Not String.IsNullOrWhiteSpace(PendingModuleVersion) Then
+                ModTerracotta.MarkCoreVersion(PendingModuleVersion)
+                Logger.Info($"联机模块已更新到 {PendingModuleVersion}")
+                PendingModuleVersion = Nothing
+            End If
         End If
         Task.Progress = 0.05
         '启动进程
@@ -506,6 +729,7 @@ Public Class PageLinkMain
         Dim StallTime As Double = 0
         Dim LastProgress As Double = -1
         Dim ScanTime As Double = 0 'host-scanning 的独立计时器
+        Dim GuestTime As Double = 0 'guest-starting 的独立计时器（等待房主开放局域网）
         Do
             Thread.Sleep(300)
             If Task.IsCanceled Then Throw New OperationCanceledException
@@ -523,39 +747,59 @@ Public Class PageLinkMain
                 End If
                 Continue Do
             End Try
+            '房间码一出现就记住：房主不必等自己开放局域网才能先把码发给朋友
+            If Not String.IsNullOrWhiteSpace(Current.Room) Then RoomCode = Current.Room
             '处理状态
             Select Case Current.State
                 Case "host-ok", "guest-ok"
                     FinalState = Current
                     Exit Do
                 Case "host-scanning"
-                    '陶瓦在等待游戏中开放局域网：用独立计时器缓慢推进进度条，避免看起来像卡死
+                    '房主侧：陶瓦在等游戏里的局域网房间。这里只讲"你该做什么"和"邀请码有没有生成"。
                     ScanTime += 0.3
-                    Dim ScanHint As String
-                    If ScanTime < 15 Then
-                        ScanHint = "正在等待游戏中开放局域网……"
-                    ElseIf ScanTime < 60 Then
-                        ScanHint = "仍在等待游戏中开放局域网……"
-                    Else
-                        ScanHint = "检测不到局域网房间"
-                    End If
-                    UpdateLoadingPage(ScanHint, If(ScanTime < 15, "等待开放局域网", If(ScanTime < 60, "等待开放局域网2", "等待开放局域网3")), "请回到游戏里按 ESC → 对局域网开放")
+                    SetLoadDescStyle(True)
+                    '房主侧只留一句醒目提示，不再叠一行状态 + 一条提示条
+                    Dim ScanTitle As String = If(String.IsNullOrWhiteSpace(RoomCode),
+                                                 "请打开游戏局域网功能",
+                                                 "邀请码 " & RoomCode & "（请打开游戏局域网功能）")
+                    UpdateLoadingPage(ScanTitle, If(ScanTime < 20, "等待开放局域网", If(ScanTime < 60, "等待开放局域网2", "等待开放局域网3")))
                     Task.Progress = Math.Min(0.3 + ScanTime / 600 * 0.25, 0.55)
                     If ScanTime > 600 Then
-                        Panic("没有检测到局域网房间", $"请确认你已经在游戏中按 ESC 并选择「对局域网开放」，{vbCrLf}且游戏仍在运行、没有关闭存档。")
+                        Panic("没有检测到局域网房间", $"请确认你已经在游戏中进入存档，并按 ESC 选择了「对局域网开放」，{vbCrLf}且游戏仍在运行、没有关闭存档。")
                         Throw New OperationCanceledException
                     End If
                 Case "host-starting"
                     UpdateLoadingPage("正在创建房间……", "创建房间")
                     Task.Progress = Math.Max(Task.Progress, 0.6)
                 Case "guest-connecting"
-                    UpdateLoadingPage("正在连接房主……", "连接房主")
+                    UpdateLoadingPage("正在联系房主……（这一步你无需操作）", "连接房主")
                     Task.Progress = Math.Max(Task.Progress, 0.3)
                 Case "guest-starting"
-                    UpdateLoadingPage($"正在建立连接（难度：{Current.DifficultyText}）……", "建立连接")
-                    Task.Progress = Math.Max(Task.Progress, 0.5)
+                    '访客侧：房间已经找到，剩下在等房主把局域网开放出来。访客什么都不用做，只提示他去找房主。
+                    GuestTime += 0.3
+                    Dim GuestTitle As String = "等待房主开放局域网"
+                    Dim GuestHint As String = Nothing
+                    If GuestTime < 20 Then
+                        GuestHint = "这一步由房主完成，你无需操作"
+                    ElseIf GuestTime < 60 Then
+                        GuestHint = "请联系房主：进入存档 → 按 ESC → 对局域网开放"
+                    Else
+                        GuestTitle = "房主那边还没有开放局域网"
+                        GuestHint = "让房主确认已开放局域网、房间还开着；仍然不行就稍后重试"
+                    End If
+                    UpdateLoadingPage(GuestTitle, "建立连接" & (If(GuestTime < 20, "1", If(GuestTime < 60, "2", "3"))), GuestHint)
+                    '0.5 → 0.85 缓慢推进（90 秒），既不假装完成，也不让进度条一动不动
+                    Task.Progress = Math.Min(0.5 + GuestTime / 90 * 0.35, 0.85)
+                    '进度在动，停滞判定就永远不会触发，所以这里自己掐 90 秒
+                    If GuestTime > 90 Then
+                        Panic("等待房主开放局域网超时", $"房主已开放局域网、双方版本也一致时，多半是公共中转节点没连上（跨网络联机必须靠它）。{vbCrLf}请确认：{vbCrLf}- 房主已进入存档，按 ESC → 对局域网开放{vbCrLf}- 双方网络都能访问 etnode.zkitefly.eu.org{vbCrLf}- 在 设置 → 工具 → 联机 里点「检查模块更新」保持版本一致{vbCrLf}{vbCrLf}联机模块日志：{vbCrLf}{ModTerracotta.GetModuleLogTail(15)}{vbCrLf}{vbCrLf}{GetRecentLog()}")
+                        Throw New OperationCanceledException
+                    End If
                 Case "exception"
-                    Panic(ModTerracotta.GetExceptionBrief(Current.ExceptionType), ModTerracotta.GetExceptionDetail(Current.ExceptionType))
+                    Dim ExceptionLog As String = ModTerracotta.GetModuleLogTail(15)
+                    Panic(ModTerracotta.GetExceptionBrief(Current.ExceptionType),
+                          ModTerracotta.GetExceptionDetail(Current.ExceptionType) &
+                          If(String.IsNullOrWhiteSpace(ExceptionLog), "", vbCrLf & vbCrLf & "联机模块日志：" & vbCrLf & ExceptionLog))
                     Throw New OperationCanceledException
                 Case Else
                     UpdateLoadingPage("正在等待联机模块响应……", "等待联机模块响应")
@@ -566,14 +810,17 @@ Public Class PageLinkMain
                 StallTime = 0
             Else
                 StallTime += 0.3
-                If StallTime > If(Current.State = "host-scanning", 600, 120) Then
+                Dim StallLimit As Double = If(Current.State = "host-scanning", 600, If(Current.State = "guest-starting", 90, 120))
+                If StallTime > StallLimit Then
                     Select Case Current.State
                         Case "host-scanning"
                             Panic("没有检测到局域网房间", $"请确认你已经在游戏中按 ESC 并选择「对局域网开放」，{vbCrLf}且游戏仍在运行、没有关闭存档。")
+                        Case "guest-starting"
+                            Panic("等待房主开放局域网超时", $"房主已开放局域网、双方版本也一致时，多半是公共中转节点没连上（跨网络联机必须靠它）。{vbCrLf}请确认：{vbCrLf}- 房主已进入存档，按 ESC → 对局域网开放{vbCrLf}- 双方网络都能访问 etnode.zkitefly.eu.org{vbCrLf}- 在 设置 → 工具 → 联机 里点「检查模块更新」保持版本一致{vbCrLf}{vbCrLf}联机模块日志：{vbCrLf}{ModTerracotta.GetModuleLogTail(15)}{vbCrLf}{vbCrLf}{GetRecentLog()}")
                         Case "waiting"
                             Panic("联机模块没有响应", $"联机模块没有接受创建或加入房间的请求。{vbCrLf}请点击重试；若反复出现，请向开发者反馈。")
                         Case Else
-                            Panic("连接房主超时", $"可能的原因：{vbCrLf}- 你或者房主的网络环境不佳{vbCrLf}- 房主已关闭房间{vbCrLf}- 邀请码输错了")
+                            Panic("连接房主超时", $"可能的原因：{vbCrLf}- 你或者房主的网络环境不佳{vbCrLf}- 房主已关闭房间{vbCrLf}- 邀请码输错了{vbCrLf}{vbCrLf}{GetRecentLog()}")
                     End Select
                     Throw New OperationCanceledException
                 End If
@@ -611,9 +858,13 @@ Public Class PageLinkMain
     ''' </summary>
     Private Function GetPublicNodes() As String()
         Dim Raw As String = Settings.Get(Of String)("LinkCustomPeer")
-        If String.IsNullOrWhiteSpace(Raw) Then Return Nothing
-        Return Raw.Split({","c, "，"c, ";"c, "；"c, vbCr, vbLf, " "c}, StringSplitOptions.RemoveEmptyEntries).
+        If String.IsNullOrWhiteSpace(Raw) Then Return ModTerracotta.DefaultPublicNodes '没填就用内置公共节点，否则跨网络联机建不起通道
+        '填 "-" 或 "直连" 表示不用节点、只走直连（同一局域网或 NAT 友好时更快）
+        If Raw.Trim() = "-" OrElse Raw.Trim() = "直连" Then Return Nothing
+        Dim Custom As String() = Raw.Split({","c, "，"c, ";"c, "；"c, vbCr, vbLf, " "c}, StringSplitOptions.RemoveEmptyEntries).
             Select(Function(Node) Node.Trim).Where(Function(Node) Node <> "").ToArray
+        If Custom.Length = 0 Then Return ModTerracotta.DefaultPublicNodes
+        Return Custom
     End Function
 
 #End Region
@@ -643,6 +894,9 @@ Public Class PageLinkMain
     ''' </summary>
     Private Sub Panic(Brief As String, Detail As String)
         '常见原因分析
+        If Detail.Contains("public") OrElse Detail.Contains("node") OrElse Detail.Contains("relay") Then
+            Detail = $"中转节点不可用。{vbCrLf}请检查双方网络能否访问联机节点；也可以在 设置 → 工具 → 联机 里换一个节点后重试。{vbCrLf}{vbCrLf}{Detail}"
+        End If
         If Detail.Contains("failed to listen on ") Then
             Detail = $"监听端口失败。{vbCrLf}请点击重试，如果还是出现此错误，可以重启电脑解决。{vbCrLf}{vbCrLf}{Detail}"
         End If
@@ -724,6 +978,10 @@ Public Class PageLinkMain
             Panic(ModTerracotta.GetExceptionBrief(NewState.ExceptionType), ModTerracotta.GetExceptionDetail(NewState.ExceptionType))
             Return
         End If
+        '房主关掉局域网后，房间会退回等待状态
+        If IsServerSide AndAlso NewState.State = "host-scanning" Then
+            Hint("检测到局域网已关闭：朋友现在进不来，重新开放后会自动恢复", HintType.Blue)
+        End If
         '房间已关闭
         If NewState.State = "waiting" Then
             MyMsgBox("房间已关闭。", "联机结束")
@@ -746,7 +1004,7 @@ Public Class PageLinkMain
         LabFinishPlayer.Text = State.PeopleCount & " 人"
         '地址显示
         If Not IsServerSide Then
-            LabFinishIp.Text = If(String.IsNullOrWhiteSpace(State.Url), "未知", State.Url)
+            LabFinishIp.Text = If(String.IsNullOrWhiteSpace(State.Url), "—", State.Url)
         End If
         '------------------------
         '  提示条

@@ -353,7 +353,7 @@
                                                   Content="{TemplateBinding SelectionBoxItem}" 
                                                   ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" 
                                                   ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}" />
-                                <Popup x:Name="PART_Popup" SnapsToDevicePixels="True" VerticalOffset="-1.5" AllowsTransparency="True" IsOpen="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}" Placement="Bottom" PopupAnimation="Fade">
+                                <Popup x:Name="PART_Popup" SnapsToDevicePixels="True" VerticalOffset="1" AllowsTransparency="True" IsOpen="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}" Placement="Bottom" PopupAnimation="Fade">
                                     <Grid x:Name="PanPopup">
                                         <Border Background="White" CornerRadius="3" />
                                         <Border x:Name="dropDownBorder" CornerRadius="3" BorderBrush="{TemplateBinding Foreground}" BorderThickness="1" Width="{TemplateBinding Width}" MaxHeight="{TemplateBinding MaxDropDownHeight}">
@@ -383,7 +383,7 @@
                                         <Border x:Name="border" Background="{TemplateBinding Background}" CornerRadius="3" BorderThickness="1" BorderBrush="{TemplateBinding Foreground}" />
                                         <ToggleButton Margin="0,0,1.5,0" Foreground="{TemplateBinding Foreground}" IsTabStop="False" SnapsToDevicePixels="False" Focusable="False" IsChecked="{Binding IsDropDownOpen,Mode=TwoWay,RelativeSource={RelativeSource TemplatedParent}}" ClickMode="Press" />
                                         <local:MyTextBox x:Name="PART_EditableTextBox" BorderThickness="0" Margin="1.5,0,21.5,0" Padding="0" Background="{x:Null}" />
-                                        <Popup x:Name="PART_Popup" SnapsToDevicePixels="True" VerticalOffset="-1.5" AllowsTransparency="True" IsOpen="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}" Placement="Bottom" PopupAnimation="Fade">
+                                        <Popup x:Name="PART_Popup" SnapsToDevicePixels="True" VerticalOffset="1" AllowsTransparency="True" IsOpen="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}" Placement="Bottom" PopupAnimation="Fade">
                                             <Grid x:Name="PanPopup">
                                                 <Border Background="White" CornerRadius="3" />
                                                 <Border x:Name="dropDownBorder" SnapsToDevicePixels="False" CornerRadius="3" BorderBrush="{TemplateBinding Foreground}" BorderThickness="1" Width="{TemplateBinding Width}" MaxHeight="{TemplateBinding MaxDropDownHeight}">
@@ -450,12 +450,23 @@
                 <Setter Property="OverridesDefaultStyle" Value="True" />
                 <Setter Property="FocusVisualStyle" Value="{x:Null}" />
                 <Setter Property="Background" Value="{StaticResource ColorBrushTransparent}" />
+                <Setter Property="Height" Value="30" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="ComboBoxItem">
-                            <Border x:Name="ItemBorder" Padding="6,4" SnapsToDevicePixels="True" Background="{TemplateBinding Background}">
-                                <ContentPresenter />
+                            <Border x:Name="ItemBorder" Padding="6,0" SnapsToDevicePixels="True" Background="{TemplateBinding Background}">
+                                <ContentPresenter VerticalAlignment="Center" />
                             </Border>
+                            <!-- 悬停与选中直接由触发器上色：即时生效、鼠标移开立刻恢复（原来用 ColorBrush8 = #FFFFFF，等于没变化） -->
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource BrushHover}" />
+                                </Trigger>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource BrushAccentSoft}" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
                         </ControlTemplate>
                     </Setter.Value>
                 </Setter>
@@ -463,12 +474,23 @@
             <Style TargetType="ComboBoxItem">
                 <Setter Property="OverridesDefaultStyle" Value="True" />
                 <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                <Setter Property="Height" Value="30" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="ComboBoxItem">
-                            <Border x:Name="ItemBorder" SnapsToDevicePixels="True" Background="{TemplateBinding Background}">
-                                <ContentPresenter />
+                            <Border x:Name="ItemBorder" Padding="6,0" SnapsToDevicePixels="True" Background="{TemplateBinding Background}">
+                                <ContentPresenter VerticalAlignment="Center" />
                             </Border>
+                            <!-- 悬停与选中直接由触发器上色：即时生效、鼠标移开立刻恢复（原来用 ColorBrush8 = #FFFFFF，等于没变化） -->
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource BrushHover}" />
+                                </Trigger>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource BrushAccentSoft}" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
                         </ControlTemplate>
                     </Setter.Value>
                 </Setter>

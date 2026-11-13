@@ -478,20 +478,40 @@ Public Module ModTools
         End Try
     End Sub
 
+    ''' <summary>某个版本的最近游玩时间：优先按版本标识匹配（改名后依然有效），老记录才退回按名字。</summary>
+    Private Function GetInstanceLastPlay(LastPlay As Dictionary(Of String, Date), Item As SpaceItem) As Date
+        Try
+            If Item Is Nothing Then Return Date.MinValue
+            Dim Id As String = InstanceIdentityModule.GetInstanceId(Item.Path, CreateIfMissing:=False)
+            If Not String.IsNullOrWhiteSpace(Id) Then
+                Dim ById As Date
+                If LastPlay.TryGetValue("i:" & Id, ById) Then Return ById
+            End If
+            Dim ByName As Date
+            If LastPlay.TryGetValue("n:" & Item.Name, ByName) Then Return ByName
+        Catch ex As Exception
+            Logger.Warn(ex, "读取版本最近游玩时间失败")
+        End Try
+        Return Date.MinValue
+    End Function
+
     ''' <summary>列出长期未游玩、适合归档的版本，支持多选后一键归档。</summary>
     Private Sub ShowArchiveCandidates(Items As List(Of SpaceItem))
         Try
             Dim Sessions = PlayLogModule.LoadSessions()
-            Dim LastPlay As New Dictionary(Of String, Date)
+            '按「版本标识」归并：版本改名后，它的游玩记录仍然算在它头上
+            Dim LastPlay As New Dictionary(Of String, Date)(StringComparer.OrdinalIgnoreCase)
             For Each S In Sessions
-                If Not LastPlay.ContainsKey(S.Name) OrElse LastPlay(S.Name) < S.EndTime Then
-                    LastPlay(S.Name) = S.EndTime
+                Dim Key As String = PlayLogModule.GetSessionKey(S)
+                If String.IsNullOrWhiteSpace(Key) OrElse Key = "n:" Then Continue For
+                If Not LastPlay.ContainsKey(Key) OrElse LastPlay(Key) < S.EndTime Then
+                    LastPlay(Key) = S.EndTime
                 End If
             Next
             Dim Candidates = Items.Where(Function(I) Not I.IsArchived).
                 Select(Function(I) New With {
                     .Item = I,
-                    .Last = If(LastPlay.ContainsKey(I.Name), LastPlay(I.Name), Date.MinValue)
+                    .Last = GetInstanceLastPlay(LastPlay, I)
                 }).
                 Where(Function(X) X.Last = Date.MinValue OrElse (Now - X.Last).TotalDays >= 60).
                 OrderByDescending(Function(X) X.Item.Bytes).ToList()

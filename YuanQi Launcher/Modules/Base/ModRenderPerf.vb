@@ -10,8 +10,58 @@
 '  3. 帧耗时监控：连续掉帧时把阴影等着色器特效降档，恢复顺畅后原样还原。
 
 Imports System.Windows.Media.Effects
+Imports System.Runtime.InteropServices
 
 Public Module ModRenderPerf
+
+    '---- 全屏游戏检测：有全屏 D3D 程序在跑时主动降到最低特效档 ----
+
+    <DllImport("shell32.dll")>
+    Private Function SHQueryUserNotificationState(ByRef state As Integer) As Integer
+    End Function
+
+    ''' <summary>是否检测到全屏 D3D 程序（游戏）正在运行。</summary>
+    Public ReadOnly Property FullscreenGameRunning As Boolean
+        Get
+            Return _FullscreenGame
+        End Get
+    End Property
+    Private _FullscreenGame As Boolean = False
+    Private FullscreenTimer As Threading.Timer = Nothing
+
+    ''' <summary>每 5 秒问一次系统状态，在后台线程跑，开销可忽略。</summary>
+    Private Sub StartFullscreenWatcher()
+        If FullscreenTimer IsNot Nothing Then Return
+        Try
+            FullscreenTimer = New Threading.Timer(AddressOf CheckFullscreenState, Nothing, 4000, 5000)
+        Catch ex As Exception
+            Logger.Warn(ex, "启动全屏检测失败")
+        End Try
+    End Sub
+
+    Private Sub CheckFullscreenState(state As Object)
+        Try
+            Dim St As Integer = 1
+            If SHQueryUserNotificationState(St) <> 0 Then Return
+            Dim Game As Boolean = (St = 3 OrElse St = 4)
+            If Game = _FullscreenGame Then Return
+            _FullscreenGame = Game
+            RunInUi(
+                Sub()
+                    Try
+                        If PerfMode = ModeQuality Then Return '画质优先：用户明确要求不降级
+                        If Game Then
+                            SetLowPower(True)
+                        ElseIf PerfMode = ModeAuto Then
+                            SetLowPower(False)
+                        End If
+                    Catch ex As Exception
+                    End Try
+                End Sub)
+        Catch ex As Exception
+        End Try
+    End Sub
+
 
 #Region "档位"
 
@@ -205,13 +255,13 @@ Public Module ModRenderPerf
     Private FrameGoodCount As Integer = 0
     Private IsLowPower As Boolean = False
     Private LowPowerSince As Long = 0
-    Private LastSlowLog As Long = 0
-    Private SlowFrameCount As Integer = 0
+
 
     ''' <summary>
     ''' 动画帧回调每帧调用一次，用真实帧间隔判断是否正在掉帧。
     ''' </summary>
     Public Sub NotifyFrame(DeltaTimeMs As Double)
+        StartFullscreenWatcher()
         If DeltaTimeMs <= 0 Then Return
         If DeltaTimeMs > 500 Then Return '窗口被遮挡 / 最小化后补的那一帧不参与统计
         '滑动平均：掉帧时快速上升，顺畅时缓慢下降，避免档位来回抖动
@@ -239,17 +289,6 @@ Public Module ModRenderPerf
         End If
     End Sub
 
-    ''' <summary>
-    ''' 两个动画帧间隔过长时的日志。掉帧时逐帧写日志会反过来拖慢 UI 线程，这里做节流。
-    ''' </summary>
-    Public Sub LogSlowFrame(DeltaTick As Double)
-        SlowFrameCount += 1
-        Dim Tick As Long = GetTimeMs()
-        If Tick - LastSlowLog < 3000 Then Return
-        LastSlowLog = Tick
-        Logger.Info($"两个动画帧间隔 {Math.Round(DeltaTick)} ms（最近 3 秒内 {SlowFrameCount} 次）")
-        SlowFrameCount = 0
-    End Sub
 
     ''' <summary>把特效降到低开销档 / 恢复原样。</summary>
     Private Sub SetLowPower(Enable As Boolean)
@@ -398,7 +437,6 @@ Public Module ModRenderPerf
             Next
             Dim Result As BitmapSource = BitmapSource.Create(Width, Height, 96, 96, PixelFormats.Bgra32, Nothing, Pixels, Stride)
             Result.Freeze()
-            Logger.Info($"背景模糊已预渲染：{Width}×{Height}，半径 {Radius}")
             Return Result
         Catch ex As Exception
             Logger.Warn(ex, "预渲染背景模糊失败，回退到实时模糊")

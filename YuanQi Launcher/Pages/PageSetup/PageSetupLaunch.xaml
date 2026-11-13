@@ -12,7 +12,7 @@
                 <TextBlock Text="启动器与游戏配置" Style="{StaticResource PageSub}" />
             </StackPanel>
 
-            <local:MyCard x:Name="CardArgument" Margin="0,0,0,15" Title="启动选项">
+            <local:MyCard x:Name="CardArgument" Margin="0,0,0,15" Title="游戏窗口">
                 <StackPanel Margin="25,40,25,25">
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -168,7 +168,7 @@
                     </Grid>
                 </StackPanel>
             </local:MyCard>
-            <local:MyCard x:Name="CardSkin" Margin="0,0,0,15" Title="离线皮肤" CanSwap="True" IsSwapped="True">
+            <local:MyCard x:Name="CardSkin" Margin="0,0,0,15" Title="皮肤" CanSwap="True" IsSwapped="True">
                 <StackPanel Margin="25,40,25,15">
                     <local:MyHint Text="由于技术问题，此功能只保证对 1.19.2 以前的版本有效！" Theme="Yellow" Margin="0,0,0,10" />
                     <Grid Margin="-1,0,0,0">
@@ -211,8 +211,8 @@
                                 <ColumnDefinition Width="Auto" SharedSizeGroup="Button" />
                                 <ColumnDefinition Width="Auto" SharedSizeGroup="Button" />
                             </Grid.ColumnDefinitions>
-                            <local:MyButton x:Name="BtnSkinSave" Text="保存皮肤" MinWidth="140" Padding="13,0" Margin="0,0,20,0" Grid.Row="1" />
-                            <local:MyButton x:Name="BtnSkinCache" Text="刷新" MinWidth="140" Padding="13,0" Margin="0,0,20,0" ToolTip="刷新并重新下载 缘启 当前显示的皮肤" Grid.Row="1" Grid.Column="1" />
+                            <local:MyButton Height="35" x:Name="BtnSkinSave" Text="保存皮肤" MinWidth="140" Padding="13,0" Margin="0,0,20,0" Grid.Row="1" />
+                            <local:MyButton Height="35" x:Name="BtnSkinCache" Text="刷新" MinWidth="140" Padding="13,0" Margin="0,0,20,0" ToolTip="刷新并重新下载 缘启 当前显示的皮肤" Grid.Row="1" Grid.Column="1" />
                         </Grid>
                     </Grid>
                     <Grid x:Name="PanSkinChange" Margin="0,14,0,2" Height="35" Visibility="Collapsed">
@@ -220,12 +220,12 @@
                             <ColumnDefinition Width="Auto" SharedSizeGroup="Button" />
                             <ColumnDefinition Width="Auto" SharedSizeGroup="Button" />
                         </Grid.ColumnDefinitions>
-                        <local:MyButton x:Name="BtnSkinChange" Text="更改皮肤" MinWidth="140" Padding="13,0" Margin="0,0,20,0" />
-                        <local:MyButton x:Name="BtnSkinDelete" Text="重置皮肤" MinWidth="140" Padding="13,0" Margin="0,0,20,0" ColorType="Red" Grid.Column="1" />
+                        <local:MyButton Height="35" x:Name="BtnSkinChange" Text="更改皮肤" MinWidth="140" Padding="13,0" Margin="0,0,20,0" />
+                        <local:MyButton Height="35" x:Name="BtnSkinDelete" Text="重置皮肤" MinWidth="140" Padding="13,0" Margin="0,0,20,0" ColorType="Red" Grid.Column="1" />
                     </Grid>
                 </StackPanel>
             </local:MyCard>
-            <local:MyCard Margin="0,0,0,15" Title="高级选项" IsSwapped="True" CanSwap="True">
+            <local:MyCard Margin="0,0,0,15" Title="高级启动" IsSwapped="True" CanSwap="True">
                 <Grid Margin="25,40,25,15">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
@@ -290,7 +290,6 @@
                         <local:MyCheckBox Height="28" Text="禁用 Java Launch Wrapper" local:SettingService.Key="LaunchAdvanceDisableJLW" ToolTip="是否使用 Java Launch Wrapper 修复 Java 18- 在中文路径下可能无法正常启动的问题。&#xa;详见：https://github.com/00ll00/java_launch_wrapper" />
                         <local:MyCheckBox Height="28" Text="禁用 LWJGL Unsafe Agent" local:SettingService.Key="LaunchAdvanceDisableLUA" ToolTip="是否使用 LWJGL Unsafe Agent 修复 LWJGL 3.4.1 的一个性能问题。&#xa;详见：https://github.com/HMCL-dev/lwjgl-unsafe-agent" />
                         <local:MyCheckBox Height="28" Text="使用高性能显卡" local:SettingService.Key="LaunchAdvanceGraphicCard" ToolTip="自动在 Windows 设置 → 系统 → 屏幕 → 显示卡 中将 缘启 和 Java 改为使用高性能显卡。&#xa;如果同时有集成显卡和独立显卡，这能确保 MC 使用独立显卡进行渲染，以大幅提高帧率。" />
-                        <local:MyCheckBox Height="28" Text="在正版登录时验证 SSL 证书" local:SettingService.Key="ToolDownloadCert" ToolTip="开启验证可以提高安全性，但可能会导致正版登录失败（见 #3018）。&#xa;若登录因为 “未能为 SSL/TLS 安全通道建立信任关系” 失败，请考虑关闭此选项。" />
                     </StackPanel>
                     <local:MyHint Text="版本独立设置中还有更多高级选项可供调整。" Margin="0,5,0,10" Theme="Blue" Grid.Row="11" Grid.ColumnSpan="2"
                                   CanClose="True" RelativeSetup="HintMoreAdvancedSetup" />

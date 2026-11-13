@@ -8,10 +8,15 @@
         <StackPanel x:Name="PanMain" Margin="24,22,24,26">
             <StackPanel Orientation="Horizontal" Margin="2,0,0,16">
                 <TextBlock Text="设置" Style="{StaticResource PageTitle}" />
-                <TextBlock Text="启动器与游戏配置" Style="{StaticResource PageSub}" />
+                <TextBlock Text="联机与种子地图" Style="{StaticResource PageSub}" />
             </StackPanel>
 
-            <local:MyCard x:Name="CardArgument" Margin="0,15,0,15" Title="联机选项">
+            <!-- 联机 -->
+            <TextBlock Text="联机（陶瓦）" FontSize="12.5" FontWeight="SemiBold" Foreground="{DynamicResource BrushText3}" Margin="4,0,0,8" />
+            <TextBlock FontSize="12" LineHeight="17" Foreground="{StaticResource ColorBrushGray4}" TextWrapping="Wrap" Margin="4,0,0,10"
+                Text="开房间与加入别人的房间。" />
+
+            <local:MyCard Margin="0,0,0,15" Title="房间里的身份">
                 <Grid Margin="25,40,25,20">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" SharedSizeGroup="Name" />
@@ -21,44 +26,99 @@
                         <RowDefinition Height="28" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Left" Text="显示名称" Margin="0,0,25,0" />
+                    <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Left" Text="名字" Margin="0,0,25,0" />
                     <local:MyTextBox Grid.Row="0" Grid.Column="1" x:Name="TextPlayerName" local:SettingService.Key="LinkPlayerName" MaxHeight="28"
-                        ToolTip="联机房间里其他玩家看到的名称。留空时使用当前登录的玩家名。" />
+                        ToolTip="其他玩家在房间里看到的名字，留空则用当前登录名" />
                     <TextBlock Grid.Row="1" Grid.Column="1" Margin="1,9,0,0" FontSize="12" LineHeight="17"
                         Foreground="{StaticResource ColorBrushGray4}" TextWrapping="Wrap"
-                        Text="留空时使用当前登录的玩家名（离线登录即离线 ID）；都不存在时使用 Windows 用户名。" />
+                        Text="留空则依次用：登录玩家名 → 离线 ID → Windows 用户名。" />
                 </Grid>
             </local:MyCard>
 
-            <local:MyCard Margin="0,0,0,15" Title="高级设置">
+            <local:MyCard Margin="0,0,0,15" Title="网络节点">
                 <Grid Margin="25,40,25,22">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" SharedSizeGroup="Name" />
                         <ColumnDefinition Width="1*" />
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="35" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="15" />
+                        <RowDefinition Height="28" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Left" Text="公共节点" Margin="0,0,25,0" />
+                    <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Left" Text="额外节点" Margin="0,0,25,0" />
                     <local:MyTextBox Grid.Row="0" Grid.Column="1" x:Name="TextCustomPeer" local:SettingService.Key="LinkCustomPeer" MaxHeight="28"
-                        ToolTip="额外使用的 EasyTier 公共节点，会与陶瓦内置的公共节点合并。&#xa;留空则只使用内置节点。&#xa;&#xa;多个节点请用逗号分隔，例如：&#xa;tcp://public.easytier.cn:11010,tcp://public2.easytier.cn:54321&#xa;&#xa;房主与加入方必须至少连接到一个相同的节点，才能互相连上。" />
+                        ToolTip="一般不用填。内置节点连不上时，用逗号分隔填几个备用节点" />
                     <TextBlock Grid.Row="1" Grid.Column="1" Margin="1,9,0,0" FontSize="12" LineHeight="17"
                         Foreground="{StaticResource ColorBrushGray4}" TextWrapping="Wrap"
-                        Text="仅在网络环境特殊、内置节点无法连通时才需要填写。" />
-                    <StackPanel Orientation="Horizontal" Grid.Row="3" Grid.ColumnSpan="2" HorizontalAlignment="Left">
-                        <local:MyButton MinWidth="140" Padding="13,5" Margin="0,0,20,0" HorizontalAlignment="Left"
-                            Text="陶瓦联机文档" ToolTip="查看陶瓦联机的使用说明与接口文档"
-                            local:CustomEventService.EventType="打开网页" local:CustomEventService.EventData="https://burningtnt.github.io/Terracotta/" />
-                        <local:MyButton MinWidth="140" Padding="13,5" Margin="0,0,20,0" HorizontalAlignment="Left"
-                            Text="公共节点状态" ToolTip="查看陶瓦内置公共节点的运行状态"
-                            local:CustomEventService.EventType="打开网页" local:CustomEventService.EventData="https://etnode.zkitefly.eu.org/about" />
-                        <local:MyButton x:Name="BtnLinkCheckUpdate" MinWidth="140" Padding="13,5" HorizontalAlignment="Left"
-                            Text="检查联机模块更新" ToolTip="对比本地陶瓦联机模块与 GitHub 上的最新版本" />
-                    </StackPanel>
+                        Text="留空用默认节点（跨网络联机需要它）；填 - 表示只直连；自定义时逗号分隔，双方须用同一节点。" />
                 </Grid>
+            </local:MyCard>
+
+            <local:MyCard Margin="0,0,0,20" Title="联机的帮助与更新">
+                <StackPanel Margin="25,40,25,22">
+                    <TextBlock FontSize="12" LineHeight="17" Foreground="{StaticResource ColorBrushGray4}" TextWrapping="Wrap" Margin="0,0,0,10"
+                        Text="加入失败时，先看「节点状态」里公共节点是否正常。" />
+                    <StackPanel Orientation="Horizontal">
+                        <local:MyButton Height="35" MinWidth="140" Padding="13,0" Margin="0,0,20,0" HorizontalAlignment="Left"
+                            Text="使用说明" ToolTip="查看联机的使用说明与接口文档"
+                            local:CustomEventService.EventType="打开网页" local:CustomEventService.EventData="https://burningtnt.github.io/Terracotta/" />
+                        <local:MyButton Height="35" MinWidth="140" Padding="13,0" Margin="0,0,20,0" HorizontalAlignment="Left"
+                            Text="节点状态" ToolTip="查看内置公共节点当前是否正常"
+                            local:CustomEventService.EventType="打开网页" local:CustomEventService.EventData="https://etnode.zkitefly.eu.org/about" />
+                        <local:MyButton Height="35" x:Name="BtnLinkCheckUpdate" MinWidth="140" Padding="13,0" HorizontalAlignment="Left"
+                            Text="检查模块更新" ToolTip="对比本地模块与最新版本" />
+                    </StackPanel>
+                </StackPanel>
+            </local:MyCard>
+
+            <!-- 种子地图 -->
+            <TextBlock Text="种子地图" FontSize="12.5" FontWeight="SemiBold" Foreground="{DynamicResource BrushText3}" Margin="4,0,0,8" />
+            <TextBlock FontSize="12" LineHeight="17" Foreground="{StaticResource ColorBrushGray4}" TextWrapping="Wrap" Margin="4,0,0,10"
+                Text="地图清晰度、显示方式与本地缓存。" />
+
+            <local:MyCard Margin="0,0,0,15" Title="地图清晰度与显示">
+                <StackPanel Margin="25,40,25,20">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock Text="地图清晰度" VerticalAlignment="Center" Margin="0,0,12,0" Foreground="{StaticResource ColorBrushGray2}" />
+                        <local:MyComboBox x:Name="ComboSeedQuality" local:SettingService.Key="SeedMapQuality" Width="180" Height="32" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                          ToolTip="清晰度越高越清楚，加载也更慢；低档最省资源">
+                            <local:MyComboBoxItem Content="低（最省资源）" local:SettingService.Value="0" />
+                            <local:MyComboBoxItem Content="中" local:SettingService.Value="1" />
+                            <local:MyComboBoxItem Content="高（最清晰）" local:SettingService.Value="2" IsSelected="True" />
+                        </local:MyComboBox>
+                    </StackPanel>
+                    <TextBlock FontSize="12" LineHeight="17" Foreground="{StaticResource ColorBrushGray4}" TextWrapping="Wrap" Margin="1,0,0,12"
+                        Text="越高越清晰、加载越慢；后台跑游戏建议低档。" />
+                    <local:MyCheckBox x:Name="CheckSeedStructName" local:SettingService.Key="SeedMapStructNamesAlways"
+                                      Text="结构名字常显" Height="22" Margin="-1,0,0,1"
+                                      ToolTip="打开后每个结构图标下面一直显示名字；关闭则只在鼠标移上去时显示，视野更干净" />
+                    <TextBlock FontSize="12" LineHeight="17" Foreground="{StaticResource ColorBrushGray4}" TextWrapping="Wrap" Margin="1,14,0,8"
+                        Text="右键点地图即按此格式复制坐标；含 /tp 的高度写作 ~，粘贴后直接落到地面。" />
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="右键复制格式" VerticalAlignment="Center" Margin="0,0,12,0" Foreground="{StaticResource ColorBrushGray2}" />
+                        <local:MyComboBox Height="32" x:Name="ComboSeedCopyFormat" local:SettingService.Key="SeedMapCopyFormat" Width="360" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                          ToolTip="选中哪个，右键复制出来就是哪种写法；默认是给人看的坐标文本">
+                            <local:MyComboBoxItem Content="X: 123 ,Z: -456（默认，方便手抄）" local:SettingService.Value="0" IsSelected="True" />
+                            <local:MyComboBoxItem Content="123 -456（X 空格 Z）" local:SettingService.Value="1" />
+                            <local:MyComboBoxItem Content="123, -456（X 逗号 Z）" local:SettingService.Value="2" />
+                            <local:MyComboBoxItem Content="/tp 123 ~ -456（传送指令）" local:SettingService.Value="3" />
+                            <local:MyComboBoxItem Content="/tp @s 123 ~ -456（把自己传过去）" local:SettingService.Value="4" />
+                            <local:MyComboBoxItem Content="123 ~ -456（三点坐标）" local:SettingService.Value="5" />
+                        </local:MyComboBox>
+                    </StackPanel>
+
+                    <local:MyCheckBox x:Name="CheckSeedDiskCache" local:SettingService.Key="SeedMapDiskCache"
+                                      Text="缓存地图数据（推荐）" Height="22" Margin="-1,16,0,1"
+                                      ToolTip="把已经算过的地图瓦片存到本地，翻回看过的区域、下次打开同一个存档都不用重新计算" />
+                    <TextBlock FontSize="12" LineHeight="17" Foreground="{StaticResource ColorBrushGray4}" TextWrapping="Wrap" Margin="1,4,0,10"
+                        Text="看过的地方存到本地，再看或下次打开同一存档更快；每存档 20 MB、合计 200 MB，超出自动清理最久未用的。" />
+                    <StackPanel Orientation="Horizontal">
+                        <local:MyButton Height="35" x:Name="BtnSeedCacheClear" MinWidth="140" Text="清空地图缓存" Padding="13,0" HorizontalAlignment="Left"
+                            ToolTip="删除全部存档的地图缓存，不会影响存档本身" />
+                        <TextBlock x:Name="LabSeedCacheUsage" VerticalAlignment="Center" Margin="16,0,0,0" FontSize="12"
+                                   Foreground="{StaticResource ColorBrushGray4}" Text="计算中…" />
+                    </StackPanel>
+                </StackPanel>
             </local:MyCard>
         </StackPanel>
     </local:MyScrollViewer>

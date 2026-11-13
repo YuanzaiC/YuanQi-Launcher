@@ -1908,29 +1908,56 @@ ExitRefresh:
         End Try
     End Sub
 
-    ''' <summary>主页「最近游玩」：显示最近玩过的 3 个版本（不含当前版本）。</summary>
+    ''' <summary>
+    ''' 主页「最近游玩」：显示最近玩过的 3 个版本（不含当前版本）。
+    ''' 按版本标识归并，所以版本改名后这里跟着改名，版本被删除后不再出现。
+    ''' </summary>
     Private Sub RefreshRecentPlay()
         If PanRecentPlay Is Nothing Then Return
         Try
             PanRecentPlay.Children.Clear()
             ClearInstanceLogoTargets(OnlyRecent:=True)
-            Dim CurrentName = If(McInstanceSelected Is Nothing, "", McInstanceSelected.Name)
+            Dim CurrentInstance As McInstance = McInstanceSelected
+            Dim ListReady As Boolean = InstanceIdentityModule.IsInstanceListReady()
             Dim LastPlay As New Dictionary(Of String, Date)(StringComparer.OrdinalIgnoreCase)
+            Dim Sample As New Dictionary(Of String, PlayLogModule.PlaySession)(StringComparer.OrdinalIgnoreCase)
             For Each S In PlayLogModule.LoadSessions()
-                If String.IsNullOrWhiteSpace(S.Name) Then Continue For
-                If LastPlay.ContainsKey(S.Name) Then
-                    If S.EndTime > LastPlay(S.Name) Then LastPlay(S.Name) = S.EndTime
+                Dim Key As String = PlayLogModule.GetSessionKey(S)
+                If String.IsNullOrWhiteSpace(Key) OrElse Key = "n:" Then Continue For
+                If LastPlay.ContainsKey(Key) Then
+                    If S.EndTime > LastPlay(Key) Then
+                        LastPlay(Key) = S.EndTime
+                        Sample(Key) = S
+                    End If
                 Else
-                    LastPlay(S.Name) = S.EndTime
+                    LastPlay(Key) = S.EndTime
+                    Sample(Key) = S
                 End If
             Next
-            Dim Recent = LastPlay.Where(Function(kv) Not String.Equals(kv.Key, CurrentName, StringComparison.OrdinalIgnoreCase)).OrderByDescending(Function(kv) kv.Value).Take(3).ToList()
+            Dim Recent As New List(Of (Instance As McInstance, Name As String, Time As Date))
+            For Each Pair In LastPlay.OrderByDescending(Function(kv) kv.Value)
+                Dim S As PlayLogModule.PlaySession = Nothing
+                If Not Sample.TryGetValue(Pair.Key, S) Then Continue For
+                Dim Inst As McInstance = PlayLogModule.GetSessionInstance(S)
+                Dim ShowName As String = PlayLogModule.GetSessionDisplayName(S)
+                If Inst Is Nothing Then
+                    '查不到版本：实例列表还没扫完时先按名字显示，扫完了说明版本已被删除，不再列出
+                    If ListReady Then Continue For
+                Else
+                    '版本还在：用版本当前的名字，并跳过当前正在玩的版本
+                    ShowName = Inst.Name.Trim()
+                    If CurrentInstance IsNot Nothing AndAlso PathUtils.IsSame(Inst.PathVersion, CurrentInstance.PathVersion) Then Continue For
+                End If
+                If String.IsNullOrWhiteSpace(ShowName) Then Continue For
+                Recent.Add((Inst, ShowName, Pair.Value))
+                If Recent.Count >= 3 Then Exit For
+            Next
             If Recent.Count = 0 Then
                 PanRecentPlay.Children.Add(New TextBlock With {.Text = "暂无记录", .Style = CType(FindResource("MutedText"), Style), .Margin = New Thickness(4, 2, 4, 2)})
                 Return
             End If
             For Each Item In Recent
-                Dim Name As String = Item.Key
+                Dim Name As String = Item.Name
                 Dim Btn As New Button With {.Style = CType(FindResource("LinkRow"), Style), .Height = 36, .HorizontalContentAlignment = HorizontalAlignment.Stretch, .Cursor = Cursors.Hand}
                 Dim Row As New Grid
                 Row.ColumnDefinitions.Add(New ColumnDefinition With {.Width = GridLength.Auto})
@@ -1942,11 +1969,12 @@ ExitRefresh:
                 SetInstanceLogo(Ico, Name, IntoRecent:=True)
                 Row.Children.Add(Icon)
                 Dim Txt As New TextBlock With {.Text = Name, .FontSize = 12.5, .VerticalAlignment = VerticalAlignment.Center, .TextTrimming = TextTrimming.CharacterEllipsis, .Margin = New Thickness(10, 0, 0, 0)}
-                Dim Time As New TextBlock With {.Text = FormatTimeAgo(Item.Value), .FontSize = 11, .Foreground = CType(FindResource("BrushText3"), Brush), .VerticalAlignment = VerticalAlignment.Center, .Margin = New Thickness(8, 0, 4, 0)}
+                Dim Time As New TextBlock With {.Text = FormatTimeAgo(Item.Time), .FontSize = 11, .Foreground = CType(FindResource("BrushText3"), Brush), .VerticalAlignment = VerticalAlignment.Center, .Margin = New Thickness(8, 0, 4, 0)}
                 Grid.SetColumn(Icon, 0) : Grid.SetColumn(Txt, 1) : Grid.SetColumn(Time, 2)
                 Row.Children.Add(Txt) : Row.Children.Add(Time)
                 Btn.Content = Row
-                AddHandler Btn.Click, Sub(s, e) SwitchVersionByName(Name)
+                Dim Target As McInstance = Item.Instance
+                AddHandler Btn.Click, Sub(s, e) SwitchVersionToInstance(Target, Name)
                 PanRecentPlay.Children.Add(Btn)
             Next
             '实例列表可能还在扫描：图标没解析出来就短时间内重试，避免一直停在启动器图标
@@ -2041,6 +2069,25 @@ ExitRefresh:
         Return Nothing
     End Function
 
+    ''' <summary>切换到指定实例（「最近游玩」已经拿到实例对象，不必再按名字查找）。</summary>
+    Private Sub SwitchVersionToInstance(Instance As McInstance, DisplayName As String)
+        Try
+            If Instance Is Nothing Then
+                Hint($"未找到版本「{DisplayName}」，它可能已被删除", HintType.Red)
+                RefreshRecentPlay()
+                Return
+            End If
+            McInstanceSelected = Instance
+            RefreshHomeInfo()
+            RefreshSaves()
+            PulseVersionName()
+            If FrmLaunchRight IsNot Nothing Then FrmLaunchRight.ForceRefresh()
+            Hint($"已切换到 {Instance.Name}", HintType.Green)
+        Catch ex As Exception
+            Logger.Error(ex, "切换最近游玩版本失败")
+        End Try
+    End Sub
+
     ''' <summary>按版本名切换到指定版本。</summary>
     Private Sub SwitchVersionByName(Name As String)
         Try
@@ -2073,6 +2120,8 @@ ExitRefresh:
         End Try
     End Sub
 
+    ''' <summary>上一次版本名脉冲的时间戳，用于限制连续切换时的动画频率。</summary>
+    Private _LastVersionPulseTick As Long = 0
     ''' <summary>版本切换反馈：版本名做一次轻微缩放脉冲。</summary>
     Private Sub PulseVersionName()
         Try
@@ -2081,7 +2130,15 @@ ExitRefresh:
             If Not TypeOf LabInstanceName.RenderTransform Is ScaleTransform Then
                 LabInstanceName.RenderTransform = New ScaleTransform(1, 1)
             End If
+            '连续快速切换时，上一次脉冲会被打断停在中间倍率（比如 1.12）；不归位的话下一次从这里继续叠加，
+            '版本名就会越切越大。这里先停掉旧脉冲、把缩放拉回 1，并限制两次脉冲的最小间隔。
             AniStop("Version Name Pulse")
+            Dim Pulse As ScaleTransform = DirectCast(LabInstanceName.RenderTransform, ScaleTransform)
+            Pulse.ScaleX = 1
+            Pulse.ScaleY = 1
+            Dim NowTick As Long = GetTimeMs()
+            If NowTick - _LastVersionPulseTick < 420 Then Return
+            _LastVersionPulseTick = NowTick
             AniStart({
                 AaScaleTransform(LabInstanceName, -0.08, 90, 0, New AniEaseOutFluent(AniEasePower.Weak)),
                 AaScaleTransform(LabInstanceName, 0.12, 200, 90, New AniEaseOutBack(AniEasePower.Weak)),
@@ -2376,6 +2433,9 @@ ExitRefresh:
         End Try
     End Function
 
+    ''' <summary>上一次账户胶囊脉冲的时间戳，连续切换时只保留第一次反馈。</summary>
+    Private _LastAccountPulseTick As Long = 0
+
     ''' <summary>账户切换反馈：账户胶囊做一次轻微缩放脉冲。</summary>
     Private Sub PulseAccountCapsule()
         Try
@@ -2389,6 +2449,10 @@ ExitRefresh:
             Dim PulseScale As ScaleTransform = DirectCast(BtnAccount.RenderTransform, ScaleTransform)
             PulseScale.ScaleX = 1
             PulseScale.ScaleY = 1
+            '切换成功后的刷新也会调到这里，和点击瞬间那一次只播一个
+            Dim NowTick As Long = GetTimeMs()
+            If NowTick - _LastAccountPulseTick < 420 Then Return
+            _LastAccountPulseTick = NowTick
             AniStart({
                 AaScaleTransform(BtnAccount, -0.05, 90, 0, New AniEaseOutFluent(AniEasePower.Weak)),
                 AaScaleTransform(BtnAccount, 0.08, 200, 90, New AniEaseOutBack(AniEasePower.Weak)),
@@ -2402,12 +2466,32 @@ ExitRefresh:
     ''' <summary>
     ''' 切换正版账号：复用微软登录加载器，用该账号的 RefreshToken 换取新 AccessToken。
     ''' </summary>
+    ''' <summary>
+    ''' 切换账户前，先把「当前账户」正在显示的头像存进它自己的记录。
+    ''' 切走之后它不再是登录中的账户，只能靠历史记录显示头像；记录缺失就会掉成默认头像。
+    ''' </summary>
+    Private Sub SnapshotCurrentAccountSkin()
+        Try
+            Dim Ref = AccountPool.GetVersionAccount()
+            If Ref Is Nothing Then Ref = AccountPool.GetDefaultAccount()
+            If Ref Is Nothing Then Return
+            Dim Skin As String = GetPoolAccountSkin(Ref.Type, Ref.Name)
+            If String.IsNullOrWhiteSpace(Skin) OrElse Not IO.File.Exists(Skin) Then Return
+            '兜底的 Steve/Alex 不算真头像，别写进记录
+            If String.Equals(Skin, GetAccountFallbackSkin(Ref.Name), StringComparison.OrdinalIgnoreCase) Then Return
+            AccountSkinStore.AccountSkinSave(Ref.Type, Ref.Name, "", "", Skin)
+        Catch ex As Exception
+            Logger.Warn(ex, "保存当前账户头像失败")
+        End Try
+    End Sub
     Private Sub SwitchMsAccount(Name As String, Token As String)
         If String.IsNullOrWhiteSpace(Token) Then
             Hint("该账号缺少登录令牌，无法切换", HintType.Red)
             Return
         End If
         PanAccountMenu.Visibility = Visibility.Collapsed
+        SnapshotCurrentAccountSkin() '先把当前账户的头像存好
+        PulseAccountCapsule() '点了就给反馈，不等登录结果
         AccountPool.SetVersionAccount(New AccountRef With {.Type = McLoginType.Ms, .Name = Name})
         RunInNewThread(
         Sub()
@@ -2418,7 +2502,6 @@ ExitRefresh:
                     Try
                         FrmLaunchLeft.RefreshPage(False, True)
                         RefreshHomeInfo()
-                        PulseAccountCapsule()
                         SkinMs.Start(IsForceRestart:=True) '强制刷新新账号皮肤头像
                         Hint($"已切换到 {Name}", HintType.Green)
                     Catch ex As Exception
@@ -2439,6 +2522,8 @@ ExitRefresh:
     Private Sub SwitchLegacyAccount(Name As String)
         Try
             PanAccountMenu.Visibility = Visibility.Collapsed
+            SnapshotCurrentAccountSkin()
+            PulseAccountCapsule() '点了就给反馈
             AccountPool.SetVersionAccount(New AccountRef With {.Type = McLoginType.Legacy, .Name = Name})
             If ComboName Is Nothing Then Return
             '离线用户名下拉框不可编辑，只能通过选中列表项来切换
@@ -2453,7 +2538,6 @@ ExitRefresh:
             ComboName.SelectedItem = If(FoundItem, Name)
             RestartSkinLoader(McLoginType.Legacy)
             RefreshHomeInfo()
-            PulseAccountCapsule()
             Hint($"已切换到离线账号 {Name}", HintType.Green)
         Catch ex As Exception
             Logger.Error(ex, "切换离线账号失败")
@@ -2466,6 +2550,8 @@ ExitRefresh:
     Private Sub SwitchThirdPartyAccount(Token As String, Name As String, Pass As String)
         Try
             PanAccountMenu.Visibility = Visibility.Collapsed
+            SnapshotCurrentAccountSkin()
+            PulseAccountCapsule() '点了就给反馈
             Dim Ref As New AccountRef With {.Type = If(Token = "Nide", McLoginType.Nide, McLoginType.Auth), .Name = Name}
             AccountPool.SetVersionAccount(Ref)
             RefreshHomeInfo()
@@ -2696,10 +2782,15 @@ ExitRefresh:
         ClearInstanceLogoTargets()
         '标题只放日期：有记录时下面是版本列表，没记录时下面写一句"这天没有游玩"，不用再拼"你游玩了："这种半截话
         LabCalDayTitle.Text = $"{SelectedDay.Month}月{SelectedDay.Day}日"
-        Dim Total As New Dictionary(Of String, Long)
+        Dim Total As New Dictionary(Of String, Long)(StringComparer.OrdinalIgnoreCase)
+        Dim ShowNames As New Dictionary(Of String, String)(StringComparer.OrdinalIgnoreCase)
         For Each S In Sessions
             If S.StartTime.Date = SelectedDay Then
-                Total(S.Name) = If(Total.ContainsKey(S.Name), Total(S.Name), 0) + S.DurationSeconds
+                Dim Key As String = PlayLogModule.GetSessionKey(S)
+                If String.IsNullOrWhiteSpace(Key) OrElse Key = "n:" Then Continue For
+                Total(Key) = If(Total.ContainsKey(Key), Total(Key), 0) + S.DurationSeconds
+                '显示版本当前的名字：版本改名后这里也跟着变
+                ShowNames(Key) = PlayLogModule.GetSessionDisplayName(S)
             End If
         Next
         If Not Total.Any Then
@@ -2712,7 +2803,9 @@ ExitRefresh:
             Return
         End If
         For Each Kvp In Total.OrderByDescending(Function(k) k.Value)
-            PanCalDayList.Children.Add(BuildPlayRow(Kvp.Key, Kvp.Value))
+            Dim ShowName As String = ""
+            If Not ShowNames.TryGetValue(Kvp.Key, ShowName) Then ShowName = "未知版本"
+            PanCalDayList.Children.Add(BuildPlayRow(ShowName, Kvp.Value))
         Next
         ResetCalDayScroll()
     End Sub

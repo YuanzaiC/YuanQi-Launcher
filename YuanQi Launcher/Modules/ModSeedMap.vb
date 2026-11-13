@@ -66,6 +66,38 @@ Public Module ModuleSeedMap
     Private Function cb_find_strongholds(mc As Integer, seed As ULong, <Out> outX As Integer(), <Out> outZ As Integer(), maxCount As Integer) As Integer
     End Function
 
+    '---- 句柄式接口（新版 DLL 才导出）：一个句柄一份独立的生成器状态，可多线程并行 ----
+
+    <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
+    Private Function cb_api_version() As Integer
+    End Function
+    <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
+    Private Function cb_ctx_new() As IntPtr
+    End Function
+    <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
+    Private Sub cb_ctx_free(ctx As IntPtr)
+    End Sub
+    <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
+    Private Sub cb_ctx_setup(ctx As IntPtr, mc As Integer, dimId As Integer, seed As ULong)
+    End Sub
+    <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
+    Private Function cb_ctx_map_surface(ctx As IntPtr, x4 As Integer, z4 As Integer, w As Integer, h As Integer, step4 As Integer, <Out> ids As Integer()) As Integer
+    End Function
+    <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
+    Private Function cb_ctx_heightmap(ctx As IntPtr, x4 As Integer, z4 As Integer, w As Integer, h As Integer, step4 As Integer, <Out> heights As Single()) As Integer
+    End Function
+    <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
+    Private Function cb_ctx_sample_grid(ctx As IntPtr, scale As Integer, x As Integer, z As Integer, w As Integer, h As Integer, step4 As Integer, y As Integer, <Out> ids As Integer()) As Integer
+    End Function
+    <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
+    Private Function cb_ctx_find_structures(ctx As IntPtr, stype As Integer, mc As Integer, seed As ULong,
+                                            minX As Integer, minZ As Integer, maxX As Integer, maxZ As Integer,
+                                            <Out> outX As Integer(), <Out> outZ As Integer(), maxCount As Integer) As Integer
+    End Function
+    <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
+    Private Function cb_ctx_find_strongholds(ctx As IntPtr, mc As Integer, seed As ULong, <Out> outX As Integer(), <Out> outZ As Integer(), maxCount As Integer) As Integer
+    End Function
+
     ''' <summary>DllImport 在首次调用时解析；构造时试探一次以便尽早暴露缺失。</summary>
     Public ReadOnly IsNativeAvailable As Boolean = TryInitNative()
     Private Function TryInitNative() As Boolean
@@ -79,6 +111,33 @@ Public Module ModuleSeedMap
 
     ''' <summary>当前库支持的最新 Java 版本（内部枚举值）。</summary>
     Public ReadOnly CubiomesVersion As Integer = If(IsNativeAvailable, cb_mc_newest(), 0)
+
+    ''' <summary>
+    ''' 句柄式接口是否可用：新版 cubiomes.dll 导出 cb_api_version ≥ 2。
+    ''' 不可用（旧 DLL / 缺少导出）时所有生成自动退回单线程串行接口，功能不受影响。
+    ''' </summary>
+    Public ReadOnly HasCtxApi As Boolean = TryInitCtxApi()
+
+    Private Function TryInitCtxApi() As Boolean
+        Try
+            Return IsNativeAvailable AndAlso cb_api_version() >= 2
+        Catch ex As Exception
+            Logger.Warn(ex, "cubiomes.dll 不支持句柄式接口，种子地图退回单线程生成")
+            Return False
+        End Try
+    End Function
+
+    ''' <summary>
+    ''' 每个线程一份生成器句柄（首次访问时创建）。
+    ''' cubiomes 的 Generator / SurfaceNoise 里全是可写状态，多线程共享会算出错误地形，
+    ''' 所以必须一个线程一个句柄。句柄随工作线程池一起存活，不随页面销毁释放。
+    ''' </summary>
+    Private ReadOnly CtxLocal As New ThreadLocal(Of IntPtr)(Function() cb_ctx_new())
+
+    ''' <summary>当前线程的生成器句柄。</summary>
+    Public Function Ctx() As IntPtr
+        Return CtxLocal.Value
+    End Function
 
     '===============================
     '  生成接口
@@ -103,10 +162,17 @@ Public Module ModuleSeedMap
                                   Cells As Integer, Step4 As Integer) As Single()
         Dim Out(Cells * Cells - 1) As Single
         Dim StepVal As Integer = Math.Max(1, Step4)
-        SyncLock NativeLock
-            cb_setup(Version, 0, ToUnsignedSeed(Seed)) '高程只在主世界有意义
-            cb_heightmap(OriginX4, OriginZ4, Cells, Cells, StepVal, Out)
-        End SyncLock
+        If HasCtxApi Then
+            '本线程自己的句柄：多个 worker 同时采样不会互相踩状态
+            Dim C = Ctx()
+            cb_ctx_setup(C, Version, 0, ToUnsignedSeed(Seed)) '高程只在主世界有意义
+            cb_ctx_heightmap(C, OriginX4, OriginZ4, Cells, Cells, StepVal, Out)
+        Else
+            SyncLock NativeLock
+                cb_setup(Version, 0, ToUnsignedSeed(Seed))
+                cb_heightmap(OriginX4, OriginZ4, Cells, Cells, StepVal, Out)
+            End SyncLock
+        End If
         Return Out
     End Function
 
@@ -120,18 +186,32 @@ Public Module ModuleSeedMap
         Dim Out(Cells * Cells - 1) As Single
         Dim StepVal As Integer = Math.Max(1, Step4)
         BandRows = Math.Max(1, BandRows)
-        SyncLock NativeLock
-            cb_setup(Version, 0, ToUnsignedSeed(Seed))
+        If HasCtxApi Then
+            Dim C = Ctx()
+            cb_ctx_setup(C, Version, 0, ToUnsignedSeed(Seed))
             Dim Done As Integer = 0
             Do While Done < Cells
                 Dim Rows As Integer = Math.Min(BandRows, Cells - Done)
                 Dim Band(Rows * Cells - 1) As Single
-                cb_heightmap(OriginX4, OriginZ4 + Done * StepVal, Cells, Rows, StepVal, Band)
+                cb_ctx_heightmap(C, OriginX4, OriginZ4 + Done * StepVal, Cells, Rows, StepVal, Band)
                 Array.Copy(Band, 0, Out, Done * Cells, Rows * Cells)
                 Done += Rows
                 Progress?.Invoke(Done / CDbl(Cells))
             Loop
-        End SyncLock
+        Else
+            SyncLock NativeLock
+                cb_setup(Version, 0, ToUnsignedSeed(Seed))
+                Dim Done As Integer = 0
+                Do While Done < Cells
+                    Dim Rows As Integer = Math.Min(BandRows, Cells - Done)
+                    Dim Band(Rows * Cells - 1) As Single
+                    cb_heightmap(OriginX4, OriginZ4 + Done * StepVal, Cells, Rows, StepVal, Band)
+                    Array.Copy(Band, 0, Out, Done * Cells, Rows * Cells)
+                    Done += Rows
+                    Progress?.Invoke(Done / CDbl(Cells))
+                Loop
+            End SyncLock
+        End If
         Return Out
     End Function
 
@@ -145,17 +225,28 @@ Public Module ModuleSeedMap
         Dim Step4 As Integer = Math.Max(1, BlocksPerCell \ 4)
         Dim X4 As Integer = CInt(Math.Floor(OriginX / 4.0))
         Dim Z4 As Integer = CInt(Math.Floor(OriginZ / 4.0))
-        SyncLock NativeLock
-            cb_setup(Version, {0, -1, 1}(Dimension), ToUnsignedSeed(Seed))
-            Dim Code As Integer
+        Dim DimId As Integer = {0, -1, 1}(Dimension)
+        Dim Y4 As Integer = If(Dimension = 1, 12, 16) '下界 y≈48，末地 y=64
+        Dim Code As Integer
+        If HasCtxApi Then
+            Dim C = Ctx()
+            cb_ctx_setup(C, Version, DimId, ToUnsignedSeed(Seed))
             If Dimension = 0 Then
-                Code = cb_map_surface(X4, Z4, Cells, Cells, Step4, Ids)
+                Code = cb_ctx_map_surface(C, X4, Z4, Cells, Cells, Step4, Ids)
             Else
-                Dim Y4 As Integer = If(Dimension = 1, 12, 16) '下界 y≈48，末地 y=64
-                Code = cb_sample_grid(4, X4, Z4, Cells, Cells, Step4, Y4, Ids)
+                Code = cb_ctx_sample_grid(C, 4, X4, Z4, Cells, Cells, Step4, Y4, Ids)
             End If
-            If Code <> 0 Then Throw New Exception($"cubiomes 群系采样失败（代码 {Code}）")
-        End SyncLock
+        Else
+            SyncLock NativeLock
+                cb_setup(Version, DimId, ToUnsignedSeed(Seed))
+                If Dimension = 0 Then
+                    Code = cb_map_surface(X4, Z4, Cells, Cells, Step4, Ids)
+                Else
+                    Code = cb_sample_grid(4, X4, Z4, Cells, Cells, Step4, Y4, Ids)
+                End If
+            End SyncLock
+        End If
+        If Code <> 0 Then Throw New Exception($"cubiomes 群系采样失败（代码 {Code}）")
         Return Ids
     End Function
 
@@ -170,19 +261,34 @@ Public Module ModuleSeedMap
         Dim X4 As Integer = CInt(Math.Floor(OriginX / 4.0))
         Dim Z4 As Integer = CInt(Math.Floor(OriginZ / 4.0))
         BandRows = Math.Max(1, BandRows)
-        SyncLock NativeLock
-            cb_setup(Version, 0, ToUnsignedSeed(Seed))
+        If HasCtxApi Then
+            Dim C = Ctx()
+            cb_ctx_setup(C, Version, 0, ToUnsignedSeed(Seed))
             Dim Done As Integer = 0
             Do While Done < Cells
                 Dim Rows As Integer = Math.Min(BandRows, Cells - Done)
                 Dim Band(Rows * Cells - 1) As Integer
-                Dim Code As Integer = cb_map_surface(X4, Z4 + Done * Step4, Cells, Rows, Step4, Band)
+                Dim Code As Integer = cb_ctx_map_surface(C, X4, Z4 + Done * Step4, Cells, Rows, Step4, Band)
                 If Code <> 0 Then Throw New Exception($"cubiomes 群系采样失败（代码 {Code}）")
                 Array.Copy(Band, 0, Ids, Done * Cells, Rows * Cells)
                 Done += Rows
                 Progress?.Invoke(Done / CDbl(Cells))
             Loop
-        End SyncLock
+        Else
+            SyncLock NativeLock
+                cb_setup(Version, 0, ToUnsignedSeed(Seed))
+                Dim Done As Integer = 0
+                Do While Done < Cells
+                    Dim Rows As Integer = Math.Min(BandRows, Cells - Done)
+                    Dim Band(Rows * Cells - 1) As Integer
+                    Dim Code As Integer = cb_map_surface(X4, Z4 + Done * Step4, Cells, Rows, Step4, Band)
+                    If Code <> 0 Then Throw New Exception($"cubiomes 群系采样失败（代码 {Code}）")
+                    Array.Copy(Band, 0, Ids, Done * Cells, Rows * Cells)
+                    Done += Rows
+                    Progress?.Invoke(Done / CDbl(Cells))
+                Loop
+            End SyncLock
+        End If
         Return Ids
     End Function
 
@@ -193,31 +299,57 @@ Public Module ModuleSeedMap
     Public Function ScanStructures(Seed As Long, Version As Integer, Dimension As Integer,
                                    StructTypes As Integer(), MinX As Integer, MinZ As Integer, MaxX As Integer, MaxZ As Integer) As Dictionary(Of Integer, List(Of Point))
         Dim Ret As New Dictionary(Of Integer, List(Of Point))
-        SyncLock NativeLock
-            cb_setup(Version, {0, -1, 1}(Dimension), ToUnsignedSeed(Seed))
+        Dim Sd As ULong = ToUnsignedSeed(Seed)
+        If HasCtxApi Then
+            Dim C = Ctx()
+            cb_ctx_setup(C, Version, {0, -1, 1}(Dimension), Sd)
             For Each St In StructTypes
-                Dim List As New List(Of Point)
-                If St = StStronghold Then
-                    If Dimension = 0 Then
-                        Dim Hx(7) As Integer, Hz(7) As Integer
-                        Dim N = cb_find_strongholds(Version, ToUnsignedSeed(Seed), Hx, Hz, 8)
-                        For i = 0 To N - 1
-                            If Hx(i) >= MinX AndAlso Hx(i) <= MaxX AndAlso Hz(i) >= MinZ AndAlso Hz(i) <= MaxZ Then
-                                List.Add(New Point(Hx(i), Hz(i)))
-                            End If
-                        Next
-                    End If
-                ElseIf St >= 0 Then
-                    Dim Sx(255) As Integer, Sz(255) As Integer
-                    Dim N = cb_find_structures(St, Version, ToUnsignedSeed(Seed), MinX, MinZ, MaxX, MaxZ, Sx, Sz, 256)
-                    For i = 0 To Math.Min(N, 256) - 1
-                        List.Add(New Point(Sx(i), Sz(i)))
-                    Next
-                End If
-                Ret(St) = List
+                Ret(St) = ScanOne(St, Version, Sd, Dimension, MinX, MinZ, MaxX, MaxZ, C, True)
             Next
-        End SyncLock
+        Else
+            SyncLock NativeLock
+                cb_setup(Version, {0, -1, 1}(Dimension), Sd)
+                For Each St In StructTypes
+                    Ret(St) = ScanOne(St, Version, Sd, Dimension, MinX, MinZ, MaxX, MaxZ, IntPtr.Zero, False)
+                Next
+            End SyncLock
+        End If
         Return Ret
+    End Function
+
+    ''' <summary>扫描单种结构。UseCtx=True 走本线程句柄（可并行），否则走旧的默认上下文（调用方已加锁）。</summary>
+    Private Function ScanOne(St As Integer, Version As Integer, Sd As ULong, Dimension As Integer,
+                             MinX As Integer, MinZ As Integer, MaxX As Integer, MaxZ As Integer,
+                             C As IntPtr, UseCtx As Boolean) As List(Of Point)
+        Dim List As New List(Of Point)
+        If St = StStronghold Then
+            If Dimension = 0 Then
+                Dim Hx(7) As Integer, Hz(7) As Integer
+                Dim N As Integer
+                If UseCtx Then
+                    N = cb_ctx_find_strongholds(C, Version, Sd, Hx, Hz, 8)
+                Else
+                    N = cb_find_strongholds(Version, Sd, Hx, Hz, 8)
+                End If
+                For i = 0 To N - 1
+                    If Hx(i) >= MinX AndAlso Hx(i) <= MaxX AndAlso Hz(i) >= MinZ AndAlso Hz(i) <= MaxZ Then
+                        List.Add(New Point(Hx(i), Hz(i)))
+                    End If
+                Next
+            End If
+        ElseIf St >= 0 Then
+            Dim Sx(255) As Integer, Sz(255) As Integer
+            Dim N As Integer
+            If UseCtx Then
+                N = cb_ctx_find_structures(C, St, Version, Sd, MinX, MinZ, MaxX, MaxZ, Sx, Sz, 256)
+            Else
+                N = cb_find_structures(St, Version, Sd, MinX, MinZ, MaxX, MaxZ, Sx, Sz, 256)
+            End If
+            For i = 0 To Math.Min(N, 256) - 1
+                List.Add(New Point(Sx(i), Sz(i)))
+            Next
+        End If
+        Return List
     End Function
 
     '===============================

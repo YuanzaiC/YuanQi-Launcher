@@ -144,7 +144,9 @@ Public Module ModImmersiveAssets
 
     Private _FaceKey As String = ""
     Private _FaceBitmaps As BitmapSource()
-    ''' <summary>扫出来的全部全景套装（游戏自带 + 各个资源包）。</summary>
+    ''' <summary>全景缓存的锁：预热在后台线程跑，进场在 UI 线程读。</summary>
+    Private ReadOnly FaceLock As New Object()
+    ''' <summary>扫出来的全部全景套装（启动器自带 + 资源包）。</summary>
     Private _Sources As List(Of PanoramaSource)
     ''' <summary>扫描缓存的有效期标记：资源包目录变了才重扫。</summary>
     Private _SourcesStamp As String = ""
@@ -153,39 +155,69 @@ Public Module ModImmersiveAssets
     Private ReadOnly FaceRandom As New Random()
 
     ''' <summary>
-    ''' 取得六个面的贴图。在「当前实例 + 其它版本索引 + 资源包」里随机挑一套，
+    ''' 取得六个面的贴图。预热过就直接给缓存，没有就当场挑一套读出来。
     ''' 一套都没有时返回 Nothing，由调用方回退到自绘背景。
     ''' </summary>
     Public Function GetPanoramaFaces(Instance As McInstance) As BitmapSource()
-        Dim Sources As List(Of PanoramaSource) = GetPanoramaSources(Instance)
-        If Sources Is Nothing OrElse Sources.Count = 0 Then Return Nothing
-        '最多试三套：某套读不出来（对象缺失、资源包损坏）就换一套，别直接掉到渐变底
-        For Attempt As Integer = 1 To Math.Min(3, Sources.Count)
-            Dim Pick As PanoramaSource = PickSource(Sources)
-            If Pick Is Nothing Then Continue For
-            Dim Faces(5) As BitmapSource
-            If String.IsNullOrEmpty(Pick.Zip) Then
-                Dim Ok As Boolean = True
-                For i = 0 To 5
-                    Faces(i) = LoadBitmapCached(Pick.Files(i))
-                    If Faces(i) Is Nothing Then
-                        Ok = False
-                        Exit For
-                    End If
-                Next
-                If Not Ok Then Continue For
-            Else
-                Faces = LoadFacesFromZip(Pick.Zip, Pick.Entries)
-                If Faces Is Nothing Then Continue For
-            End If
-            '只在内存里留最近一套（1024² × 6 约 24MB），换来源时旧的随缓存回收
-            _FaceKey = Pick.Key
-            _FaceBitmaps = Faces
-            Logger.Info($"休眠页：本次全景来自 {Pick.Key}")
-            Return Faces
-        Next
-        Return Nothing
+        SyncLock FaceLock
+            If _FaceBitmaps IsNot Nothing Then Return _FaceBitmaps
+        End SyncLock
+        '没预热（比如刚启动就点全屏）：同步补一次
+        WarmPanorama(Instance)
+        SyncLock FaceLock
+            Return _FaceBitmaps
+        End SyncLock
     End Function
+
+    ''' <summary>
+    ''' 后台预热一套全景：解码结果留在缓存里，进场时第一帧就是真背景，不会先闪一下渐变底。
+    ''' 已经在缓存里就直接返回，不重复读盘。
+    ''' </summary>
+    Public Sub WarmPanorama(Instance As McInstance)
+        Try
+            SyncLock FaceLock
+                If _FaceBitmaps IsNot Nothing Then Return
+            End SyncLock
+            Dim Sources As List(Of PanoramaSource) = GetPanoramaSources(Instance)
+            If Sources Is Nothing OrElse Sources.Count = 0 Then Return
+            '最多试三套：某套读不出来（对象缺失、资源包损坏）就换一套，别直接掉到渐变底
+            For Attempt As Integer = 1 To Math.Min(3, Sources.Count)
+                Dim Pick As PanoramaSource = PickSource(Sources)
+                If Pick Is Nothing Then Continue For
+                Dim Faces(5) As BitmapSource
+                If String.IsNullOrEmpty(Pick.Zip) Then
+                    Dim Ok As Boolean = True
+                    For i = 0 To 5
+                        Faces(i) = LoadBitmapCached(Pick.Files(i))
+                        If Faces(i) Is Nothing Then
+                            Ok = False
+                            Exit For
+                        End If
+                    Next
+                    If Not Ok Then Continue For
+                Else
+                    Faces = LoadFacesFromZip(Pick.Zip, Pick.Entries)
+                    If Faces Is Nothing Then Continue For
+                End If
+                '只在内存里留最近一套（1024² × 6 约 24MB），换来源时旧的随缓存回收
+                SyncLock FaceLock
+                    _FaceKey = Pick.Key
+                    _FaceBitmaps = Faces
+                End SyncLock
+                Return
+            Next
+        Catch ex As Exception
+            Logger.Warn(ex, "休眠页：预热全景失败")
+        End Try
+    End Sub
+
+    ''' <summary>丢掉缓存：退出休眠页后调用，下次进场换一套新的。</summary>
+    Public Sub ClearPanoramaCache()
+        SyncLock FaceLock
+            _FaceBitmaps = Nothing
+            _FaceKey = ""
+        End SyncLock
+    End Sub
 
     ''' <summary>随机挑一套，尽量不要和上一次相同。</summary>
     Private Function PickSource(Sources As List(Of PanoramaSource)) As PanoramaSource
@@ -261,7 +293,6 @@ Public Module ModImmersiveAssets
 
         _Sources = Result
         _SourcesStamp = Stamp
-        Logger.Info($"休眠页：可用全景 {Result.Count} 套（自带 {If(BuiltIn Is Nothing, 0, BuiltIn.Count)} 套 + 资源包 {PackCount} 套 + 游戏目录 {IndexCount + If(InstanceOk, 1, 0)} 套）")
         Return Result
     End Function
 
@@ -299,7 +330,7 @@ Public Module ModImmersiveAssets
                 Dim Src As New PanoramaSource
                 Dim Complete As Boolean = True
                 For i = 0 To 5
-                    Dim File As String = IO.Path.Combine(Folder, "panorama_" & i & ".png")
+                    Dim File As String = IO.Path.Combine(Folder, "panorama_" & i & ".jpg")
                     If Not FileUtils.Exists(File) Then
                         Complete = False
                         Exit For
@@ -585,8 +616,6 @@ Public Module ModImmersiveAssets
             _FontGlyphs = Nothing
             _FontAdvances = Nothing
         End Try
-        '日志放在解析之外：写日志本身出问题不应把已经解析好的字形丢掉
-        If Loaded Then Logger.Info($"休眠页：位图字体已就绪（字格 {_FontCell}px）")
     End Sub
 
     ''' <summary>内置像素字的一个字形：5 格宽、7 格高，'#' 为笔画。</summary>
@@ -748,8 +777,6 @@ Public Module ModImmersiveAssets
         _FontAtlas = Atlas
         _FontGlyphs = Glyphs
         _FontAdvances = Advances
-        '推进宽度直接决定字距，出问题时看这一行最快（时钟里的「:」曾经因为宽度算错贴着数字）
-        Logger.Info($"休眠页：内置像素字就绪（字格 {Cell}px，数字宽 {Advances(AscW("0"c))}，冒号宽 {Advances(AscW(":"c))}）")
     End Sub
 
 #End Region

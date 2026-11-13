@@ -23,10 +23,10 @@ Public Class PageSetupSystem
     Public Sub Reset()
         Try
             SettingService.ResetSettings(Me)
-            Logger.Info("已初始化启动器页设置")
-            Hint("已初始化启动器页设置！", HintType.Green, False)
+            Logger.Info("已初始化下载页设置")
+            Hint("已初始化下载页设置！", HintType.Green, False)
         Catch ex As Exception
-            Logger.Error(ex, "初始化启动器页设置失败", LogBehavior.Alert)
+            Logger.Error(ex, "初始化下载页设置失败", LogBehavior.Alert)
         End Try
         Reload()
     End Sub
@@ -47,7 +47,6 @@ Public Class PageSetupSystem
                     Return "无限制"
             End Select
         End Function
-        SliderDebugAnim.GetHintText = Function(v) If(v > 29, "关闭", (v / 10 + 0.1) & "x")
     End Sub
     Private Sub SliderDownloadThread_PreviewChange(sender As Object, e As RouteEventArgs) Handles SliderDownloadThread.PreviewChange
         If SliderDownloadThread.Value < 100 Then Return
@@ -58,12 +57,6 @@ Public Class PageSetupSystem
         End If
     End Sub
 
-    '调试模式
-    Private Sub CheckDebugMode_Change() Handles CheckDebugMode.Change
-        If AniControlEnabled = 0 Then Hint("部分调试信息将在刷新或启动器重启后切换显示！",, False)
-    End Sub
-
-
     ''' <summary>
     ''' 启动器是否已经是最新版？
     ''' 若返回 Nothing，则代表无更新缓存文件或出错。
@@ -72,56 +65,5 @@ Public Class PageSetupSystem
         '缘启不包含自动更新功能，始终视为最新版
         Return True
     End Function
-
-#Region "导出 / 导入设置"
-
-    Private Sub BtnSystemSettingExp_Click(sender As Object, e As MouseButtonEventArgs) Handles BtnSystemSettingExp.Click
-        Try
-            Dim FilePath = Dialogs.SaveFile("保存缘启设置", $"缘启设置 {Now:yyyy-MM-dd}.json", Paths.BaseThenName,
-                                            {("json", "缘启设置文件")})
-            If FilePath Is Nothing Then Return '用户取消
-            Dim Count = ExportConfig(FilePath)
-            Hint($"已导出 {Count} 项设置！", HintType.Green)
-        Catch ex As Exception
-            Logger.Error(ex, "导出设置失败")
-            MyMsgBox("导出设置失败：" & vbCrLf & ex.Message, "导出设置", "确定", IsWarn:=True)
-        End Try
-    End Sub
-
-    Private Sub BtnSystemSettingImp_Click(sender As Object, e As MouseButtonEventArgs) Handles BtnSystemSettingImp.Click
-        Try
-            If MyMsgBox($"导入设置会覆盖当前的启动器设置，且无法撤销。{vbCrLf}建议先使用「导出设置」备份当前的设置。{vbCrLf}{vbCrLf}确定要继续吗？", "导入设置", "继续", "取消") = 2 Then Return
-            Dim FileList = Dialogs.SelectFile("选择缘启设置文件", False, Paths.BaseThenName,
-                                              {({"json"}, "缘启设置文件")})
-            If FileList Is Nothing OrElse Not FileList.Any() Then Return '用户取消
-            Dim Count = ImportConfig(FileList.First())
-            Reload() '刷新当前页面上显示的设置
-            MyMsgBox($"导入完成，共应用了 {Count} 项设置。{vbCrLf}部分设置（如主题颜色、界面尺寸）需要重启启动器后才能完全生效。", "导入设置")
-        Catch ex As Exception
-            Logger.Error(ex, "导入设置失败")
-            MyMsgBox("导入设置失败：" & vbCrLf & ex.Message, "导入设置", "确定", IsWarn:=True)
-        End Try
-    End Sub
-
-    '检查更新
-    Private Sub BtnSystemCheckUpdate_Click(sender As Object, e As MouseButtonEventArgs) Handles BtnSystemCheckUpdate.Click
-        CheckLauncherUpdate()
-    End Sub
-    '空间体检
-    Private Sub BtnSystemSpaceAudit_Click(sender As Object, e As MouseButtonEventArgs) Handles BtnSystemSpaceAudit.Click
-        ShowSpaceAudit()
-    End Sub
-    '环境体检
-    Private Sub BtnSystemEnvCheck_Click(sender As Object, e As MouseButtonEventArgs) Handles BtnSystemEnvCheck.Click
-        ShowEnvCheck()
-    End Sub
-
-    '重新查看使用引导
-    Private Sub BtnSystemGuide_Click(sender As Object, e As MouseButtonEventArgs) Handles BtnSystemGuide.Click
-        MyMsgBoxGuide()
-        MyMsgGuide.MarkFinished()
-    End Sub
-
-#End Region
 
 End Class

@@ -99,8 +99,13 @@
                         <TranslateTransform x:Name="MapPos" />
                     </TransformGroup>
                 </Canvas.RenderTransform>
-                <!-- 群系瓦片（按需生成的位图，坐标为地图单位） -->
-                <Canvas x:Name="PanTiles" IsHitTestVisible="False" />
+                <!-- 群系瓦片：同一坐标系、统一缩放。自下而上三层——加载占位（虚线格）→ 粗层底图 → 细层。
+                     骨架垫在最底下：一旦粗层到齐就被盖住，屏幕不会一直挂着一堆虚线框。 -->
+                <Canvas x:Name="PanTerrain" IsHitTestVisible="False">
+                    <Canvas x:Name="PanSkeleton" />
+                    <Canvas x:Name="PanTilesCoarse" />
+                    <Canvas x:Name="PanTiles" />
+                </Canvas>
                 <!-- 结构标记（按世界坐标摆放，反向缩放保持屏幕尺寸） -->
                 <!-- 史莱姆区块叠加层（开关打开时由代码填充，位于地形之上、网格之下） -->
                 <Canvas x:Name="PanSlime" IsHitTestVisible="False" />
@@ -166,8 +171,18 @@
                     <TextBlock x:Name="LabZoom" Text="100%" Width="46" FontSize="11.5" Foreground="{DynamicResource BrushText2}"
                                FontFamily="Resources/#PCL English, Microsoft YaHei UI" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                     <Rectangle Width="1" Height="12" Fill="{DynamicResource BrushBorder}" Margin="9,0,9,0" />
-                    <TextBlock x:Name="LabScaleHint" Text="1 格 ≈ 32 方块" Width="96" FontSize="11.5" Foreground="{DynamicResource BrushText3}"
-                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    <Grid Width="96" VerticalAlignment="Center">
+                        <TextBlock x:Name="LabScaleHint" Text="1 格 ≈ 32 方块" FontSize="11.5" Foreground="{DynamicResource BrushText3}"
+                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                        <!-- 加载进度：与「1 格 ≈ N 方块」共用一个位置，加载完自动换回来（不新增按钮） -->
+                        <StackPanel x:Name="PanLoad" Orientation="Horizontal" VerticalAlignment="Center" Visibility="Collapsed">
+                            <Border Width="56" Height="3" CornerRadius="1.5" Background="{DynamicResource BrushBorder}" VerticalAlignment="Center">
+                                <Border x:Name="RectLoadBar" HorizontalAlignment="Left" Width="0" CornerRadius="1.5" Background="{DynamicResource ColorBrush3}" />
+                            </Border>
+                            <TextBlock x:Name="LabLoad" Text="0%" FontSize="11" Margin="6,0,0,0" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource BrushText3}" FontFamily="Resources/#PCL English, Microsoft YaHei UI" />
+                        </StackPanel>
+                    </Grid>
                 </StackPanel>
 
                 <!-- 版本选择 -->
@@ -237,7 +252,7 @@
                           Stretch="Uniform" Width="17" Height="17" />
                 </Button>
                 <!-- ⑧ 精度：精细 4 方块 / 采样 ↔ 标准 8 方块 / 采样 -->
-                <Button x:Name="BtnDetail" Style="{StaticResource ToolBtn}" Margin="0,3,0,0" ToolTip="精度：精细 4 方块 / 采样 ↔ 标准 8 方块 / 采样">
+                <Button x:Name="BtnDetail" Style="{StaticResource ToolBtn}" Margin="0,3,0,0" ToolTip="精度：高（缩小时更晚变糊，加载更慢）/ 低（更早变糊，拖动更流畅）">
                     <Path Data="M3,5 h18 v2 h-18 Z M6,10 h12 v2 h-12 Z M9,15 h6 v2 h-6 Z"
                           Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                           Stretch="Uniform" Width="17" Height="17" />

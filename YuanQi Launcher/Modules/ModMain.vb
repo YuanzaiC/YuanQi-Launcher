@@ -19,6 +19,8 @@ Public Module ModMain
         Public Text As String
         Public Type As HintType
         Public Log As Boolean
+        ''' <summary>同类提示的标识：相同 Key 的提示只保留一个（新的替换旧的）。</summary>
+        Public Key As String
     End Structure
 
     ''' <summary>
@@ -33,8 +35,13 @@ Public Module ModMain
     ''' <summary>
     ''' 在窗口左下角弹出提示文本。
     ''' </summary>
-    Public Sub Hint(Text As String, Optional Type As HintType = HintType.Blue, Optional Log As Boolean = True)
-        HintWaiting.Enqueue(New HintMessage With {.Text = If(Text, ""), .Type = Type, .Log = Log})
+    ''' <param name="Key">
+    ''' 同类提示的标识。传同一个 Key 的提示只保留一个——新的会替换旧的（例如连续复制坐标）。
+    ''' 不传则各条独立堆叠，互不替换。
+    ''' </param>
+    Public Sub Hint(Text As String, Optional Type As HintType = HintType.Blue, Optional Log As Boolean = True,
+                    Optional Key As String = Nothing)
+        HintWaiting.Enqueue(New HintMessage With {.Text = If(Text, ""), .Type = Type, .Log = Log, .Key = If(Key, "")})
     End Sub
 
     Private Sub HintTick()
@@ -44,11 +51,15 @@ Public Module ModMain
                 CurrentHint.Text = CurrentHint.Text.ReplaceLineEndings(" ", mergeMultiple:=True)
                 '超量提示直接忽略
                 If FrmMain.PanHint.Children.Count >= 4 Then GoTo EndHint
-                '检查是否有重复提示
+                '1) 同类提示（Key 相同）：只保留一个，新的替换旧的
+                Dim SameKeyStack As Border = Nothing
+                '2) 完全相同的文本：视为重复提示，重播动画
                 Dim DoubleStack As Border = Nothing
                 For Each stack As Border In FrmMain.PanHint.Children
-                    If stack.Tag IsNot Nothing AndAlso stack.Tag.Length >= 3 AndAlso CBool(stack.Tag(0)) AndAlso
-                       String.Equals(CStr(stack.Tag(2)), CurrentHint.Text) Then DoubleStack = stack
+                    If stack.Tag Is Nothing OrElse stack.Tag.Length < 3 OrElse Not CBool(stack.Tag(0)) Then Continue For
+                    If String.Equals(CStr(stack.Tag(2)), CurrentHint.Text) Then DoubleStack = stack
+                    If SameKeyStack Is Nothing AndAlso CurrentHint.Key <> "" AndAlso stack.Tag.Length >= 4 AndAlso
+                       String.Equals(CStr(stack.Tag(3)), CurrentHint.Key) Then SameKeyStack = stack
                 Next
                 '强调色
                 Dim AccentColor As MyColor
@@ -65,7 +76,30 @@ Public Module ModMain
                             AccentColor = New MyColor(61, 138, 45)
                         End Try
                 End Select
-                If DoubleStack IsNot Nothing Then
+                If SameKeyStack IsNot Nothing Then
+                    '同类提示：换掉旧气泡的文字与配色，保证"同类型同时只有一个"
+                    Dim Layout = TryCast(SameKeyStack.Child, Grid)
+                    If Layout IsNot Nothing AndAlso Layout.Children.Count >= 3 Then
+                        Dim Bar = TryCast(Layout.Children(0), Border)
+                        If Bar IsNot Nothing Then Bar.Background = AccentColor
+                        Dim Icon = TryCast(Layout.Children(1), TextBlock)
+                        If Icon IsNot Nothing Then
+                            Icon.Text = If(CurrentHint.Type = HintType.Red, "!", "✓")
+                            Icon.Foreground = AccentColor
+                        End If
+                        Dim Label = TryCast(Layout.Children(2), TextBlock)
+                        If Label IsNot Nothing Then Label.Text = CurrentHint.Text
+                    End If
+                    SameKeyStack.Tag(2) = CurrentHint.Text
+                    AniStop("Hint Hide " & SameKeyStack.Tag(1))
+                    SameKeyStack.RenderTransform = New TranslateTransform(0, 0)
+                    SameKeyStack.Opacity = 1
+                    AniStart({
+                        AaOpacity(SameKeyStack, -0.35, 100, , New AniEaseOutFluent),
+                        AaOpacity(SameKeyStack, 0.35, 180, 100, New AniEaseOutFluent)
+                    }, "Hint Show " & SameKeyStack.Tag(1))
+                    ScheduleHintHide(SameKeyStack, CurrentHint.Text)
+                ElseIf DoubleStack IsNot Nothing Then
                     '有重复提示：重播一次进入动画，并重新计时
                     AniStop("Hint Hide " & DoubleStack.Tag(1))
                     DoubleStack.RenderTransform = New TranslateTransform(0, 0)
@@ -79,7 +113,7 @@ Public Module ModMain
                 Else
                     '新建气泡
                     Dim NewHintControl As New Border With {
-                        .Tag = {True, GetUuid(), CurrentHint.Text},
+                        .Tag = {True, GetUuid(), CurrentHint.Text, CurrentHint.Key},
                         .Margin = New Thickness(0, 0, 0, 8),
                         .Opacity = 0,
                         .HorizontalAlignment = HorizontalAlignment.Left,
@@ -467,6 +501,8 @@ EndHint:
     Public FrmSetupUI As PageSetupUI
     Public FrmSetupSystem As PageSetupSystem
     Public FrmSetupLink As PageSetupLink
+    Public FrmSetupGeneral As PageSetupGeneral
+    Public FrmSetupAdvanced As PageSetupAdvanced
 
     '其他页面声明
     Public FrmOtherLeft As PageOtherLeft

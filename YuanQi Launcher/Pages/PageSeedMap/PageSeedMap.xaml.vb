@@ -1,5 +1,6 @@
 Imports System.Collections.Concurrent
 Imports System.Windows.Threading
+Imports System.Windows.Media.Animation
 Imports System.Windows.Controls.Primitives
 Imports System.Windows.Media
 Imports System.Windows.Media.Effects
@@ -22,7 +23,7 @@ Public Class PageSeedMap
     Private Const BlocksPerUnit As Double = 8
     '瓦片：64×64 采样格；层级 = 每格方块数（8 / 32 / 128）
     Private Const TileCells As Integer = 64
-    Private ReadOnly Levels As Integer() = {8, 32, 128}
+    Private ReadOnly Levels As Integer() = {4, 8, 16, 32, 64, 128}
 
     Private SeedValue As Long = 7906073100618442319
     Private VersionIndex As Integer = 1 '默认 26.3（按 1.21 Winter Drop 算法近似）
@@ -121,10 +122,13 @@ Public Class PageSeedMap
         }
         StructLists.AddRange({Overworld, Nether, Finale})
         Structs = Overworld
+        LoadStructsAll()
         EnsureDefaultStruct()
         BuildStructList()
+        LoadBiomeSel(Dimension)
         BuildBiomeList()
         BuildVersionList()
+        LoadSwitches()
         '默认版本按名字定位：版本列表可能会联网补充，索引不再固定
         Dim DefaultIndex As Integer = ModuleSeedMap.IndexOfVersionName("26.3")
         If DefaultIndex >= 0 Then
@@ -135,20 +139,28 @@ Public Class PageSeedMap
         '联网拉取官方版本列表，把新版本并入下拉
         RefreshVersionListFromNet()
         '每次进入页面都尝试刷新默认种子（同一实例只填一次；用户手动改过就不覆盖）
+        AddHandler TileRetryTimer.Tick, AddressOf TileRetryTick
         AddHandler PageEnter,
             Sub()
                 '存档详情页点了「地图」按钮：优先用带过来的种子 + 版本
+                PageActive = True
                 If ApplyPendingSeed() Then Return
                 LoadSeedFromRecentSave()
+                RefreshTiles(True)
             End Sub
     End Sub
 
     Private Sub PageSeedMap_Loaded(sender As Object, e As RoutedEventArgs) Handles Me.Loaded
+        PageActive = True
         '点面板以外的地方 / 离开页面时收起 3D 预览（只挂一次）
         If Not _View3DHooked Then
             _View3DHooked = True
             AddHandler PreviewMouseDown, AddressOf PageSeedMap_PreviewMouseDown
-            AddHandler PageExit, Sub() CloseView3DNow()
+            AddHandler PageExit, Sub()
+                                     PageActive = False
+                                     TileRetryTimer.Stop()
+                                     CloseView3DNow()
+                                 End Sub
             AddHandler PanView3D.SizeChanged, AddressOf PanView3D_SizeChanged
         End If
         If Not GeneratedOnce Then
@@ -159,8 +171,8 @@ Public Class PageSeedMap
         End If
         '默认种子：当前实例最近修改的存档（读不到就保留占位种子）
         LoadSeedFromRecentSave()
-        '精度按钮初始态与 HighDetail 保持一致
-        If HighDetail Then
+        '清晰度按钮初始态
+        If SeedMapQuality > 0 Then
             BtnDetail.Background = TryCast(FindResource("BrushAccentSoft"), Brush)
             BtnDetail.Foreground = TryCast(FindResource("ColorBrush3"), Brush)
         End If
@@ -170,6 +182,8 @@ Public Class PageSeedMap
 
     ''' <summary>离开种子地图（页面被摘下）时收起 3D 预览。</summary>
     Private Sub PageSeedMap_Unloaded(sender As Object, e As RoutedEventArgs) Handles Me.Unloaded
+        PageActive = False
+        TileRetryTimer.Stop()
         CloseView3DNow()
     End Sub
 
@@ -187,6 +201,7 @@ Public Class PageSeedMap
         If Zoom < ZoomMinimum() Then Zoom = ZoomMinimum()
         ApplyTransform()
         RefreshTiles(True)
+        StartTileWorker() '万一 worker 都空闲退出了，这里重新拉起来
     End Sub
 
     '===============================
@@ -201,12 +216,29 @@ Public Class PageSeedMap
         Return New Point(X / BlocksPerUnit, Z / BlocksPerUnit)
     End Function
 
-    '视野中心（方块坐标）
-    Private Function ViewCenter() As Point
+    '===============================
+    '  相机（俯视 ↔ 斜视）
+    '===============================
+
+    ''' <summary>屏幕点 → 地图单位。</summary>
+    Private Function ScreenToUnit(P As Point) As Point
+        Return New Point((P.X - MapPos.X) / Zoom, (P.Y - MapPos.Y) / Zoom)
+    End Function
+
+    ''' <summary>当前视野对应的地图单位矩形。</summary>
+    Private Function ViewUnitRect() As Rect
         Dim Vw = PanMapViewport.ActualWidth, Vh = PanMapViewport.ActualHeight
         If Vw < 50 Then Vw = 1280
         If Vh < 50 Then Vh = 700
-        Return ToBlock((Vw / 2 - MapPos.X) / Zoom, (Vh / 2 - MapPos.Y) / Zoom)
+        Dim U0 = -MapPos.X / Zoom, U1 = (Vw - MapPos.X) / Zoom
+        Dim V0 = -MapPos.Y / Zoom, V1 = (Vh - MapPos.Y) / Zoom
+        Return New Rect(U0, V0, Math.Max(0.0001, U1 - U0), Math.Max(0.0001, V1 - V0))
+    End Function
+
+    '视野中心（方块坐标）
+    Private Function ViewCenter() As Point
+        Dim R = ViewUnitRect()
+        Return ToBlock((R.Left + R.Right) / 2, (R.Top + R.Bottom) / 2)
     End Function
 
     Private Function ZoomMinimum() As Double
@@ -218,6 +250,7 @@ Public Class PageSeedMap
     Private Sub ApplyTransform()
         MapScale.ScaleX = Zoom : MapScale.ScaleY = Zoom
         UpdateMarkerScale()
+        UpdateSkeletonScale()
         UpdateZoomLabel()
         '缩放时网格/标尺/史莱姆都要跟着重算（都有覆盖范围缓存，重复调用很便宜）
         UpdateOverlays()
@@ -263,9 +296,9 @@ Public Class PageSeedMap
     '===============================
 
     ''' <summary>精细模式多一档：4 方块/采样（cubiomes 的最小群系尺度）。</summary>
-    Private ReadOnly HighDetailLevels As Integer() = {4, 8, 32, 128}
     ''' <summary>是否使用精细地形（4 方块/采样，瓦片更小、数量更多）。默认开启，标准档在默认缩放下明显偏糊。</summary>
-    Private HighDetail As Boolean = True
+    ' <summary>地图清晰度：0 低 / 1 中 / 2 高（对应不同的瓦片预算）。</summary>
+    Private SeedMapQuality As Integer = 2
     ''' <summary>当前网格间距（方块），用于避免重复重建网格。</summary>
     Private LastGridSpacing As Double = 0
 
@@ -326,8 +359,9 @@ Public Class PageSeedMap
                 Return
             End If
             Dim Units As Double = Spacing / BlocksPerUnit
-            Dim U0 As Double = -MapPos.X / Zoom, U1 As Double = (Vw - MapPos.X) / Zoom
-            Dim V0 As Double = -MapPos.Y / Zoom, V1 As Double = (Vh - MapPos.Y) / Zoom
+            Dim R0 = ViewUnitRect()
+            Dim U0 As Double = R0.Left, U1 As Double = R0.Right
+            Dim V0 As Double = R0.Top, V1 As Double = R0.Bottom
             '间距和缩放不变、视口还在已绘制范围内 → 什么都不用做
             If GridCoverSpacing = Spacing AndAlso Math.Abs(GridCoverZoom - Zoom) < 0.0001 AndAlso
                Not GridCover.IsEmpty AndAlso
@@ -407,15 +441,16 @@ Public Class PageSeedMap
                 LabelStep *= 2
             Loop
             RulerUsed = 0
+            '坐标标尺：X 轴（上下两条）与 Z 轴（左右两条）都用同一个 Zoom
             Dim X0 As Double = Math.Floor((-MapPos.X / Zoom * BlocksPerUnit) / LabelStep) * LabelStep
             Dim XEnd As Double = (Vw - MapPos.X) / Zoom * BlocksPerUnit
             Dim Xv As Double = X0
             Do While Xv <= XEnd
                 Dim Px As Double = MapPos.X + Xv / BlocksPerUnit * Zoom
-                If Px >= 2 AndAlso Px <= Vw - 48 Then
+                If Px >= 2 AndAlso Px <= Vw - 56 Then
                     Dim T = CLng(Xv).ToString()
                     AddRulerLabel(Px + 3, 3, T)
-                    AddRulerLabel(Px + 3, Vh - 19, T)
+                    AddRulerLabel(Px + 3, Vh - 22, T)
                 End If
                 Xv += LabelStep
             Loop
@@ -424,10 +459,10 @@ Public Class PageSeedMap
             Dim Zv As Double = Z0
             Do While Zv <= ZEnd
                 Dim Py As Double = MapPos.Y + Zv / BlocksPerUnit * Zoom
-                If Py >= 14 AndAlso Py <= Vh - 16 Then
+                If Py >= 16 AndAlso Py <= Vh - 18 Then
                     Dim T = CLng(Zv).ToString()
-                    AddRulerLabel(4, Py - 7, T)
-                    AddRulerLabel(Vw - 62, Py - 7, T)
+                    AddRulerLabel(4, Py - 8, T)
+                    AddRulerLabel(Vw - 74, Py - 8, T)
                 End If
                 Zv += LabelStep
             Loop
@@ -442,13 +477,21 @@ Public Class PageSeedMap
         If RulerUsed < RulerPool.Count Then
             T = RulerPool(RulerUsed)
         Else
-            '阴影统一挂在 PanRuler 上（XAML），单个文字不再各自带 Effect
-            T = New TextBlock With {.FontSize = 10.5, .Foreground = Brushes.White, .Opacity = 0.9,
+            '只加字号与字重，不加底衬（底衬在密集区会连成一条黑带）
+            T = New TextBlock With {.FontSize = 12, .FontWeight = FontWeights.SemiBold,
+                                    .Foreground = Brushes.White, .Opacity = 1,
                                     .IsHitTestVisible = False}
             RulerPool.Add(T)
             PanRuler.Children.Add(T)
         End If
         RulerUsed += 1
+        If T.FontSize < 12 Then
+            T.FontSize = 12
+            T.FontWeight = FontWeights.SemiBold
+            T.Opacity = 1
+            T.ClearValue(TextBlock.BackgroundProperty)
+            T.ClearValue(TextBlock.PaddingProperty)
+        End If
         If T.Text <> Text Then T.Text = Text
         If T.Visibility <> Visibility.Visible Then T.Visibility = Visibility.Visible
         Canvas.SetLeft(T, X)
@@ -464,27 +507,128 @@ Public Class PageSeedMap
 
     ''' <summary>地形精度切换：标准 8 方块/采样 ↔ 精细 4 方块/采样（旧瓦片作废重建）。</summary>
     Private Sub BtnDetail_Click(sender As Object, e As RoutedEventArgs) Handles BtnDetail.Click
-        HighDetail = Not HighDetail
-        If HighDetail Then
-            BtnDetail.Background = TryCast(FindResource("BrushAccentSoft"), Brush)
-            BtnDetail.Foreground = TryCast(FindResource("ColorBrush3"), Brush)
-            Hint("精度：精细（4 方块 / 采样）", HintType.Blue)
-        Else
-            BtnDetail.Background = Brushes.Transparent
-            BtnDetail.Foreground = TryCast(FindResource("BrushText2"), Brush)
-            Hint("精度：标准（8 方块 / 采样）", HintType.Blue)
-        End If
-        For Each T In Tiles.Values.ToList()
-            PanTiles.Children.Remove(T.Image)
-        Next
-        Tiles.Clear()
-        SyncLock JobSync
-            JobQueue.Clear()
-            TilePending.Clear()
-        End SyncLock
+        '三档循环：低 → 中 → 高 → 低
+        SeedMapQuality = (SeedMapQuality + 1) Mod 3
+        SetToggleLook(BtnDetail, SeedMapQuality > 0)
+        Select Case SeedMapQuality
+            Case 0 : Hint("地图清晰度：低（加载快、让路给游戏）", HintType.Blue)
+            Case 1 : Hint("地图清晰度：中", HintType.Blue)
+            Case Else : Hint("地图清晰度：高（更清晰，加载更慢）", HintType.Blue)
+        End Select
+        '只改预算，不清缓存：更细的直接请求、更粗的自动隐藏，切换瞬时完成
         RefreshTiles(True)
+        ApplyLevelVisibility()
+        StartTileWorker()
+        SaveSwitches()
     End Sub
 
+    '===============================
+    '  界面状态记忆（永久保存到启动器设置）
+    '===============================
+
+    ''' <summary>该维度是否已经显式保存过结构勾选（保存过就不再套用默认勾选）。</summary>
+    Private ReadOnly StructSaved As Boolean() = {False, False, False}
+
+    Private Sub SetToggleLook(Btn As Button, Active As Boolean)
+        If Btn Is Nothing Then Return
+        Btn.Background = If(Active, TryCast(FindResource("BrushAccentSoft"), Brush), Brushes.Transparent)
+        Btn.Foreground = If(Active, TryCast(FindResource("ColorBrush3"), Brush), TryCast(FindResource("BrushText2"), Brush))
+    End Sub
+
+    ''' <summary>读取上次保存的五个开关，并同步按钮外观。</summary>
+    Private Sub LoadSwitches()
+        Try
+            TerrainVisible = Settings.Get(Of Boolean)("SeedMapLayerVisible")
+            GridVisible = Settings.Get(Of Boolean)("SeedMapGridVisible")
+            SlimeEnabled = Settings.Get(Of Boolean)("SeedMapSlimeVisible")
+            ReliefEnabled = Settings.Get(Of Boolean)("SeedMapRelief")
+            SeedMapQuality = Math.Max(0, Math.Min(2, Settings.Get(Of Integer)("SeedMapQuality")))
+        Catch ex As Exception
+            Logger.Warn(ex, "读取种子地图开关失败")
+        End Try
+        '地形按钮是"隐藏"时才高亮，所以取反
+        SetToggleLook(BtnToolLayer, Not TerrainVisible)
+        SetToggleLook(BtnToolGrid, Not GridVisible)
+        SetToggleLook(BtnToolSlime, SlimeEnabled)
+        SetToggleLook(BtnToolRelief, ReliefEnabled)
+        SetToggleLook(BtnDetail, SeedMapQuality > 0)
+        '地形图层是靠透明度隐藏的，这里要把它同步过来，否则按钮显示隐藏但画面还在画
+        If PanTerrain IsNot Nothing Then PanTerrain.Opacity = If(TerrainVisible, 1.0, 0.0)
+        '群系筛选标签同步
+        RefreshBiomeStates()
+    End Sub
+
+    Private Sub SaveSwitches()
+        Try
+            Settings.Set("SeedMapLayerVisible", TerrainVisible)
+            Settings.Set("SeedMapGridVisible", GridVisible)
+            Settings.Set("SeedMapSlimeVisible", SlimeEnabled)
+            Settings.Set("SeedMapRelief", ReliefEnabled)
+            Settings.Set("SeedMapQuality", SeedMapQuality)
+        Catch ex As Exception
+            Logger.Warn(ex, "保存种子地图开关失败")
+        End Try
+    End Sub
+
+    ''' <summary>读取三个维度各自保存的结构勾选。空字符串 = 从未保存过，保留默认勾选。</summary>
+    Private Sub LoadStructsAll()
+        For D As Integer = 0 To 2
+            Try
+                Dim Raw As String = Settings.Get(Of String)("SeedMapStructs" & D)
+                If Raw Is Nothing Then Raw = ""
+                Raw = Raw.Trim()
+                If Raw = "" Then Continue For '从未保存：保留 EnsureDefaultStruct 的默认勾选
+                StructSaved(D) = True
+                Dim Names As New HashSet(Of String)(Raw.Split(New Char() {","c}, StringSplitOptions.RemoveEmptyEntries))
+                For Each S In StructLists(D)
+                    S.Enabled = Names.Contains(S.Name)
+                Next
+            Catch ex As Exception
+                Logger.Warn(ex, "读取种子地图结构勾选失败")
+            End Try
+        Next
+    End Sub
+
+    ''' <summary>保存当前维度的结构勾选。一项都没勾时存 "-"，避免下次启动又被默认值覆盖。</summary>
+    Private Sub SaveStructs()
+        Try
+            Dim D As Integer = Dimension
+            If D < 0 OrElse D > 2 Then Return
+            Dim Names As New List(Of String)
+            For Each S In StructLists(D)
+                If S.Enabled Then Names.Add(S.Name)
+            Next
+            StructSaved(D) = True
+            Settings.Set("SeedMapStructs" & D, If(Names.Count = 0, "-", String.Join(",", Names)))
+        Catch ex As Exception
+            Logger.Warn(ex, "保存种子地图结构勾选失败")
+        End Try
+    End Sub
+
+    ''' <summary>读取指定维度保存的群系筛选。</summary>
+    Private Sub LoadBiomeSel(D As Integer)
+        SelectedBiomes.Clear()
+        If D < 0 OrElse D > 2 Then Return
+        Try
+            Dim Raw As String = Settings.Get(Of String)("SeedMapBiomes" & D)
+            If String.IsNullOrEmpty(Raw) Then Return
+            For Each Part In Raw.Split(New Char() {","c}, StringSplitOptions.RemoveEmptyEntries)
+                Dim Id As Integer
+                If Integer.TryParse(Part, Id) Then SelectedBiomes.Add(Id)
+            Next
+        Catch ex As Exception
+            Logger.Warn(ex, "读取种子地图群系筛选失败")
+        End Try
+    End Sub
+
+    Private Sub SaveBiomes()
+        Try
+            If Dimension < 0 OrElse Dimension > 2 Then Return
+            Settings.Set("SeedMapBiomes" & Dimension, String.Join(",", SelectedBiomes))
+        Catch ex As Exception
+            Logger.Warn(ex, "保存种子地图群系筛选失败")
+        End Try
+    End Sub
     ''' <summary>单个维度独立的视野状态：缩放 + 中心方块坐标。末地与主世界/下界互不影响。</summary>
     Private Class DimViewState
         Public Zoom As Double
@@ -564,15 +708,29 @@ Public Class PageSeedMap
         MapPos.Y = Vh / 2 - U.Y * Zoom
         ApplyTransform()
         RefreshTiles(True)
+        StartTileWorker() '万一 worker 都空闲退出了，这里重新拉起来
     End Sub
 
-    '当前瓦片层级：取最小的、瓦片屏幕尺寸 ≥ 80px 的层级
+    ''' <summary>
+    ''' 当前瓦片层级：取铺满这一屏所需块数不超过预算的最细一档。
+    ''' 以前按瓦片在屏幕上够 80px 就升级来选档，不看这一屏要多少块；中等缩放会选到过细的档、一屏两百多块，铺不满。
+    ''' </summary>
     Private Function CurrentLevel() As Integer
-        '精细模式允许 4 方块/采样（cubiomes 的最小群系尺度 1:4），否则最细只到 8
-        Dim UseLevels As Integer() = If(HighDetail, HighDetailLevels, Levels)
+        Dim UseLevels As Integer() = Levels
+        Dim R = ViewUnitRect()
         For Each L In UseLevels
-            If Zoom * (TileCells * L / BlocksPerUnit) >= 80 Then Return L
+            If TileCountFor(L, R.Left, R.Right, R.Top, R.Bottom) <= FineBudget() Then Return L
         Next
+        Return UseLevels(UseLevels.Length - 1)
+    End Function
+
+
+    ''' <summary>
+    ''' 粗层底图层级：永远取最粗那一档（128 方块/采样，一块 8192 方块）。
+    ''' 一块就能盖住整屏，所以首屏只要一块的时间就能看见地形轮廓，细节随后补齐。
+    ''' </summary>
+    Private Function CoarseLevel() As Integer
+        Dim UseLevels As Integer() = Levels
         Return UseLevels(UseLevels.Length - 1)
     End Function
 
@@ -602,6 +760,8 @@ Public Class PageSeedMap
         Public Seed As Long
         Public Version As Integer
         Public Dimension As Integer
+        ''' <summary>排队优先级：数值越小越先做（0 起为粗层底图，1 起为细层，再按离视野中心的距离微调）。</summary>
+        Public Priority As Double
     End Structure
 
     '结构扫描任务：所有参数在 UI 线程打包，worker 不得访问任何 UI 控件
@@ -617,14 +777,50 @@ Public Class PageSeedMap
     End Class
 
     Private ReadOnly JobSync As New Object()
-    Private ReadOnly JobQueue As New Queue(Of Object)
+    ''' <summary>待办队列（TileJob / ScanJob 混排）：每次取优先级最高的一个，见 DequeueBest。</summary>
+    Private ReadOnly JobQueue As New List(Of Object)
+    ''' <summary>入队即置位、worker 取空即等待：避免以前 Thread.Sleep(80) 带来的最多 80ms 启动延迟。
+    ''' 用信号量而不是事件，是为了能一次唤醒多个 worker（几个任务就 release 几次）。</summary>
+    Private ReadOnly JobSignal As New Threading.SemaphoreSlim(0)
+    ''' <summary>兜底重试定时器：停手后继续补请求缺失的瓦片。</summary>
+    Private ReadOnly TileRetryTimer As New DispatcherTimer With {.Interval = TimeSpan.FromMilliseconds(400)}
+    ''' <summary>当前是否停留在种子地图页面：离开后要停止一切瓦片请求和重绘，否则后台一直空转。
+    ''' 尤其是开着游戏时，后台重绘会直接抢 GPU/CPU，表现为启动器整体变卡。</summary>
+    Private PageActive As Boolean = False
+
+    ''' <summary>主窗口是否处于最小化：最小化时不刷新、并释放位图缓存给游戏让内存。</summary>
+    Private HostMinimized As Boolean = False
+
+    ''' <summary>主窗口最小化时调用（由 FormMain 的 StateChanged 触发）。</summary>
+    Public Sub OnHostMinimized()
+        HostMinimized = True
+        Try
+            TileRetryTimer.Stop()
+            ClearTiles()
+        Catch ex As Exception
+            Logger.Warn(ex, "最小化时释放种子地图缓存失败")
+        End Try
+    End Sub
+
+    ''' <summary>主窗口还原时调用。</summary>
+    Public Sub OnHostRestored()
+        If Not HostMinimized Then Return
+        HostMinimized = False
+        If PageActive Then RefreshTiles(True)
+    End Sub
     Private ReadOnly TilePending As New HashSet(Of Long)
     Private ReadOnly Tiles As New Dictionary(Of Long, TileEntry)
+    ''' <summary>L0 骨架占位：已入队但还没算完的瓦片，先在地图上画一个虚线格子，让"在加载"看得见。</summary>
+    Private ReadOnly TileSkeletons As New Dictionary(Of Long, FrameworkElement)
+    Private ReadOnly SkeletonFill As Brush = MakeFrozenBrush(Color.FromArgb(26, 120, 170, 230))
+    Private ReadOnly SkeletonStroke As Brush = MakeFrozenBrush(Color.FromArgb(110, 150, 190, 240))
+    Private SkeletonAnim As DoubleAnimation
     Private GenSerial As Integer = 0
     Private ScanQueued As Boolean = False
     ''' <summary>本轮（种子/版本/维度）已覆盖扫描的结构类型：勾选这些结构时无需再扫。</summary>
     Private ReadOnly ScanCovered As New HashSet(Of Integer)
-    Private WorkerStarted As Boolean = False
+    ''' <summary>当前存活的 worker 线程数（空闲超时会退出，不长期占用线程）。</summary>
+    Private ActiveWorkers As Integer = 0
 
     Private Function TileKey(L As Integer, Tx As Integer, Tz As Integer) As Long
         Return (CLng(L) << 48) Or (CLng(Tx + 65536) << 24) Or CLng(Tz + 65536)
@@ -640,71 +836,370 @@ Public Class PageSeedMap
         RefreshSlime()
     End Sub
 
-    ''' <summary>按当前视野请求缺失的瓦片并做缓存清理；视野移动超过阈值时请求结构重扫。</summary>
     '节流：拖拽 / 缩放动画期间高频触发，两次刷新至少间隔 120ms（Force 跳过限制）
     Private LastRefreshTick As Long = 0
+    ''' <summary>上一次用过的瓦片层级：档位变化时要立刻刷新，别等节流。</summary>
+    Private LastUsedLevel As Integer = 0
+    ''' <summary>细层一屏最多排多少块：档位就按这个预算选，保证一两次刷新就能铺满。</summary>
+    ''' <summary>高精度：一屏最多排多少块（预算越大，退档点越靠外）。</summary>
+    Private Const FineBudgetHigh As Integer = 120
+    ''' <summary>低精度：预算缩小，退档点随之往里收。</summary>
+    Private Const FineBudgetLow As Integer = 32
 
+    ''' <summary>当前精度对应的细层预算。</summary>
+    Private Function FineBudget() As Integer
+        Select Case SeedMapQuality
+            Case 0 : Return FineBudgetLow
+            Case 1 : Return (FineBudgetHigh + FineBudgetLow) \ 2
+            Case Else : Return FineBudgetHigh
+        End Select
+    End Function
+
+    ''' <summary>
+    ''' 按当前视野请求缺失的瓦片（三级流水：粗层底图 → 细层），顺带做取消、淘汰与进度统计。
+    ''' 视野移动超过阈值时请求结构重扫。
+    ''' </summary>
     Private Sub RefreshTiles(Optional Force As Boolean = False)
+        '不在种子地图页面就不干活：离开后后台还在重绘的话，开着游戏时会明显抢资源
+        If Not PageActive OrElse HostMinimized Then Return
+        '精度档位一变就必须立刻重建：以前要等 120ms 节流甚至等缩放动画结束，
+        '表现就是"缩放到点了精度却没跟着变"。
+        Dim LvNow As Integer = CurrentLevel()
+        If LvNow <> LastUsedLevel Then
+            LastUsedLevel = LvNow
+            Force = True
+        End If
         If Not Force AndAlso CLng(Environment.TickCount) - LastRefreshTick < 120 Then Return
         LastRefreshTick = CLng(Environment.TickCount)
         If InitialZoom <= 0 Then Return
-        Dim L = CurrentLevel()
         Dim Vw = PanMapViewport.ActualWidth, Vh = PanMapViewport.ActualHeight
         If Vw < 50 OrElse Vh < 50 Then Return
-        Dim U0 = -MapPos.X / Zoom, U1 = (Vw - MapPos.X) / Zoom
-        Dim V0 = -MapPos.Y / Zoom, V1 = (Vh - MapPos.Y) / Zoom
-        Dim Upt = UnitsPerTile(L)
-        Dim Tx0 = CInt(Math.Floor(U0 / Upt)), Tx1 = CInt(Math.Floor(U1 / Upt))
-        Dim Tz0 = CInt(Math.Floor(V0 / Upt)), Tz1 = CInt(Math.Floor(V1 / Upt))
-        '视野中心（瓦片坐标）用于排序与清理
-        Dim Cx = (Tx0 + Tx1) / 2.0, Cz = (Tz0 + Tz1) / 2.0
-        Dim Want As New List(Of TileJob)
-        For Tz = Tz0 To Tz1
-            For Tx = Tx0 To Tx1
-                Dim Key = TileKey(L, Tx, Tz)
-                If Tiles.ContainsKey(Key) OrElse TilePending.Contains(Key) Then Continue For
-                Want.Add(New TileJob With {.Serial = GenSerial, .Level = L, .TileX = Tx, .TileZ = Tz,
-                                           .Seed = SeedValue, .Version = ModuleSeedMap.VersionIds(VersionIndex), .Dimension = Dimension})
-            Next
-        Next
-        If Want.Count > 0 Then
-            '限制单次请求数，按离视野中心距离排序
-            Dim Sorted = Want.OrderBy(Function(J) (J.TileX - Cx) ^ 2 + (J.TileZ - Cz) ^ 2).Take(40).ToList()
-            SyncLock JobSync
-                For Each J In Sorted
-                    Dim Key = TileKey(J.Level, J.TileX, J.TileZ)
-                    If TilePending.Contains(Key) Then Continue For
-                    TilePending.Add(Key)
-                    JobQueue.Enqueue(J)
-                Next
-            End SyncLock
-            StartTileWorker()
+        Dim R = ViewUnitRect()
+        Dim U0 = R.Left, U1 = R.Right
+        Dim V0 = R.Top, V1 = R.Bottom
+        Dim Lf = CurrentLevel()
+        Dim Lc = CoarseLevel()
+
+        '① 粗层底图：整屏只要 1~2 块，优先级最高。它是"细层还没算完"时的垫底，
+        '   单块采样点数与细层相同，所以能在一两帧内把整屏铺满。
+        RequestLevel(Lc, U0, U1, V0, V1, 0, Lf = Lc)
+
+        ' 中继层：取阶梯里比目标粗一档，让"由糊到清"是两级过渡而不是一次跳变
+        Dim UseLevels As Integer() = Levels
+        Dim LvIdx As Integer = Array.IndexOf(UseLevels, Lf)
+        If LvIdx >= 0 AndAlso LvIdx < UseLevels.Length - 1 Then
+            Dim LMid As Integer = UseLevels(LvIdx + 1)
+            If TileCountFor(LMid, U0, U1, V0, V1) <= 8 Then RequestLevel(LMid, U0, U1, V0, V1, 0.5, True)
         End If
-        '结构重扫判定（参数在 UI 线程打包）
+
+        '③ 细层：按离视野中心由近及远排队，缺块挂骨架占位
+        If Lf <> Lc Then RequestLevel(Lf, U0, U1, V0, V1, 1, True)
+
+        '④ 取消已经离开视野（外扩一屏）的待办：单线程 worker 不该为看不见的地方干活
+        CancelPendingOutside(U0 - (U1 - U0), U1 + (U1 - U0), V0 - (V1 - V0), V1 + (V1 - V0))
+
+        '⑤ 结构重扫判定（参数在 UI 线程打包）
         Dim Center = ViewCenter()
         If Double.IsNaN(LastScanCenter.X) OrElse Math.Abs(Center.X - LastScanCenter.X) > 768 OrElse Math.Abs(Center.Y - LastScanCenter.Y) > 768 Then
             LastScanCenter = Center
             EnqueueScan(Center)
         End If
-        '史莱姆区块叠加层、网格与坐标标尺跟随视野刷新
+
+        '⑥ 史莱姆区块叠加层、网格与坐标标尺跟随视野刷新
         UpdateOverlays()
-        '缓存清理：超过 380 个瓦片时移除离中心最远的
-        If Tiles.Count > 380 Then
-            Dim Far = Tiles.Values.OrderBy(
-                Function(T)
-                    Dim U = ToUnit((T.TileX + 0.5) * UnitsPerTile(T.Level) * BlocksPerUnit, (T.TileZ + 0.5) * UnitsPerTile(T.Level) * BlocksPerUnit)
-                    Return (U.X * BlocksPerUnit - Center.X) ^ 2 + (U.Y * BlocksPerUnit - Center.Y) ^ 2
-                End Function).ToList()
-            Dim RemoveCount = Tiles.Count - 300
-            For Each T In Far
-                If RemoveCount <= 0 Then Exit For
-                Dim Key = TileKey(T.Level, T.TileX, T.TileZ)
-                If Tiles.Remove(Key) Then
-                    PanTiles.Children.Remove(T.Image)
-                    RemoveCount -= 1
+
+        '⑦ 缓存淘汰 + 顶栏进度
+        EvictFarTiles(Center)
+        ApplyLevelVisibility()
+        SweepStaleSkeletons()
+        UpdateLoadUi()
+        '只要还有没到齐的瓦片，就让定时器继续补请求：用户停手后不会再触发刷新，
+        '光靠交互驱动会漏掉几块，表现就是"某几个区块一直空着"
+        If TileSkeletons.Count > 0 OrElse TilePending.Count > 0 Then TileRetryTimer.Start()
+
+    End Sub
+
+    ''' <summary>兜底重试：每 400ms 再请求一次缺的瓦片，直到没有占位框为止。</summary>
+    Private Sub TileRetryTick(sender As Object, e As EventArgs)
+        If Not PageActive Then
+            TileRetryTimer.Stop()
+            Return
+        End If
+        If TileSkeletons.Count = 0 AndAlso TilePending.Count = 0 Then
+            TileRetryTimer.Stop()
+            Return
+        End If
+        RefreshTiles(True)
+        StartTileWorker() '万一 worker 都空闲退出了，这里重新拉起来
+    End Sub
+
+    ''' <summary>
+    ''' 兜底：占位虚线框既不在待办里、也没有对应瓦片，说明这个任务丢了（算失败 / 被反复取消），
+    ''' 直接撤掉，避免屏幕上一直挂着几个永远不消失的格子。
+    ''' </summary>
+    Private Sub SweepStaleSkeletons()
+        If TileSkeletons.Count = 0 Then Return
+        Dim Drop As New List(Of Long)
+        SyncLock JobSync
+            For Each Key In TileSkeletons.Keys
+                If Not TilePending.Contains(Key) AndAlso Not Tiles.ContainsKey(Key) Then Drop.Add(Key)
+            Next
+        End SyncLock
+        For Each Key In Drop
+            RemoveSkeleton(Key)
+        Next
+    End Sub
+
+    ''' <summary>某一层级铺满指定视野需要多少块瓦片（用来判断某个中继层值不值得插进来）。</summary>
+    Private Function TileCountFor(L As Integer, U0 As Double, U1 As Double, V0 As Double, V1 As Double) As Integer
+        Dim Upt = UnitsPerTile(L)
+        Return (CInt(Math.Floor(U1 / Upt)) - CInt(Math.Floor(U0 / Upt)) + 1) *
+               (CInt(Math.Floor(V1 / Upt)) - CInt(Math.Floor(V0 / Upt)) + 1)
+    End Function
+
+    ''' <summary>
+    ''' 请求某一层级覆盖指定视野（地图单位矩形）的瓦片，缺的才入队。返回入队数量。
+    ''' BasePriority 越小越先做；WithSkeleton 时给缺块挂上虚线骨架，让加载过程可见。
+    ''' </summary>
+    Private Function RequestLevel(L As Integer, U0 As Double, U1 As Double, V0 As Double, V1 As Double,
+                                  BasePriority As Double, WithSkeleton As Boolean) As Integer
+        Dim Upt = UnitsPerTile(L)
+        Dim Tx0 = CInt(Math.Floor(U0 / Upt)), Tx1 = CInt(Math.Floor(U1 / Upt))
+        Dim Tz0 = CInt(Math.Floor(V0 / Upt)), Tz1 = CInt(Math.Floor(V1 / Upt))
+        Dim Cx = (Tx0 + Tx1) / 2.0, Cz = (Tz0 + Tz1) / 2.0
+        Dim Want As New List(Of TileJob)
+        For Tz = Tz0 To Tz1
+            For Tx = Tx0 To Tx1
+                Dim Key = TileKey(L, Tx, Tz)
+                If Tiles.ContainsKey(Key) Then
+                    RemoveSkeleton(Key)
+                    Continue For
+                End If
+                If WithSkeleton Then AddSkeleton(L, Tx, Tz)
+                If TilePending.Contains(Key) Then Continue For
+                Want.Add(New TileJob With {.Serial = GenSerial, .Level = L, .TileX = Tx, .TileZ = Tz,
+                    .Seed = SeedValue, .Version = ModuleSeedMap.VersionIds(VersionIndex), .Dimension = Dimension,
+                    .Priority = BasePriority + (Math.Abs(Tx - Cx) + Math.Abs(Tz - Cz)) * 0.01})
+            Next
+        Next
+        If Want.Count = 0 Then Return 0
+        '单轮上限：一次拖到天边也不会塞几千个任务进队列（超出的连骨架一起撤掉）
+        Dim MaxPerRefresh As Integer = FineBudget() + 32
+        If Want.Count > MaxPerRefresh Then
+            Want.Sort(Function(A, B) A.Priority.CompareTo(B.Priority))
+            For i As Integer = MaxPerRefresh To Want.Count - 1
+                RemoveSkeleton(TileKey(Want(i).Level, Want(i).TileX, Want(i).TileZ))
+            Next
+            Want = Want.Take(MaxPerRefresh).ToList()
+        End If
+        Dim Count As Integer = 0
+        SyncLock JobSync
+            For Each J In Want
+                Dim Key = TileKey(J.Level, J.TileX, J.TileZ)
+                If TilePending.Contains(Key) Then Continue For
+                TilePending.Add(Key)
+                JobQueue.Add(J)
+                Count += 1
+            Next
+        End SyncLock
+        If Count > 0 Then
+            JobSignal.Release(Count)
+            StartTileWorker()
+        End If
+        Return Count
+    End Function
+
+    ''' <summary>撤掉落在指定范围之外的待办瓦片（正在算的那一块撤不掉，没关系）。</summary>
+    Private Sub CancelPendingOutside(MinU As Double, MaxU As Double, MinV As Double, MaxV As Double)
+        Dim Removed As New List(Of Long)
+        SyncLock JobSync
+            For i As Integer = JobQueue.Count - 1 To 0 Step -1
+                If Not (TypeOf JobQueue(i) Is TileJob) Then Continue For
+                Dim J As TileJob = CType(JobQueue(i), TileJob)
+                Dim Upt = UnitsPerTile(J.Level)
+                Dim Left = J.TileX * Upt, Top = J.TileZ * Upt
+                If Left + Upt < MinU OrElse Left > MaxU OrElse Top + Upt < MinV OrElse Top > MaxV Then
+                    Removed.Add(TileKey(J.Level, J.TileX, J.TileZ))
+                    JobQueue.RemoveAt(i)
                 End If
             Next
+            For Each Key In Removed
+                TilePending.Remove(Key)
+            Next
+        End SyncLock
+        For Each Key In Removed
+            RemoveSkeleton(Key)
+        Next
+    End Sub
+
+    ''' <summary>取出下一个任务：结构扫描最优先，其次按优先级（粗层 → 细层近处 → 细层远处）。</summary>
+    Private Function DequeueBest() As Object
+        If JobQueue.Count = 0 Then Return Nothing
+        Dim Best As Integer = 0
+        Dim BestPriority As Double = Double.MaxValue
+        For i As Integer = 0 To JobQueue.Count - 1
+            If TypeOf JobQueue(i) Is ScanJob Then
+                Best = i
+                Exit For
+            End If
+            Dim J As TileJob = CType(JobQueue(i), TileJob)
+            If J.Priority < BestPriority Then
+                BestPriority = J.Priority
+                Best = i
+            End If
+        Next
+        Dim Job As Object = JobQueue(Best)
+        JobQueue.RemoveAt(Best)
+        Return Job
+    End Function
+
+    ''' <summary>
+    ''' 只显示"当前档位及更粗"的瓦片。已经缓存的高精度瓦片在缩小后不该继续盖在上面，
+    ''' 否则同一屏里会出现精度不一致的补丁。缓存保留，放大回来直接复用。
+    ''' </summary>
+    Private Sub ApplyLevelVisibility()
+        Dim Lf As Integer = CurrentLevel()
+        For Each T In Tiles.Values
+            Dim Vis As Visibility = If(T.Level >= Lf, Visibility.Visible, Visibility.Collapsed)
+            If T.Image.Visibility <> Vis Then T.Image.Visibility = Vis
+        Next
+    End Sub
+    ''' <summary>
+    ''' 位图缩放方式：高精度一律锐利；低精度只有"格子已经大到明显是马赛克"（≥14px）才平滑，
+    ''' 中等大小仍保持锐利，否则整片都会发糊。
+    ''' </summary>
+
+    ''' <summary>缓存淘汰：粗层常驻（它是远景底图），细层超过预算就丢掉离视野中心最远的那批。</summary>
+    Private Sub EvictFarTiles(Center As Point)
+        Const MaxTiles As Integer = 1200
+        Const KeepTiles As Integer = 900
+        If Tiles.Count <= MaxTiles Then Return
+        Dim Lc = CoarseLevel()
+        Dim Far = Tiles.Where(Function(Kv) Kv.Value.Level <> Lc).
+            OrderByDescending(Function(Kv)
+                                  Dim T = Kv.Value
+                                  Dim Bx = (T.TileX + 0.5) * UnitsPerTile(T.Level) * BlocksPerUnit
+                                  Dim Bz = (T.TileZ + 0.5) * UnitsPerTile(T.Level) * BlocksPerUnit
+                                  Return (Bx - Center.X) ^ 2 + (Bz - Center.Y) ^ 2
+                              End Function).ToList()
+        Dim RemoveCount = Tiles.Count - KeepTiles
+        For Each Kv In Far
+            If RemoveCount <= 0 Then Exit For
+            Dim T = Kv.Value
+            Dim Key = TileKey(T.Level, T.TileX, T.TileZ)
+            If Tiles.Remove(Key) Then
+                If T.Level = Lc Then PanTilesCoarse.Children.Remove(T.Image) Else PanTiles.Children.Remove(T.Image)
+                RemoveCount -= 1
+            End If
+        Next
+    End Sub
+
+    ''' <summary>L0 骨架：入队瞬间就在瓦片位置画一个虚线格，加载过程因此看得见。</summary>
+    Private Sub AddSkeleton(L As Integer, Tx As Integer, Tz As Integer)
+        Dim Key = TileKey(L, Tx, Tz)
+        If Tiles.ContainsKey(Key) OrElse TileSkeletons.ContainsKey(Key) Then Return
+        Dim Upt = UnitsPerTile(L)
+        Dim Px As Double = 1 / Math.Max(0.0001, Zoom) '屏幕 1px 对应的地图单位
+        Dim Rc As New Rectangle With {
+            .Width = Math.Max(0.5, Upt - Px * 2), .Height = Math.Max(0.5, Upt - Px * 2),
+            .Fill = SkeletonFill, .Stroke = SkeletonStroke,
+            .StrokeThickness = Px,
+            .StrokeDashArray = New DoubleCollection From {3.0, 3.0},
+            .IsHitTestVisible = False}
+        Canvas.SetLeft(Rc, Tx * Upt + Px)
+        Canvas.SetTop(Rc, Tz * Upt + Px)
+        PanSkeleton.Children.Add(Rc)
+        TileSkeletons(Key) = Rc
+        StartSkeletonPulse()
+    End Sub
+
+    Private Sub RemoveSkeleton(Key As Long)
+        Dim El As FrameworkElement = Nothing
+        If TileSkeletons.TryGetValue(Key, El) Then
+            TileSkeletons.Remove(Key)
+            PanSkeleton.Children.Remove(El)
         End If
+        If TileSkeletons.Count = 0 Then StopSkeletonPulse()
+    End Sub
+
+    ''' <summary>骨架层整体呼吸（只跑一条动画，不是每格一条）。</summary>
+    Private Sub StartSkeletonPulse()
+        If SkeletonAnim IsNot Nothing Then Return
+        SkeletonAnim = New DoubleAnimation(0.45, 0.95, New Duration(TimeSpan.FromMilliseconds(820))) With {
+            .AutoReverse = True, .RepeatBehavior = RepeatBehavior.Forever}
+        PanSkeleton.BeginAnimation(UIElement.OpacityProperty, SkeletonAnim)
+    End Sub
+
+    Private Sub StopSkeletonPulse()
+        If SkeletonAnim Is Nothing Then Return
+        SkeletonAnim = Nothing
+        PanSkeleton.BeginAnimation(UIElement.OpacityProperty, Nothing)
+        PanSkeleton.Opacity = 1
+    End Sub
+
+    ''' <summary>缩放变了：骨架虚线保持屏幕 1px，不然放大后会变成粗边。</summary>
+    Private Sub UpdateSkeletonScale()
+        If TileSkeletons.Count = 0 OrElse Zoom <= 0 Then Return
+        Dim Px As Double = 1 / Math.Max(0.0001, Zoom)
+        For Each El In TileSkeletons.Values
+            Dim Rc = TryCast(El, Rectangle)
+            If Rc Is Nothing Then Continue For
+            Rc.StrokeThickness = Px
+        Next
+    End Sub
+
+    ''' <summary>顶栏进度：视野内细层瓦片的到齐比例（没有细层底子时显示"粗层…"）。</summary>
+    Private Sub UpdateLoadUi()
+        Try
+            If PanLoad Is Nothing OrElse InitialZoom <= 0 Then Return
+            Dim Vw = PanMapViewport.ActualWidth, Vh = PanMapViewport.ActualHeight
+            If Vw < 50 OrElse Vh < 50 Then Return
+            Dim Lf = CurrentLevel()
+            Dim Upt = UnitsPerTile(Lf)
+            Dim R = ViewUnitRect()
+            Dim U0 = R.Left, U1 = R.Right
+            Dim V0 = R.Top, V1 = R.Bottom
+            Dim Tx0 = CInt(Math.Floor(U0 / Upt)), Tx1 = CInt(Math.Floor(U1 / Upt))
+            Dim Tz0 = CInt(Math.Floor(V0 / Upt)), Tz1 = CInt(Math.Floor(V1 / Upt))
+            Dim Need As Integer = 0, Done As Integer = 0
+            For Tz = Tz0 To Tz1
+                For Tx = Tx0 To Tx1
+                    Need += 1
+                    If Tiles.ContainsKey(TileKey(Lf, Tx, Tz)) Then Done += 1
+                Next
+            Next
+            If Done >= Need Then
+                PanLoad.Visibility = Visibility.Collapsed
+                LabScaleHint.Visibility = Visibility.Visible
+                Return
+            End If
+            LabScaleHint.Visibility = Visibility.Collapsed
+            PanLoad.Visibility = Visibility.Visible
+            Dim Pct As Double = If(Need = 0, 1, Done / CDbl(Need))
+            RectLoadBar.Width = Math.Max(0, 56 * Pct)
+            LabLoad.Text = If(Done = 0 AndAlso TilePending.Count > 0, "粗层…", CInt(Pct * 100) & "%")
+        Catch ex As Exception
+            Logger.Warn(ex, "更新加载进度失败")
+        End Try
+    End Sub
+
+    ''' <summary>清空全部瓦片 / 骨架 / 待办（换种子、换精度、开关浮雕时用）。</summary>
+    Private Sub ClearTiles()
+        Dim Lc = CoarseLevel()
+        For Each T In Tiles.Values
+            If T.Level = Lc Then PanTilesCoarse.Children.Remove(T.Image) Else PanTiles.Children.Remove(T.Image)
+        Next
+        Tiles.Clear()
+        For Each El In TileSkeletons.Values
+            PanSkeleton.Children.Remove(El)
+        Next
+        TileSkeletons.Clear()
+        StopSkeletonPulse()
+        SyncLock JobSync
+            JobQueue.Clear()
+            TilePending.Clear()
+        End SyncLock
+        '配色/筛选可能变了：近景高度场要重画
     End Sub
 
     ''' <summary>打包结构扫描任务（必须在 UI 线程调用，读取视野中心与当前清单）。
@@ -742,59 +1237,115 @@ Public Class PageSeedMap
             For Each T In Types
                 ScanCovered.Add(T)
             Next
-            JobQueue.Enqueue(Job)
+            JobQueue.Add(Job)
         End SyncLock
+        JobSignal.Release(1)
         StartTileWorker()
     End Sub
 
+    ''' <summary>
+    ''' 并行 worker 数：每个线程一份 cubiomes 句柄，互不共享状态。
+    ''' 旧 DLL（没有句柄式接口）时自动退回 1 个，行为与以前一致。
+    ''' </summary>
+    Private ReadOnly WorkerCount As Integer = CalcWorkerCount()
+
+    Private Shared Function CalcWorkerCount() As Integer
+        Try
+            If Not ModuleSeedMap.HasCtxApi Then Return 1
+            Dim N As Integer = Environment.ProcessorCount - 2 '给 UI 线程和系统留核
+            If N < 2 Then N = 2
+            If N > 4 Then N = 4
+            Return N
+        Catch ex As Exception
+            Return 1
+        End Try
+    End Function
+
+    ''' <summary>启动工作线程池（只启动一次，之后常驻；退出程序时随之结束）。</summary>
     Private Sub StartTileWorker()
-        If WorkerStarted Then Return
-        WorkerStarted = True
-        Task.Run(
-            Sub()
-                While True
-                    Dim Job As Object = Nothing
+        SyncLock JobSync
+            If ActiveWorkers > 0 Then Return
+            ActiveWorkers = WorkerCount
+        End SyncLock
+        For i As Integer = 1 To WorkerCount
+            '必须用独立线程，不能用线程池：这几个循环是常驻的（一直等队列），
+            '占着线程池会把启动器自己的加载任务（版本列表 / 实例列表）挤到后面，
+            '表现就是主页"开始游戏"按钮先卡在"正在加载"一会儿。
+            Dim Th As New Threading.Thread(AddressOf WorkerLoop) With {
+                .IsBackground = True,
+                .Name = "SeedMap Worker " & i,
+                .Priority = Threading.ThreadPriority.BelowNormal}
+            Th.Start()
+        Next
+    End Sub
+    ''' <summary>一个 worker：从同一个优先级队列里取任务 → 算 → 回 UI 线程贴图。多个 worker 并行。</summary>
+    Private Sub WorkerLoop()
+        Dim IdleCount As Integer = 0
+        While True
+            Dim Job As Object = Nothing
+            SyncLock JobSync
+                Job = DequeueBest()
+                If TypeOf Job Is ScanJob Then ScanQueued = False
+            End SyncLock
+            If Job Is Nothing Then
+                '队列空了就等信号；连续约 10 秒没活就退出线程，别长期占着
+                IdleCount += 1
+                If IdleCount > 40 Then
                     SyncLock JobSync
-                        If JobQueue.Count > 0 Then
-                            Job = JobQueue.Dequeue()
-                            If TypeOf Job Is ScanJob Then ScanQueued = False
-                        End If
+                        ActiveWorkers -= 1
+                        If ActiveWorkers < 0 Then ActiveWorkers = 0
                     End SyncLock
-                    If Job Is Nothing Then
-                        Thread.Sleep(80)
-                        Continue While
-                    End If
-                    Try
-                        If TypeOf Job Is TileJob Then
-                            Dim J As TileJob = CType(Job, TileJob)
-                            '原生调用（内部有锁，串行执行）；位图着色留在 UI 线程以读取最新的地形筛选
-                            Dim Ids = ModuleSeedMap.SampleBiomeGrid(J.Seed, J.Version, J.Dimension,
-                                                                    J.TileX * TileCells * J.Level, J.TileZ * TileCells * J.Level, TileCells, J.Level)
-                            '浮雕：同一块区域再采一次地表高度（只在主世界有意义）
-                            Dim Hs As Single() = Nothing
-                            If ReliefEnabled AndAlso J.Dimension = 0 Then
-                                Dim Step4 As Integer = Math.Max(1, J.Level \ 4)
-                                Hs = ModuleSeedMap.SampleHeights(J.Version, J.Seed,
-                                                                 (J.TileX * TileCells * J.Level) \ 4,
-                                                                 (J.TileZ * TileCells * J.Level) \ 4,
-                                                                 TileCells, Step4)
-                            End If
-                            RunInUi(Sub() ApplyTile(J, Ids, Hs))
-                        Else
-                            Dim S As ScanJob = CType(Job, ScanJob)
-                            Dim Result = ModuleSeedMap.ScanStructures(S.Seed, S.Version, S.Dimension, S.Types,
-                                S.CenterX - ScanRadius, S.CenterZ - ScanRadius,
-                                S.CenterX + ScanRadius, S.CenterZ + ScanRadius)
-                            RunInUi(Sub()
-                                        If S.Serial = GenSerial Then ApplyScan(Result)
-                                    End Sub)
+                    Return
+                End If
+                JobSignal.Wait(250)
+                Continue While
+            End If
+            IdleCount = 0
+            Try
+                If TypeOf Job Is TileJob Then
+                    Dim J As TileJob = CType(Job, TileJob)
+                    '磁盘缓存命中：直接用存下来的群系 ID 上色，跳过采样（一张约 20ms，开浮雕再 +11.5ms）
+                    Dim CacheRelief As Boolean = ReliefEnabled AndAlso J.Dimension = 0
+                    Dim CachedIds As Integer() = Nothing
+                    Dim CachedHs As Single() = Nothing
+                    If SeedMapCache.TryLoad(J.Seed, J.Version, J.Dimension, J.Level, J.TileX, J.TileZ,
+                                            CacheRelief, CachedIds, CachedHs) Then
+                        '浮雕开着、但缓存里没带高度（这张是关浮雕时缓存的）：当作未命中重新采样，
+                        '顺带把高度补写进缓存，否则这块区域会一直是纯群系配色
+                        If Not CacheRelief OrElse CachedHs IsNot Nothing Then
+                            RunInUi(Sub() ApplyTile(J, CachedIds, CachedHs))
+                            Continue While
                         End If
-                    Catch ex As Exception
-                        Logger.Warn(ex, "种子地图瓦片任务失败")
-                        RunInUi(Sub() RefreshPendingClear())
-                    End Try
-                End While
-            End Sub)
+                    End If
+                    '原生调用：走本线程自己的句柄，多线程并行；位图着色留在 UI 线程以读取最新的地形筛选
+                    Dim Ids = ModuleSeedMap.SampleBiomeGrid(J.Seed, J.Version, J.Dimension,
+                                                            J.TileX * TileCells * J.Level, J.TileZ * TileCells * J.Level, TileCells, J.Level)
+                    '浮雕：同一块区域再采一次地表高度（只在主世界有意义）
+                    Dim Hs As Single() = Nothing
+                    If ReliefEnabled AndAlso J.Dimension = 0 Then
+                        Dim Step4 As Integer = Math.Max(1, J.Level \ 4)
+                        Hs = ModuleSeedMap.SampleHeights(J.Version, J.Seed,
+                                                         (J.TileX * TileCells * J.Level) \ 4,
+                                                         (J.TileZ * TileCells * J.Level) \ 4,
+                                                         TileCells, Step4)
+                    End If
+                    '采样结果落盘，下次翻回同一片区域就不必再算
+                    SeedMapCache.SaveAsync(J.Seed, J.Version, J.Dimension, J.Level, J.TileX, J.TileZ, Ids, Hs)
+                    RunInUi(Sub() ApplyTile(J, Ids, Hs))
+                Else
+                    Dim S As ScanJob = CType(Job, ScanJob)
+                    Dim Result = ModuleSeedMap.ScanStructures(S.Seed, S.Version, S.Dimension, S.Types,
+                        S.CenterX - ScanRadius, S.CenterZ - ScanRadius,
+                        S.CenterX + ScanRadius, S.CenterZ + ScanRadius)
+                    RunInUi(Sub()
+                                If S.Serial = GenSerial Then ApplyScan(Result)
+                            End Sub)
+                End If
+            Catch ex As Exception
+                Logger.Warn(ex, "种子地图瓦片任务失败")
+                RunInUi(Sub() RefreshPendingClear())
+            End Try
+        End While
     End Sub
 
     ''' <summary>任务失败时清空挂起标记，避免同键瓦片被永久跳过。</summary>
@@ -803,6 +1354,12 @@ Public Class PageSeedMap
             JobQueue.Clear()
             TilePending.Clear()
         End SyncLock
+        For Each El In TileSkeletons.Values
+            PanSkeleton.Children.Remove(El)
+        Next
+        TileSkeletons.Clear()
+        StopSkeletonPulse()
+        UpdateLoadUi()
     End Sub
 
     Private Sub ApplyTile(J As TileJob, Ids As Integer(), Optional Heights As Single() = Nothing)
@@ -810,16 +1367,32 @@ Public Class PageSeedMap
         SyncLock JobSync
             TilePending.Remove(Key)
         End SyncLock
-        If J.Serial <> GenSerial OrElse Tiles.ContainsKey(Key) Then Return
+        If J.Serial <> GenSerial OrElse Tiles.ContainsKey(Key) Then
+            '任务作废 / 已有同键瓦片：也要把占位框撤掉，否则那个虚线格子会一直挂在那儿
+            RemoveSkeleton(Key)
+            UpdateLoadUi()
+            Return
+        End If
         Dim Upt = UnitsPerTile(J.Level)
-        Dim Img As New Image With {.Source = BuildBitmap(Ids, Heights, TileCells, TileCells), .Width = Upt, .Height = Upt, .Opacity = 0,
+        Dim Img As New Image With {
+            .Source = BuildBitmap(Ids, Heights, TileCells, TileCells), .Width = Upt, .Height = Upt, .Opacity = 0,
             .Stretch = Stretch.Fill}
+        '高精度用最近邻（格子锐利），低精度用线性插值（平滑过渡，不再一块块马赛克）
         RenderOptions.SetBitmapScalingMode(Img, BitmapScalingMode.NearestNeighbor)
         Canvas.SetLeft(Img, J.TileX * Upt)
         Canvas.SetTop(Img, J.TileZ * Upt)
-        PanTiles.Children.Add(Img)
+        '粗层走独立画布（永远垫在细层下面），细层照旧
+        '精度决定叠放层级：越精细越靠上（1000 - 采样方块数）。
+        '以前靠添加顺序决定谁在上面，来回缩放后旧的粗瓦片会盖住细瓦片，
+        '同一屏里就出现一块块精度不一样的补丁。
+        Panel.SetZIndex(Img, 2000 - J.Level)
+        '比当前档位更精细的瓦片先不显示（缩小状态下不该露出高精度补丁）
+        If J.Level < CurrentLevel() Then Img.Visibility = Visibility.Collapsed
+        If J.Level = CoarseLevel() Then PanTilesCoarse.Children.Add(Img) Else PanTiles.Children.Add(Img)
         Tiles(Key) = New TileEntry With {.Image = Img, .Ids = Ids, .Heights = Heights, .Level = J.Level, .TileX = J.TileX, .TileZ = J.TileZ}
-        AniStart({AaOpacity(Img, 1, 220, , New AniEaseOutFluent)}, "SeedMap Tile " & Key, True)
+        RemoveSkeleton(Key)
+        AniStart({AaOpacity(Img, 1, If(J.Level = CoarseLevel(), 140, 200), , New AniEaseOutFluent)}, "SeedMap Tile " & Key, True)
+        UpdateLoadUi()
     End Sub
 
     '群系 id 网格 → 着色位图（可在后台线程构建，构建后冻结）。
@@ -831,35 +1404,51 @@ Public Class PageSeedMap
         For J As Integer = 0 To H - 1
             For i As Integer = 0 To W - 1
                 Dim k As Integer = J * W + i
-                Dim Id = Ids(k)
-                If Id < 0 OrElse Id > 255 Then Id = 127
-                Dim C = ModuleSeedMap.BiomeColors(Id)
-                Dim R As Integer = C.R, G As Integer = C.G, B As Integer = C.B
-                If UseRelief Then
-                    '浮雕：高度 → 明暗，叠加西北光照的坡向着色与等高线
-                    Dim Hh As Double = Heights(k)
-                    Dim T As Double = Math.Max(0, Math.Min(1, (Hh - 40) / 120))
-                    Dim Br As Double = 0.55 + T * 0.75
-                    Dim Hw As Double = If(i > 0, Heights(k - 1), Hh)
-                    Dim Hn As Double = If(J > 0, Heights(k - W), Hh)
-                    Dim Slope As Double = (Hh - Hw) + (Hh - Hn)
-                    Br += Math.Max(-0.22, Math.Min(0.22, Slope * 0.05))
-                    '每 8 格高度一条等高线（和截图里的分层线一致）
-                    If i > 0 AndAlso Math.Floor(Hh / 8) <> Math.Floor(Hw / 8) Then Br *= 0.8
-                    If J > 0 AndAlso Math.Floor(Hh / 8) <> Math.Floor(Hn / 8) Then Br *= 0.86
-                    If Hh < 63 Then Br *= 0.9 '水面略压暗
-                    R = CInt(Math.Max(0, Math.Min(255, R * Br)))
-                    G = CInt(Math.Max(0, Math.Min(255, G * Br)))
-                    B = CInt(Math.Max(0, Math.Min(255, B * Br)))
+                Dim Id As Integer = Ids(k)
+                '浮雕需要西北两个邻居的高度；边界上退化成自己（等高线判定自然为假）
+                Dim Hh As Double = If(UseRelief, Heights(k), 0)
+                Dim Hw As Double = If(UseRelief AndAlso i > 0, Heights(k - 1), Hh)
+                Dim Hn As Double = If(UseRelief AndAlso J > 0, Heights(k - W), Hh)
+                Dim C As Color = TerrainColor(Id, Hh, Hw, Hn, UseRelief)
+                Dim R2 As Integer = C.R, G2 As Integer = C.G, B2 As Integer = C.B
+                Dim Idx As Integer = If(Id < 0 OrElse Id > 255, 127, Id)
+                If Filter AndAlso Not SelectedBiomes.Contains(Idx) Then
+                    '未选中的群系：压暗并混向地图底色，保持完全不透明。
+                    '以前是把 alpha 降到 38，结果下面的粗层瓦片透上来，看起来像多出一层图层。
+                    R2 = (R2 * 22 + 14 * 78) \ 100
+                    G2 = (G2 * 22 + 18 * 78) \ 100
+                    B2 = (B2 * 22 + 26 * 78) \ 100
                 End If
                 'Bgra32 的字节序为 B,G,R,A
-                Px(k * 4) = CByte(B) : Px(k * 4 + 1) = CByte(G) : Px(k * 4 + 2) = CByte(R)
-                Px(k * 4 + 3) = If(Filter AndAlso Not SelectedBiomes.Contains(Id), 38, 255)
+                Px(k * 4) = CByte(B2) : Px(k * 4 + 1) = CByte(G2) : Px(k * 4 + 2) = CByte(R2)
+                Px(k * 4 + 3) = 255
             Next
         Next
         Dim Bmp = BitmapSource.Create(W, H, 96, 96, PixelFormats.Bgra32, Nothing, Px, W * 4)
         Bmp.Freeze()
         Return Bmp
+    End Function
+
+    ''' <summary>
+    ''' 群系 + 高度 → 顶面颜色。2D 瓦片与（后续的）近景高度场渲染共用这一个函数，
+    ''' 保证两条渲染路径切换时颜色不跳。Hw / Hn 为西北两个邻居的高度（浮雕坡向用）。
+    ''' </summary>
+    Private Shared Function TerrainColor(Id As Integer, Hh As Double, Hw As Double, Hn As Double, UseRelief As Boolean) As Color
+        If Id < 0 OrElse Id > 255 Then Id = 127
+        Dim C As Color = ModuleSeedMap.BiomeColors(Id)
+        If Not UseRelief Then Return C
+        '浮雕：高度 → 明暗，叠加西北光照的坡向着色与等高线
+        Dim T As Double = Math.Max(0, Math.Min(1, (Hh - 40) / 120))
+        Dim Br As Double = 0.55 + T * 0.75
+        Dim Slope As Double = (Hh - Hw) + (Hh - Hn)
+        Br += Math.Max(-0.22, Math.Min(0.22, Slope * 0.05))
+        '每 8 格高度一条等高线（和截图里的分层线一致）
+        If Math.Floor(Hh / 8) <> Math.Floor(Hw / 8) Then Br *= 0.8
+        If Math.Floor(Hh / 8) <> Math.Floor(Hn / 8) Then Br *= 0.86
+        If Hh < 63 Then Br *= 0.9 '水面略压暗
+        Return Color.FromRgb(CByte(CInt(Math.Max(0, Math.Min(255, C.R * Br)))),
+                             CByte(CInt(Math.Max(0, Math.Min(255, C.G * Br)))),
+                             CByte(CInt(Math.Max(0, Math.Min(255, C.B * Br)))))
     End Function
 
     ''' <summary>筛选变化后，按缓存的群系网格重新为所有瓦片着色。
@@ -889,13 +1478,18 @@ Public Class PageSeedMap
         Refresh3DIfOpen()
     End Sub
 
-    '地图单位处的群系名（查瓦片缓存）
+    '地图单位处的群系名（先查细层瓦片，没算完就退回粗层底图，避免鼠标位置一直显示"…"）
     Private Function BiomeNameAt(ux As Double, uy As Double) As String
-        Dim L = CurrentLevel()
-        Dim Upt = UnitsPerTile(L)
-        Dim Tx = CInt(Math.Floor(ux / Upt)), Tz = CInt(Math.Floor(uy / Upt))
         Dim Entry As TileEntry = Nothing
-        If Not Tiles.TryGetValue(TileKey(L, Tx, Tz), Entry) Then Return "…"
+        Dim L As Integer = CurrentLevel()
+        Dim Upt As Double = UnitsPerTile(L)
+        Dim Tx As Integer = CInt(Math.Floor(ux / Upt)), Tz As Integer = CInt(Math.Floor(uy / Upt))
+        If Not Tiles.TryGetValue(TileKey(L, Tx, Tz), Entry) Then
+            L = CoarseLevel()
+            Upt = UnitsPerTile(L)
+            Tx = CInt(Math.Floor(ux / Upt)) : Tz = CInt(Math.Floor(uy / Upt))
+            If Not Tiles.TryGetValue(TileKey(L, Tx, Tz), Entry) Then Return "…"
+        End If
         Dim Cell = ClampD((ux - Tx * Upt) / (L / BlocksPerUnit), 0, TileCells - 1)
         Dim CellV = ClampD((uy - Tz * Upt) / (L / BlocksPerUnit), 0, TileCells - 1)
         Return ModuleSeedMap.BiomeName(Entry.Ids(CInt(CellV) * TileCells + CInt(Cell)))
@@ -916,14 +1510,9 @@ Public Class PageSeedMap
         '种子/版本/维度变了，之前的扫描结果全部作废
         ScanCovered.Clear()
         SyncLock JobSync
-            JobQueue.Clear()
-            TilePending.Clear()
             ScanQueued = False
         End SyncLock
-        For Each T In Tiles.Values
-            PanTiles.Children.Remove(T.Image)
-        Next
-        Tiles.Clear()
+        ClearTiles()
         PanMarkers.Children.Clear()
         StructPoints.Clear()
         LastScanCenter = New Point(Double.NaN, Double.NaN)
@@ -997,30 +1586,88 @@ Public Class PageSeedMap
 
     '构建单个结构标记：图标本体直接钉在结构坐标上，纯文字名称悬浮在图标下方（110×40，锚点在图标中心）
     Private Function BuildMarker(Def As StructDef, ux As Double, uy As Double, Block As Point) As FrameworkElement
-        Dim Root As New Grid With {.Width = 110, .Height = 40, .RenderTransformOrigin = New Point(0.5, 0.275)}
+        Dim Root As New Grid With {.Width = 110, .Height = 46, .RenderTransformOrigin = New Point(0.5, 17.0 / 46.0)}
+        '透明热区：图标本身只有 22px，太小不好瞄；放大到 34px 只影响命中范围，不影响外观
+        Dim Hit As New Border With {.Width = 34, .Height = 34, .CornerRadius = New CornerRadius(17),
+            .HorizontalAlignment = HorizontalAlignment.Center, .VerticalAlignment = VerticalAlignment.Top,
+            .Background = Brushes.Transparent, .Cursor = Cursors.Hand}
         Dim Ico As New Image With {.Source = GetStructIcon(Def.IconKey), .Width = 22, .Height = 22,
-            .HorizontalAlignment = HorizontalAlignment.Center, .VerticalAlignment = VerticalAlignment.Top}
-        Root.Children.Add(Ico)
+            .HorizontalAlignment = HorizontalAlignment.Center, .VerticalAlignment = VerticalAlignment.Center,
+            .RenderTransformOrigin = New Point(0.5, 0.5), .RenderTransform = New ScaleTransform(1, 1)}
+        Hit.Child = Ico
+        Root.Children.Add(Hit)
         Dim Lab As New TextBlock With {.Text = Def.Name, .FontSize = 10.5, .Foreground = Brushes.White,
             .HorizontalAlignment = HorizontalAlignment.Center, .VerticalAlignment = VerticalAlignment.Top,
-            .Margin = New Thickness(0, 24, 0, 0)}
+            .Margin = New Thickness(0, 30, 0, 0), .IsHitTestVisible = False}
+        '结构名字是否常显：关闭时只在鼠标移上去才显示，视野更干净
+        Dim NamesAlways As Boolean = True
+        Try
+            NamesAlways = Settings.Get(Of Boolean)("SeedMapStructNamesAlways")
+        Catch ex As Exception
+        End Try
+        Lab.Visibility = If(NamesAlways, Visibility.Visible, Visibility.Collapsed)
         Lab.Effect = New DropShadowEffect With {.BlurRadius = 2, .ShadowDepth = 1, .Direction = 270,
             .Opacity = 0.85, .Color = Colors.Black, .RenderingBias = RenderingBias.Performance}
         Root.Children.Add(Lab)
         Canvas.SetLeft(Root, ux - 55)
-        Canvas.SetTop(Root, uy - 11)
-        Root.ToolTip = $"{Def.Name}　X {Block.X} · Z {Block.Y}"
+        Canvas.SetTop(Root, uy - 17)
         Root.RenderTransform = New ScaleTransform(1 / Zoom, 1 / Zoom)
+
+        '---- 悬停表现：图标弹性放大、整块提到最上层、信息卡立刻弹出 ----
+        Dim IconScale As ScaleTransform = CType(Ico.RenderTransform, ScaleTransform)
+        Dim TipText As New TextBlock With {.FontSize = 12.5, .Foreground = TryCast(FindResource("BrushText1"), Brush)}
+        Dim Tip As New ToolTip With {.Content = TipText, .Placement = PlacementMode.Mouse, .Padding = New Thickness(9, 6, 9, 6)}
+        Hit.ToolTip = Tip
+        ToolTipService.SetInitialShowDelay(Hit, 0)
+        ToolTipService.SetBetweenShowDelay(Hit, 0)
+        ToolTipService.SetShowDuration(Hit, 60000)
+
+        '文字必须在 ToolTip 打开之前填好：以前是等 Opened 才赋值，
+        '弹出层已经按"空内容"测好尺寸，所以卡片是空的
+        Dim RefreshTip As Action =
+            Sub()
+                Dim Bio As String = "…"
+                Try
+                    Bio = BiomeNameAt(ux, uy)
+                Catch ex As Exception
+                End Try
+                TipText.Text = $"{Def.Name}{vbCrLf}X {Block.X} · Z {Block.Y}{vbCrLf}{Bio}"
+            End Sub
+        RefreshTip()
+
+        AddHandler Hit.MouseEnter,
+            Sub()
+                RefreshTip()
+                If Not NamesAlways Then Lab.Visibility = Visibility.Visible
+                AnimateMarkerScale(IconScale, 1.4, 150)
+                Panel.SetZIndex(Root, 900) '盖住相邻标记
+            End Sub
+        AddHandler Hit.MouseLeave,
+            Sub()
+                If Not NamesAlways Then Lab.Visibility = Visibility.Collapsed
+                AnimateMarkerScale(IconScale, 1.0, 190)
+                Panel.SetZIndex(Root, 0)
+            End Sub
         Return Root
     End Function
 
-    '更新全部标记的反向缩放
+    ''' <summary>标记悬停缩放：带一点回弹的短动画，比直接跳变自然。</summary>
+    Private Shared Sub AnimateMarkerScale(T As ScaleTransform, Target As Double, Ms As Integer)
+        If T Is Nothing Then Return
+        Dim FromV As Double = T.ScaleX '动画进行中读到的是当前插值，从当前值接着走
+        Dim Dur As New Duration(TimeSpan.FromMilliseconds(Ms))
+        Dim Ease As New BackEase With {.Amplitude = 0.35, .EasingMode = EasingMode.EaseOut}
+        T.BeginAnimation(ScaleTransform.ScaleXProperty, New DoubleAnimation(FromV, Target, Dur) With {.EasingFunction = Ease})
+        T.BeginAnimation(ScaleTransform.ScaleYProperty, New DoubleAnimation(FromV, Target, Dur) With {.EasingFunction = Ease})
+    End Sub
+    '更新全部标记的反向缩放（纵向要额外除以 sinθ：父层被压扁了，图标得撑回去才不变形）
     Private Sub UpdateMarkerScale()
+        Dim Sy As Double = 1 / Math.Max(0.0001, Zoom)
         For Each El In PanMarkers.Children
             Dim M = TryCast(El, FrameworkElement)
             If M IsNot Nothing AndAlso TypeOf M.RenderTransform Is ScaleTransform Then
                 CType(M.RenderTransform, ScaleTransform).ScaleX = 1 / Zoom
-                CType(M.RenderTransform, ScaleTransform).ScaleY = 1 / Zoom
+                CType(M.RenderTransform, ScaleTransform).ScaleY = Sy
             End If
         Next
     End Sub
@@ -1078,6 +1725,7 @@ Public Class PageSeedMap
         End If
         '结构变了，已打开的 3D 预览也要跟着更新
         Refresh3DIfOpen()
+        SaveStructs()
     End Sub
 
     ''' <summary>
@@ -1086,6 +1734,9 @@ Public Class PageSeedMap
     ''' </summary>
     Private Sub EnsureDefaultStruct()
         If Structs Is Nothing Then Return
+        '该维度保存过勾选就不要再套默认值（哪怕用户是刻意全部取消）
+        Dim DimIdx As Integer = StructLists.IndexOf(Structs)
+        If DimIdx >= 0 AndAlso DimIdx < 3 AndAlso StructSaved(DimIdx) Then Return
         For Each S In Structs
             If S.Enabled AndAlso S.Supported Then Return
         Next
@@ -1133,6 +1784,7 @@ Public Class PageSeedMap
         Next
         RefreshStructStates()
         RebuildMarkers()
+        SaveStructs()
     End Sub
 
     Private Sub BtnStructNone_Click(sender As Object, e As RoutedEventArgs) Handles BtnStructNone.Click
@@ -1141,6 +1793,7 @@ Public Class PageSeedMap
         Next
         RefreshStructStates()
         RebuildMarkers()
+        SaveStructs()
     End Sub
 
     '结构面板开关
@@ -1250,6 +1903,7 @@ Public Class PageSeedMap
         End If
         RefreshBiomeStates()
         RefreshTileColors()
+        SaveBiomes()
     End Sub
 
     Private Sub RefreshBiomeStates()
@@ -1275,12 +1929,14 @@ Public Class PageSeedMap
         Next
         RefreshBiomeStates()
         RefreshTileColors()
+        SaveBiomes()
     End Sub
 
     Private Sub BtnBiomeNone_Click(sender As Object, e As RoutedEventArgs) Handles BtnBiomeNone.Click
         SelectedBiomes.Clear()
         RefreshBiomeStates()
         RefreshTileColors()
+        SaveBiomes()
     End Sub
 
     '地形面板开关（与结构面板互斥）
@@ -1346,26 +2002,29 @@ Public Class PageSeedMap
         If Math.Abs(TargetZoom - Zoom) < 0.0001 Then Return
         AniStop("SeedMap Zoom")
         '记录锚点对应的地图坐标，动画全程保持锚点钉在屏幕原位
-        Dim AnchorU As New Point((Anchor.X - MapPos.X) / Zoom, (Anchor.Y - MapPos.Y) / Zoom)
+        Dim AnchorU As Point = ScreenToUnit(Anchor)
         AniStart({
             AaDouble(Sub(d)
                          Zoom += d
-                         MapScale.ScaleX = Zoom : MapScale.ScaleY = Zoom
+                                          MapScale.ScaleX = Zoom : MapScale.ScaleY = Zoom
                          MapPos.X = Anchor.X - AnchorU.X * Zoom
                          MapPos.Y = Anchor.Y - AnchorU.Y * Zoom
                          UpdateMarkerScale()
+                         UpdateSkeletonScale()
                          UpdateZoomLabel()
+                         '缩放过程中照常重画（低分辨率），不要退回贴图——否则滚轮一动立体就消失
                          RefreshTiles()
                      End Sub, TargetZoom - Zoom, 190, , New AniEaseOutFluent(AniEasePower.Middle)),
-            AaCode(Sub() RefreshTiles(True), 200, True)
+            AaCode(Sub()
+                       RefreshTiles(True)
+                   End Sub, 200, True)
         }, "SeedMap Zoom", True)
     End Sub
 
     Private Sub PanMapViewport_MouseDown(sender As Object, e As MouseButtonEventArgs) Handles PanMapViewport.MouseLeftButtonDown
         '第一人称选点：按下即进入，且不要拖动地图
         If FpsSelecting Then
-            Dim Pf = e.GetPosition(PanMapViewport)
-            Dim Uf = New Point((Pf.X - MapPos.X) / Zoom, (Pf.Y - MapPos.Y) / Zoom)
+            Dim Uf = ScreenToUnit(e.GetPosition(PanMapViewport))
             EnterFirstPerson(ToBlock(Uf.X, Uf.Y))
             Return
         End If
@@ -1383,10 +2042,10 @@ Public Class PageSeedMap
         Dim P = e.GetPosition(PanMapViewport)
         If Select3DMode Then
             UpdateSelect3DBox(P)
-            Dim Ux0 = (P.X - MapPos.X) / Zoom, Uy0 = (P.Y - MapPos.Y) / Zoom
-            Dim B0 = ToBlock(Ux0, Uy0)
-            LabInfoPos.Text = "X {B0.X} · Z {B0.Y}"
-            LabInfoBiome.Text = BiomeNameAt(Ux0, Uy0)
+            Dim U0 = ScreenToUnit(P)
+            Dim B0 = ToBlock(U0.X, U0.Y)
+            LabInfoPos.Text = $"X {B0.X} · Z {B0.Y}"
+            LabInfoBiome.Text = BiomeNameAt(U0.X, U0.Y)
             Return
         End If
         If IsDragging Then
@@ -1397,45 +2056,66 @@ Public Class PageSeedMap
             UpdateOverlays()
             RefreshTiles(False)
         End If
-        Dim Ux = (P.X - MapPos.X) / Zoom, Uy = (P.Y - MapPos.Y) / Zoom
-        Dim B = ToBlock(Ux, Uy)
+        Dim U = ScreenToUnit(P)
+        Dim B = ToBlock(U.X, U.Y)
         LabInfoPos.Text = $"X {B.X} · Z {B.Y}"
-        LabInfoBiome.Text = BiomeNameAt(Ux, Uy)
+        LabInfoBiome.Text = BiomeNameAt(U.X, U.Y)
     End Sub
 
     ''' <summary>右键取消 3D 框选。</summary>
-    ''' <summary>右键：3D 框选模式下取消框选；普通模式下复制该位置的坐标（X: ,Z: ）。</summary>
+    ''' <summary>右键：3D 框选模式下取消框选；普通模式下按设置里的格式复制该位置的坐标。</summary>
     Private Sub PanMapViewport_MouseRightUp(sender As Object, e As MouseButtonEventArgs) Handles PanMapViewport.MouseRightButtonUp
         If Select3DMode Then
             BtnTool3D_Click(Nothing, Nothing)
             Return
         End If
         Try
-            Dim P = e.GetPosition(PanMapViewport)
-            Dim Ux = (P.X - MapPos.X) / Zoom, Uy = (P.Y - MapPos.Y) / Zoom
-            Dim B = ToBlock(Ux, Uy)
-            Dim Text As String = $"X: {CInt(B.X)} ,Z: {CInt(B.Y)}"
-            '剪贴板常被输入法/剪贴板管理器短暂占用，直接 SetText 会偶发 OpenClipboard 失败，重试即可
+            Dim U = ScreenToUnit(e.GetPosition(PanMapViewport))
+            Dim B = ToBlock(U.X, U.Y)
+            Dim Text As String = FormatCopyText(CInt(B.X), CInt(B.Y))
+            '剪贴板可能被输入法 / 剪贴板管理器短暂占用，但这里绝不能长时间阻塞：
+            'copy:=True 会触发 OLE 刷新（占用时能卡住好几秒），Clear 还会清掉用户原有内容，
+            '所以只做"写入 + 极少次数重试"，总耗时控制在 100ms 内。
             Dim Done As Boolean = False
-            For i As Integer = 1 To 8
+            For i As Integer = 1 To 3
                 Try
-                    Clipboard.SetText(Text)
+                    Clipboard.SetDataObject(Text, False)
                     Done = True
                     Exit For
                 Catch
-                    Thread.Sleep(15)
+                    Thread.Sleep(30)
                 End Try
             Next
             If Done Then
-                Hint($"已复制坐标 {Text}", HintType.Green)
+                Hint($"已复制坐标 {Text}", HintType.Green, Key:="SeedMapCopy")
             Else
-                Hint("复制坐标失败：剪贴板被其他程序占用", HintType.Red)
+                '实在抢不到剪贴板时，把坐标直接显示出来，至少能手动抄
+                Hint($"复制失败（剪贴板被其他程序占用），坐标：{Text}", HintType.Red, Key:="SeedMapCopy")
             End If
         Catch ex As Exception
             Logger.Warn(ex, "复制坐标失败")
             Hint("复制坐标失败", HintType.Red)
         End Try
     End Sub
+
+
+    ''' <summary>按设置里的「右键复制格式」生成要放进剪贴板的文本。</summary>
+    Private Shared Function FormatCopyText(X As Integer, Z As Integer) As String
+        Select Case Settings.Get(Of Integer)("SeedMapCopyFormat")
+            Case 1
+                Return $"{X} {Z}"
+            Case 2
+                Return $"{X}, {Z}"
+            Case 3
+                Return $"/tp {X} ~ {Z}"
+            Case 4
+                Return $"/tp @s {X} ~ {Z}"
+            Case 5
+                Return $"{X} ~ {Z}"
+            Case Else
+                Return $"X: {X} ,Z: {Z}"
+        End Select
+    End Function
 
     Private Sub PanMapViewport_MouseUp(sender As Object, e As MouseButtonEventArgs) Handles PanMapViewport.MouseLeftButtonUp
         If Select3DMode Then
@@ -1455,6 +2135,7 @@ Public Class PageSeedMap
         PanMapViewport.ReleaseMouseCapture()
         PanMapViewport.Cursor = Cursors.ScrollAll
         RefreshTiles(True)
+        StartTileWorker() '万一 worker 都空闲退出了，这里重新拉起来
     End Sub
 
     Private Sub ZoomAtCenter(Factor As Double)
@@ -1480,31 +2161,43 @@ Public Class PageSeedMap
             Catch
             End Try
         End If
-        Dim Vw = PanMapViewport.ActualWidth, Vh = PanMapViewport.ActualHeight
+        Dim Vw = PanMapViewport.ActualWidth
         If Vw < 50 Then Return
         Dim U = ToUnit(Target.X, Target.Y)
         Dim Tz = DefaultZoomForDim(Dimension)
         Dim Tx = Vw / 2 - U.X * Tz
-        Dim Ty = Vh / 2 - U.Y * Tz
         AniStop("SeedMap View")
+        '竖直方向受俯角影响，动画结束后统一用 CenterOn 对齐（顺便刷瓦片）
         AniStart({
-            AaDouble(Sub(d)
-                         MapScale.ScaleX += d : MapScale.ScaleY += d
-                         Zoom = MapScale.ScaleX
-                         UpdateMarkerScale() : UpdateZoomLabel()
-                     End Sub, Tz - Zoom, 320, , New AniEaseOutFluent(AniEasePower.Middle)),
-            AaDouble(Sub(d) MapPos.X += d, Tx - MapPos.X, 320, , New AniEaseOutFluent(AniEasePower.Middle)),
-            AaDouble(Sub(d) MapPos.Y += d, Ty - MapPos.Y, 320, , New AniEaseOutFluent(AniEasePower.Middle)),
-            AaCode(Sub() RefreshTiles(), 330, True),
-            AaCode(AddressOf SaveDimViewCurrent, 340, True)
+            AaDouble(AddressOf AnimStepZoom, Tz - Zoom, 320, , New AniEaseOutFluent(AniEasePower.Middle)),
+            AaDouble(AddressOf AnimStepPanX, Tx - MapPos.X, 320, , New AniEaseOutFluent(AniEasePower.Middle)),
+            AaCode(Sub()
+                       CenterOn(Target.X, Target.Y)
+                   End Sub, 330, True),
+            AaCode(AddressOf SaveDimViewCurrent, 360, True)
         }, "SeedMap View", True)
+    End Sub
+
+    ''' <summary>复位动画的缩放步：同步更新俯角与纵向比例。</summary>
+    Private Sub AnimStepZoom(d As Double)
+        Zoom += d
+        MapScale.ScaleX = Zoom
+        MapScale.ScaleY = Zoom
+        UpdateMarkerScale()
+        UpdateZoomLabel()
+    End Sub
+
+    ''' <summary>复位动画的横向平移步。</summary>
+    Private Sub AnimStepPanX(d As Double)
+        MapPos.X += d
     End Sub
 
     Private Sub UpdateZoomLabel()
         If InitialZoom <= 0 Then Return
         LabZoom.Text = Math.Round(Zoom / InitialZoom * 100) & "%"
         Dim PerPx = BlocksPerUnit / Zoom
-        LabScaleHint.Text = If(PerPx >= 1, $"1 px ≈ {PerPx:0.#} 格", $"1 px ≈ {1 / PerPx:0.##} 格")
+        Dim PxTxt As String = If(PerPx >= 1, $"1px≈{PerPx:0.#}格", $"1px≈{1 / PerPx:0.##}格")
+        LabScaleHint.Text = PxTxt & $" · {CurrentLevel()}格采样"
     End Sub
 
     '===============================
@@ -1781,7 +2474,6 @@ Public Class PageSeedMap
             If VersionIndex >= 0 AndAlso VersionIndex < ModuleSeedMap.VersionNames.Count Then
                 LabVersion.Text = "Java 版 " & ModuleSeedMap.VersionNames(VersionIndex)
             End If
-            Logger.Info($"种子地图版本列表已更新，共 {ModuleSeedMap.VersionNames.Count} 项")
         Catch ex As Exception
             Logger.Warn(ex, "刷新种子地图版本下拉失败")
         End Try
@@ -1930,7 +2622,7 @@ Public Class PageSeedMap
         StructPoints.Clear()
         BuildStructList()
         '地形筛选按维度独立：切换时重建清单并清除选择
-        SelectedBiomes.Clear()
+        LoadBiomeSel(Index)
         BuildBiomeList()
         TxtStructSearch_TextChanged(Nothing, Nothing)
         '维度过渡：地图快速淡出 → 套用目标维度视野并重新生成 → 淡入
@@ -2058,8 +2750,9 @@ Public Class PageSeedMap
             Dim Vw = PanMapViewport.ActualWidth, Vh = PanMapViewport.ActualHeight
             If Vw < 50 OrElse Vh < 50 OrElse InitialZoom <= 0 Then Return
             '1 区块 = 16 方块 = 2 地图单位
-            Dim U0 = -MapPos.X / Zoom, U1 = (Vw - MapPos.X) / Zoom
-            Dim V0 = -MapPos.Y / Zoom, V1 = (Vh - MapPos.Y) / Zoom
+            Dim R = ViewUnitRect()
+            Dim U0 = R.Left, U1 = R.Right
+            Dim V0 = R.Top, V1 = R.Bottom
             Dim Total As Long = (CLng(Math.Floor(U1 / 2)) - CLng(Math.Floor(U0 / 2)) + 1) *
                                 (CLng(Math.Floor(V1 / 2)) - CLng(Math.Floor(V0 / 2)) + 1)
             If Total > SlimeMaxCells Then
@@ -2127,6 +2820,7 @@ Public Class PageSeedMap
             Hint("史莱姆显示：已关闭", HintType.Blue)
         End If
         RefreshSlime()
+        SaveSwitches()
     End Sub
 
     Private Sub BtnToolLocate_Click(sender As Object, e As RoutedEventArgs) Handles BtnToolLocate.Click
@@ -2138,16 +2832,17 @@ Public Class PageSeedMap
         TerrainVisible = Not TerrainVisible
         AniStop("SeedMap Terrain")
         If TerrainVisible Then
-            AniStart({AaOpacity(PanTiles, 1 - PanTiles.Opacity, 260, , New AniEaseOutFluent)}, "SeedMap Terrain", True)
+            AniStart({AaOpacity(PanTerrain, 1 - PanTerrain.Opacity, 260, , New AniEaseOutFluent)}, "SeedMap Terrain", True)
             BtnToolLayer.Background = Brushes.Transparent
             BtnToolLayer.Foreground = TryCast(FindResource("BrushText2"), Brush)
             Hint("地形显示：已开启", HintType.Blue)
         Else
-            AniStart({AaOpacity(PanTiles, -PanTiles.Opacity, 200, , New AniEaseInFluent)}, "SeedMap Terrain", True)
+            AniStart({AaOpacity(PanTerrain, -PanTerrain.Opacity, 200, , New AniEaseInFluent)}, "SeedMap Terrain", True)
             BtnToolLayer.Background = TryCast(FindResource("BrushAccentSoft"), Brush)
             BtnToolLayer.Foreground = TryCast(FindResource("ColorBrush3"), Brush)
             Hint("地形显示：已关闭", HintType.Blue)
         End If
+        SaveSwitches()
     End Sub
 
     '网格显示开关（网格按钮）：隐藏 / 显示坐标网格线
@@ -2164,6 +2859,7 @@ Public Class PageSeedMap
             Hint("网格显示：已关闭", HintType.Blue)
         End If
         UpdateGrid()
+        SaveSwitches()
     End Sub
 
     '===============================
@@ -2253,15 +2949,10 @@ Public Class PageSeedMap
             BtnToolRelief.Foreground = TryCast(FindResource("BrushText2"), Brush)
             Hint("浮雕：已关闭（纯群系配色）", HintType.Blue)
         End If
-        For Each T In Tiles.Values.ToList()
-            PanTiles.Children.Remove(T.Image)
-        Next
-        Tiles.Clear()
-        SyncLock JobSync
-            JobQueue.Clear()
-            TilePending.Clear()
-        End SyncLock
+        ClearTiles()
         RefreshTiles(True)
+        StartTileWorker() '万一 worker 都空闲退出了，这里重新拉起来
+        SaveSwitches()
     End Sub
     '===============================
     '  3D 预览（框选 + 鼠标旋转）
@@ -2423,7 +3114,8 @@ Public Class PageSeedMap
     Private Sub UpdateSelect3DBox(P As Point)
         Try
             If PanSelect3D Is Nothing OrElse Zoom <= 0 Then Return
-            Dim Ux = (P.X - MapPos.X) / Zoom, Uy = (P.Y - MapPos.Y) / Zoom
+            Dim U0 = ScreenToUnit(P)
+            Dim Ux = U0.X, Uy = U0.Y
             Dim Bx = Math.Round(Ux * BlocksPerUnit / 16) * 16
             Dim Bz = Math.Round(Uy * BlocksPerUnit / 16) * 16
             Sel3DCenter = New Point(Bx, Bz)

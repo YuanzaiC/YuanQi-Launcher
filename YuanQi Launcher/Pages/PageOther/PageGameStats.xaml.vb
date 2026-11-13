@@ -1,4 +1,4 @@
-﻿Imports System.Windows.Shapes
+Imports System.Windows.Shapes
 
 ''' <summary>
 ''' 游戏统计：按「近 1 天 / 近 1 周 / 近 1 月 / 自定义」统计游玩时长，数据来自 PlayLogModule。
@@ -231,7 +231,7 @@ Public Class PageGameStats
                 TotalSec += S.DurationSeconds
                 Dim K = S.StartTime.Date.Ticks
                 If PerDay.ContainsKey(K) Then PerDay(K) = PerDay(K) + S.DurationSeconds
-                Dim Nm = If(String.IsNullOrWhiteSpace(S.Name), "未知版本", S.Name.Trim())
+                Dim Nm = PlayLogModule.GetSessionDisplayName(S) '版本改名后这里跟着变
                 PerName(Nm) = If(PerName.ContainsKey(Nm), PerName(Nm), 0) + S.DurationSeconds
                 Dim Hr As Integer = S.StartTime.Hour
                 If Hr >= 0 AndAlso Hr <= 23 Then PerHour(Hr) = PerHour(Hr) + S.DurationSeconds
@@ -430,7 +430,7 @@ Public Class PageGameStats
         Dim Dot As New Border With {.Width = 6, .Height = 6, .CornerRadius = New CornerRadius(3),
                                     .VerticalAlignment = VerticalAlignment.Center, .Background = New SolidColorBrush(AccentColor())}
         G.Children.Add(Dot)
-        Dim N As New TextBlock With {.Text = If(String.IsNullOrWhiteSpace(S.Name), "未知版本", S.Name.Trim()),
+        Dim N As New TextBlock With {.Text = PlayLogModule.GetSessionDisplayName(S),
                                      .FontSize = 12, .Margin = New Thickness(10, 0, 0, 0), .TextTrimming = TextTrimming.CharacterEllipsis}
         N.SetResourceReference(TextBlock.ForegroundProperty, "BrushText1")
         Grid.SetColumn(N, 1)

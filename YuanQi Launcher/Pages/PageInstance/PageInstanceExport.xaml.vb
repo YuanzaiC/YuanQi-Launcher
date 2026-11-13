@@ -350,7 +350,7 @@ Public Class PageInstanceExport
             ConfigLines.Add("")
             ConfigLines.Add("# 导出的文件的存放位置。")
             ConfigLines.Add("# 若设置了此项，在导出时会直接将文件放到此路径，不会弹窗要求选择。")
-            ConfigLines.Add("# 若 IncludeLauncher 为 True，应以 .zip 结尾；若为 False，应以 .mrpack 结尾。")
+            ConfigLines.Add("# 若 IncludeLauncher 为 True，会导出「缘启安装程序（含整合包）」的 .exe；为 False 时以 .zip 或 .mrpack 结尾。")
             ConfigLines.Add("PackPath:" & If(ConfigPackPath, ""))
             ConfigLines.Add("")
             '导出内容段
@@ -385,7 +385,8 @@ Public Class PageInstanceExport
             TextExportName.Text = Ini.GetOrDefault("Name", "")
             TextExportVersion.Text = Ini.GetOrDefault("Version", "")
             CheckOptionsJava.Checked = Ini.GetOrDefault("IncludeJava", True)
-            CheckOptionsPcl.Checked = Ini.GetOrDefault("IncludeLauncher", True)
+            '启动器默认不勾选：多数情况下导出的是整合包本身，需要安装程序时由用户自己勾上
+            CheckOptionsPcl.Checked = False
             CheckOptionsPclCustom.Checked = Ini.GetOrDefault("IncludeLauncherCustom", True)
             CheckAdvancedInclude.Checked = Ini.GetOrDefault("DontCheckHostedAssets", False)
             If Not CheckAdvancedInclude.Checked Then CheckAdvancedModrinth.Checked = Ini.GetOrDefault("ModrinthUploadMode", False) '#7979，加个特判
@@ -444,9 +445,14 @@ Public Class PageInstanceExport
         End If
         If PackPath Is Nothing Then
             Dim Extensions As New List(Of (Extension As String, Display As String))
-            If Not CheckOptionsPcl.Checked AndAlso CheckAdvancedModrinth.Checked Then Extensions.Add(("mrpack", "Modrinth 整合包文件"))
-            Extensions.Add(("zip", "压缩文件"))
-            If Not CheckOptionsPcl.Checked AndAlso Not CheckAdvancedModrinth.Checked Then Extensions.Add(("mrpack", "Modrinth 整合包文件"))
+            If CheckOptionsPcl.Checked Then
+                '带启动器时输出的是单文件安装程序（启动器程序 + 该整合包一体）
+                Extensions.Add(("exe", "缘启安装程序（含整合包）"))
+            Else
+                If CheckAdvancedModrinth.Checked Then Extensions.Add(("mrpack", "Modrinth 整合包文件"))
+                Extensions.Add(("zip", "压缩文件"))
+                If Not CheckAdvancedModrinth.Checked Then Extensions.Add(("mrpack", "Modrinth 整合包文件"))
+            End If
             PackPath = Dialogs.SaveFile("选择导出位置",
                 PackName & If(String.IsNullOrEmpty(TextExportVersion.Text), "", " " & TextExportVersion.Text), filter:=Extensions)
             Logger.Info($"手动指定的导出路径：{PackPath}")
@@ -565,7 +571,21 @@ Public Class PageInstanceExport
             If DirectoryUtils.Exists(TargetInstance.PathVersion & "YQL\") Then DirectoryUtils.Copy(TargetInstance.PathVersion & "YQL\", OverridesFolder & "YQL\")
             WriteIni(OverridesFolder & "YQL\Setup.ini", "IsStar", False)
             '复制 缘启 本体（正式版）
-            If BuildType = BuildTypes.Release AndAlso IncludePCL Then FileUtils.Copy(PathExe, CacheFolder & "YuanQi Launcher.exe")
+            '光拷 exe 是不够的：启动器还依赖同目录的一批 DLL（MeloongCore、PCLCS、cubiomes、WebView2 等），
+            '少了它们导出的启动器双击根本起不来（会直接缺程序集启动失败）。
+            If BuildType = BuildTypes.Release AndAlso IncludePCL Then
+                FileUtils.Copy(PathExe, CacheFolder & "YuanQi Launcher.exe")
+                If FileUtils.Exists(Paths.Base & "YuanQi Launcher.exe.config") Then
+                    FileUtils.Copy(Paths.Base & "YuanQi Launcher.exe.config", CacheFolder & "YuanQi Launcher.exe.config")
+                End If
+                For Each DllPath As String In IO.Directory.GetFiles(Paths.Base, "*.dll", IO.SearchOption.TopDirectoryOnly)
+                    FileUtils.Copy(DllPath, CacheFolder & PathUtils.GetLastPart(DllPath))
+                Next
+                '联机（陶瓦）是独立进程 + 独立文件夹，一起带上导出后开箱即可联机
+                If DirectoryUtils.Exists(Paths.Base & "Terracotta\") Then
+                    DirectoryUtils.Copy(Paths.Base & "Terracotta\", CacheFolder & "Terracotta\")
+                End If
+            End If
             '复制 缘启 个性化内容
             If IncludePLCCustom Then
                 If DirectoryUtils.Exists(Paths.Base & "YQL\Pictures\") Then DirectoryUtils.Copy(Paths.Base & "YQL\Pictures\", CacheFolder & "YQL\Pictures\")
@@ -706,8 +726,12 @@ Public Class PageInstanceExport
                 Loader.Progress = 0.5
                 DirectoryUtils.Delete(CacheFolder & "modpack\")
                 Loader.Progress = 0.6
-                '二次压缩整合包
-                FileUtils.CreateZipFromDirectory(PackPath, CacheFolder)
+                '二次打包：做成单文件安装程序（安装程序桩 + 启动器程序文件 + 整合包一体）
+                '安装完成后就是「缘启 + 这个整合包」，启动器首次运行会自动安装同目录下的 modpack.mrpack
+                PackPath = IO.Path.ChangeExtension(PackPath, ".exe")
+                Dim StubPath As String = SetupPack.FindStub()
+                If StubPath Is Nothing Then Throw New FileNotFoundException("缺少安装程序模板：Resources\Setup\YuanQi Setup.exe")
+                SetupPack.BuildInstaller(StubPath, CacheFolder, PackPath)
                 Loader.Progress = 0.9
             Else
                 '直接压缩整合包

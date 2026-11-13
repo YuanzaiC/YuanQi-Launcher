@@ -113,6 +113,21 @@ Public Class PageDownloadInstall
         ReloadSelected()
     End Sub
 
+    ''' <summary>
+    ''' 鼠标侧键 / 返回动作：正在看某个版本详情时，先退回版本列表（与左上角返回箭头一致）。
+    ''' </summary>
+    Public Overrides Function PageBackInner() As Boolean
+        Try
+            If IsInSelectPage Then
+                ExitSelectPage()
+                Return True
+            End If
+        Catch ex As Exception
+            Logger.Warn(ex, "从版本详情返回失败")
+        End Try
+        Return False
+    End Function
+
     Public Sub ExitSelectPage() Handles BtnBack.Click
         If Not IsInSelectPage Then Return
         IsInSelectPage = False

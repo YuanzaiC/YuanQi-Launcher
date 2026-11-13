@@ -58,7 +58,7 @@ Public Class PageSetupLeft
     ''' <summary>
     ''' 勾选事件改变页面。
     ''' </summary>
-    Private Sub PageCheck(sender As MyListItem, e As EventArgs) Handles ItemLaunch.Check, ItemSystem.Check, ItemUI.Check, ItemLink.Check
+    Private Sub PageCheck(sender As MyListItem, e As EventArgs) Handles ItemLaunch.Check, ItemSystem.Check, ItemUI.Check, ItemLink.Check, ItemGeneral.Check, ItemAdvanced.Check
         '尚未初始化控件属性时，sender.Tag 为 Nothing，会跳过切换，且由于 PageID 默认为 0 而切换到第一个页面
         '若使用 IsLoaded，则会导致模拟点击不被执行（模拟点击切换页面时，控件的 IsLoaded 为 False）
         If sender.Tag IsNot Nothing Then PageChange(Val(sender.Tag))
@@ -82,6 +82,13 @@ Public Class PageSetupLeft
             Case FormMain.PageSubType.SetupSystem
                 If FrmSetupSystem Is Nothing Then FrmSetupSystem = New PageSetupSystem
                 Return FrmSetupSystem
+            Case FormMain.PageSubType.SetupGeneral
+                If FrmSetupGeneral Is Nothing Then FrmSetupGeneral = New PageSetupGeneral
+                Return FrmSetupGeneral
+
+            Case FormMain.PageSubType.SetupAdvanced
+                If FrmSetupAdvanced Is Nothing Then FrmSetupAdvanced = New PageSetupAdvanced
+                Return FrmSetupAdvanced
             Case Else
                 Throw New Exception("未知的设置子页面种类：" & ID)
         End Select
@@ -109,6 +116,13 @@ Public Class PageSetupLeft
                 Case FormMain.PageSubType.SetupSystem
                     If IsNothing(FrmSetupSystem) Then FrmSetupSystem = New PageSetupSystem
                     PageChangeRun(FrmSetupSystem)
+                Case FormMain.PageSubType.SetupGeneral
+                    If IsNothing(FrmSetupGeneral) Then FrmSetupGeneral = New PageSetupGeneral
+                    PageChangeRun(FrmSetupGeneral)
+
+                Case FormMain.PageSubType.SetupAdvanced
+                    If IsNothing(FrmSetupAdvanced) Then FrmSetupAdvanced = New PageSetupAdvanced
+                    PageChangeRun(FrmSetupAdvanced)
                 Case Else
                     Throw New Exception("未知的设置子页面种类：" & ID)
             End Select
@@ -146,7 +160,7 @@ Public Class PageSetupLeft
     Public Sub Reset(sender As Object, e As EventArgs)
         Select Case Val(sender.Tag)
             Case FormMain.PageSubType.SetupLaunch
-                If MyMsgBox("是否要初始化 启动 页面的所有设置？该操作不可撤销。", "初始化确认",, "取消", IsWarn:=True) = 1 Then
+                If MyMsgBox("是否要初始化 游戏 页面的所有设置？该操作不可撤销。", "初始化确认",, "取消", IsWarn:=True) = 1 Then
                     If IsNothing(FrmSetupLaunch) Then FrmSetupLaunch = New PageSetupLaunch
                     FrmSetupLaunch.Reset()
                     ItemLaunch.Checked = True
@@ -158,16 +172,29 @@ Public Class PageSetupLeft
                     ItemUI.Checked = True
                 End If
             Case FormMain.PageSubType.SetupSystem
-                If MyMsgBox("是否要初始化 其他 页面的所有设置？该操作不可撤销。", "初始化确认",, "取消", IsWarn:=True) = 1 Then
+                If MyMsgBox("是否要初始化 下载 页面的所有设置？该操作不可撤销。", "初始化确认",, "取消", IsWarn:=True) = 1 Then
                     If IsNothing(FrmSetupSystem) Then FrmSetupSystem = New PageSetupSystem
                     FrmSetupSystem.Reset()
                     ItemSystem.Checked = True
                 End If
             Case FormMain.PageSubType.SetupLink
-                If MyMsgBox("是否要初始化 联机 页面的所有设置？该操作不可撤销。", "初始化确认",, "取消", IsWarn:=True) = 1 Then
+                If MyMsgBox("是否要初始化 工具 页面的所有设置？该操作不可撤销。", "初始化确认",, "取消", IsWarn:=True) = 1 Then
                     If IsNothing(FrmSetupLink) Then FrmSetupLink = New PageSetupLink
                     FrmSetupLink.Reset()
                     ItemLink.Checked = True
+                End If
+
+            Case FormMain.PageSubType.SetupGeneral
+                If MyMsgBox("是否要初始化 通用 页面的所有设置？该操作不可撤销。", "初始化确认",, "取消", IsWarn:=True) = 1 Then
+                    If IsNothing(FrmSetupGeneral) Then FrmSetupGeneral = New PageSetupGeneral
+                    FrmSetupGeneral.Reset()
+                    ItemGeneral.Checked = True
+                End If
+            Case FormMain.PageSubType.SetupAdvanced
+                If MyMsgBox("是否要初始化 高级 页面的所有设置？该操作不可撤销。", "初始化确认",, "取消", IsWarn:=True) = 1 Then
+                    If IsNothing(FrmSetupAdvanced) Then FrmSetupAdvanced = New PageSetupAdvanced
+                    FrmSetupAdvanced.Reset()
+                    ItemAdvanced.Checked = True
                 End If
         End Select
     End Sub

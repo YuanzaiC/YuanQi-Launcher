@@ -44,10 +44,10 @@
         <Rectangle x:Name="RectGrade" IsHitTestVisible="False">
             <Rectangle.Fill>
                 <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                    <GradientStop Color="#33181F14" Offset="0" />
+                    <GradientStop Color="#1A181F14" Offset="0" />
                     <GradientStop Color="#00181F14" Offset="0.26" />
                     <GradientStop Color="#00181F14" Offset="0.62" />
-                    <GradientStop Color="#73080C08" Offset="1" />
+                    <GradientStop Color="#3D080C08" Offset="1" />
                 </LinearGradientBrush>
             </Rectangle.Fill>
         </Rectangle>
@@ -56,7 +56,7 @@
             <Rectangle.Fill>
                 <RadialGradientBrush Center="0.5,0.46" GradientOrigin="0.5,0.46" RadiusX="1.15" RadiusY="0.95">
                     <GradientStop Color="#00060A06" Offset="0.35" />
-                    <GradientStop Color="#6B060A06" Offset="1" />
+                    <GradientStop Color="#38060A06" Offset="1" />
                 </RadialGradientBrush>
             </Rectangle.Fill>
         </Rectangle>
@@ -64,8 +64,8 @@
         <Rectangle x:Name="RectScrimTop" IsHitTestVisible="False">
             <Rectangle.Fill>
                 <RadialGradientBrush Center="0,0" GradientOrigin="0,0" RadiusX="0.38" RadiusY="0.40">
-                    <GradientStop Color="#9E040804" Offset="0" />
-                    <GradientStop Color="#4D040804" Offset="0.48" />
+                    <GradientStop Color="#59040804" Offset="0" />
+                    <GradientStop Color="#26040804" Offset="0.48" />
                     <GradientStop Color="#00040804" Offset="1" />
                 </RadialGradientBrush>
             </Rectangle.Fill>
@@ -73,14 +73,14 @@
         <Rectangle x:Name="RectScrimBottom" IsHitTestVisible="False">
             <Rectangle.Fill>
                 <RadialGradientBrush Center="0.08,0.94" GradientOrigin="0.08,0.94" RadiusX="0.52" RadiusY="0.56">
-                    <GradientStop Color="#B3040804" Offset="0" />
-                    <GradientStop Color="#52040804" Offset="0.44" />
+                    <GradientStop Color="#66040804" Offset="0" />
+                    <GradientStop Color="#2E040804" Offset="0.44" />
                     <GradientStop Color="#00040804" Offset="1" />
                 </RadialGradientBrush>
             </Rectangle.Fill>
         </Rectangle>
         <!-- 5% 颗粒（噪点图在代码里生成，避免在 XAML 里塞一坨 base64） -->
-        <Rectangle x:Name="RectGrain" IsHitTestVisible="False" Opacity="0.05" />
+        <Rectangle x:Name="RectGrain" IsHitTestVisible="False" Opacity="0.02" />
     </Grid>
 
     <!-- ============================================================

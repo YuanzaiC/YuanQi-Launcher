@@ -10,6 +10,14 @@ Public Module ModTerracotta
 #Region "路径与常量"
 
     ''' <summary>
+    ''' 默认公共节点（用户没填自定义节点时使用）。
+    ''' 陶瓦跨网络联机必须有中转节点，一个都不传时只能直连——两人不在同一局域网就会一直卡在"正在建立连接"。
+    ''' </summary>
+    Public ReadOnly DefaultPublicNodes As String() = {
+        "https://etnode.zkitefly.eu.org/"
+    }
+
+    ''' <summary>
     ''' 无法联网获取最新版本时使用的陶瓦版本号。
     ''' </summary>
     Public Const FallbackVersion As String = "0.4.2"
@@ -124,6 +132,69 @@ Public Module ModTerracotta
 
 #Region "进程"
 
+    ''' <summary>记录「数据目录里这份核心是哪个版本」，用于判断是否需要更新。</summary>
+    Public ReadOnly CoreVersionPath As String = DataPath & "version.txt"
+
+    ''' <summary>读取已下载核心的版本；没有记录返回空串。</summary>
+    Public Function GetInstalledVersion() As String
+        Try
+            If Not FileUtils.Exists(CoreVersionPath) Then Return ""
+            Return IO.File.ReadAllText(CoreVersionPath).Trim()
+        Catch ex As Exception
+            Return ""
+        End Try
+    End Function
+
+    ''' <summary>记录联机模块版本（下载解压成功后调用）。</summary>
+    Public Sub MarkCoreVersion(Version As String)
+        Try
+            If String.IsNullOrWhiteSpace(Version) Then Return
+            DirectoryUtils.Create(DataPath)
+            IO.File.WriteAllText(CoreVersionPath, Version.Trim(), New Text.UTF8Encoding(False))
+        Catch ex As Exception
+            Logger.Warn(ex, "记录联机模块版本失败")
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' 当前实际会用的联机模块版本：数据目录里有下载版就以它记录为准，否则按启动器内置版本算。
+    ''' </summary>
+    Public Function GetEffectiveVersion() As String
+        If FileUtils.Exists(CorePath) Then
+            Dim Installed As String = GetInstalledVersion()
+            If Not String.IsNullOrWhiteSpace(Installed) Then Return Installed
+        End If
+        Return FallbackVersion
+    End Function
+
+    ''' <summary>联机模块自身日志文件。</summary>
+    Public ReadOnly ModuleLogPath As String = DataPath & "module.log"
+    Private ReadOnly ModuleLogLock As New Object()
+
+    Private Sub AppendModuleLog(Line As String)
+        Try
+            If Line Is Nothing Then Return
+            SyncLock ModuleLogLock
+                DirectoryUtils.Create(DataPath)
+                IO.File.AppendAllText(ModuleLogPath, Line & vbCrLf, New Text.UTF8Encoding(False))
+            End SyncLock
+        Catch ex As Exception
+        End Try
+    End Sub
+
+    ''' <summary>取联机模块日志的最后若干行，用于失败提示。</summary>
+    Public Function GetModuleLogTail(LineCount As Integer) As String
+        Try
+            If Not FileUtils.Exists(ModuleLogPath) Then Return ""
+            Dim All As String() = IO.File.ReadAllLines(ModuleLogPath)
+            If All.Length = 0 Then Return ""
+            Dim Start As Integer = Math.Max(0, All.Length - LineCount)
+            Return String.Join(vbCrLf, All.Skip(Start)).Trim()
+        Catch ex As Exception
+            Return ""
+        End Try
+    End Function
+
     ''' <summary>
     ''' 联机模块是否已经就绪（随启动器分发，或此前已经下载过）。
     ''' </summary>
@@ -139,7 +210,9 @@ Public Module ModTerracotta
         If Not FileUtils.Exists(BundledCorePath) Then Return CorePath
         Dim NeedCopy As Boolean = True
         If FileUtils.Exists(CorePath) Then
-            NeedCopy = FileUtils.GetInfo(CorePath).Length <> FileUtils.GetInfo(BundledCorePath).Length
+            '只在「内置那份更新」时才覆盖：否则会把刚下载的新版模块换回安装包里带的旧版，
+            '两边版本不一致时访客就会一直卡在"正在建立连接"
+            NeedCopy = FileUtils.GetInfo(BundledCorePath).LastWriteTimeUtc > FileUtils.GetInfo(CorePath).LastWriteTimeUtc
         End If
         If Not NeedCopy Then Return CorePath
         Logger.Info($"正在把内置的联机模块复制到数据目录：{BundledDataPath} → {DataPath}")
@@ -193,8 +266,20 @@ Public Module ModTerracotta
         }
         Info.EnvironmentVariables("TEMP") = InstanceTempPath
         Info.EnvironmentVariables("TMP") = InstanceTempPath
+        '把子进程输出接到日志文件：陶瓦自己的诊断信息（节点连通性、握手失败原因）都在这里
+        Info.RedirectStandardOutput = True
+        Info.RedirectStandardError = True
         Logger.Info($"正在启动联机模块：{Info.FileName} {Info.Arguments}")
+        FileUtils.Delete(ModuleLogPath)
         BootstrapProcess = Process.Start(Info)
+        Try
+            AddHandler BootstrapProcess.OutputDataReceived, Sub(Sender As Object, Args As DataReceivedEventArgs) AppendModuleLog(Args.Data)
+            AddHandler BootstrapProcess.ErrorDataReceived, Sub(Sender As Object, Args As DataReceivedEventArgs) AppendModuleLog(Args.Data)
+            BootstrapProcess.BeginOutputReadLine()
+            BootstrapProcess.BeginErrorReadLine()
+        Catch ex As Exception
+            Logger.Warn(ex, "接管联机模块日志失败")
+        End Try
         '等待端口文件出现
         Dim StartTime As Date = Now
         Do
@@ -439,7 +524,7 @@ Public Module ModTerracotta
     ''' </summary>
     Public Function GetExceptionDetail(Type As Integer) As String
         Select Case Type
-            Case 0 : Return $"房间已关闭，或者网络不稳定。{vbCrLf}请确认房主仍在房间中，然后重试。"
+            Case 0 : Return $"连不上房主：房间可能已关闭，或者双方没能通过同一个中转节点接上。{vbCrLf}请依次确认：{vbCrLf}- 房主仍在房间里（房主退出存档后房间会关闭）{vbCrLf}- 双方用的是同一个节点（默认节点即可，自定义时两边要填一样的）{vbCrLf}- 双方联机模块版本一致（设置 → 工具 → 联机 → 检查模块更新）{vbCrLf}- 网络能访问该节点"
             Case 1 : Return $"房主可能已离开房间，请重新加入。"
             Case 2 : Return $"请重试。若反复出现，请向开发者反馈。"
             Case 3 : Return $"请让房主重试。若反复出现，请向开发者反馈。"
@@ -584,8 +669,8 @@ Public Module ModTerracotta
     ''' <summary>
     ''' 根据 CPU 架构获取应当下载的联机模块地址（按优先级排列）。
     ''' </summary>
-    Public Function GetDownloadUrls(Architecture As String) As List(Of String)
-        Dim Version As String = GetLatestVersion()
+    Public Function GetDownloadUrls(Architecture As String, Optional KnownVersion As String = Nothing) As List(Of String)
+        Dim Version As String = If(String.IsNullOrWhiteSpace(KnownVersion), GetLatestVersion(), KnownVersion)
         Dim FileName As String = $"terracotta-{Version}-windows-{Architecture}-pkg.tar.gz"
         Return New List(Of String) From {
             $"https://github.com/burningtnt/Terracotta/releases/download/v{Version}/{FileName}",
@@ -598,18 +683,42 @@ Public Module ModTerracotta
     ''' 获取联机模块的最新版本号。失败时使用内置版本号。
     ''' </summary>
     Public Function GetLatestVersion() As String
+        Dim Version As String = ""
+        If TryGetLatestVersion(Version) Then Return Version
+        Return FallbackVersion
+    End Function
+
+    ''' <summary>
+    ''' 查询官方最新版本；拿不到（断网、超时）时返回 False，调用方据此决定是否动本地模块。
+    ''' 不能把"查询失败"当成"最新版是 FallbackVersion"，否则断网时会把本地更新的模块误降级。
+    ''' </summary>
+    Public Function TryGetLatestVersion(ByRef Version As String) As Boolean
+        Version = ""
         Try
             Dim Raw As String = NetRequestByClient("https://api.github.com/repos/burningtnt/Terracotta/releases/latest",
                 RequireJson:=True, Timeout:=8000)
             Dim Tag = CType(Raw.DeserializeJson(), JObject)?("tag_name")
             If Tag IsNot Nothing Then
-                Dim Version As String = Tag.ToString.Trim.TrimStart("v"c)
-                If Not String.IsNullOrWhiteSpace(Version) Then Return Version
+                Dim Value As String = Tag.ToString.Trim.TrimStart("v"c)
+                If Not String.IsNullOrWhiteSpace(Value) Then
+                    Version = Value
+                    Return True
+                End If
             End If
         Catch ex As Exception
-            Logger.Warn(ex, "获取联机模块版本失败，将使用内置版本号")
+            Logger.Warn(ex, "获取联机模块版本失败")
         End Try
-        Return FallbackVersion
+        Return False
+    End Function
+
+    ''' <summary>判断 Target 是否比 Current 新；两边格式都解析不了时退回"不相等即视为不同"。</summary>
+    Public Function IsNewerVersion(Current As String, Target As String) As Boolean
+        If String.IsNullOrWhiteSpace(Target) Then Return False
+        If String.IsNullOrWhiteSpace(Current) Then Return True
+        If String.Equals(Current.Trim(), Target.Trim(), StringComparison.OrdinalIgnoreCase) Then Return False
+        Dim Cur As Version = Nothing, Tar As Version = Nothing
+        If Version.TryParse(Current.Trim(), Cur) AndAlso Version.TryParse(Target.Trim(), Tar) Then Return Tar > Cur
+        Return True
     End Function
 
     ''' <summary>

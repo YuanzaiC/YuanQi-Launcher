@@ -2,6 +2,14 @@ Public Class MyPageRight
     Inherits AdornerDecorator
     Public PageUuid As Integer = GetUuid()
 
+    ''' <summary>
+    ''' 页面内部的「返回上一层」（例如下载页从版本详情退回版本列表）。
+    ''' 返回 True 表示本页已处理，外部返回动作（鼠标侧键等）就不必再切换到上一个页面。
+    ''' </summary>
+    Public Overridable Function PageBackInner() As Boolean
+        Return False
+    End Function
+
     '“返回顶部” 按钮检测的滚动区域
     Public Property PanScroll As String '需要在 Loaded 之后才能获取到控件，所以不能用 Binding 直接绑定（#6664）
         Get

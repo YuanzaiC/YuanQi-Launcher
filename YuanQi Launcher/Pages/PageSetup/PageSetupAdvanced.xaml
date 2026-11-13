@@ -1,0 +1,33 @@
+<local:MyPageRight
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:YuanQi" xmlns:d="http://schemas.microsoft.com/expression/blend/2008" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+    mc:Ignorable="d" x:Class="PageSetupAdvanced"
+    PanScroll="PanBack">
+    <local:MyScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" x:Name="PanBack">
+        <StackPanel x:Name="PanMain" Margin="24,22,24,26">
+            <StackPanel Orientation="Horizontal" Margin="2,0,0,16">
+                <TextBlock Text="设置" Style="{StaticResource PageTitle}" />
+                <TextBlock Text="排查问题用的开关，平时不用动" Style="{StaticResource PageSub}" />
+            </StackPanel>
+
+            <local:MyCard Margin="0,15" Title="调试">
+                <StackPanel Margin="25,40,25,22">
+                    <TextBlock FontSize="12" LineHeight="17" Foreground="{StaticResource ColorBrushGray4}" TextWrapping="Wrap" Margin="0,0,0,10"
+                        Text="会明显拖慢启动器，仅在排查问题时打开。" />
+                    <local:MyCheckBox Text="调试模式" Height="22" x:Name="CheckDebugMode" local:SettingService.Key="SystemDebugMode"
+                                      ToolTip="显示调试信息与更详细的错误" />
+                    <local:MyCheckBox Text="下载时不复用已有文件" Height="22" Margin="0,6,0,0" x:Name="CheckDebugSkipCopy" local:SettingService.Key="SystemDebugSkipCopy"
+                                      ToolTip="不复制本地已有的同名文件，而是重新下载，用于测试下载速度" />
+                    <local:MyCheckBox Text="添加随机延迟" Height="22" Margin="0,6,0,0" x:Name="CheckDebugDelay" local:SettingService.Key="SystemDebugDelay"
+                                      ToolTip="在各环节加入随机延迟，用于测试弱网表现" />
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <TextBlock Text="动画边界" VerticalAlignment="Center" Width="110" />
+                        <local:MySlider x:Name="SliderDebugAnim" local:SettingService.Key="SystemDebugAnim" MaxValue="30" Width="300" HorizontalAlignment="Left"
+                                        ToolTip="给动画元素画辅助线，用于排查界面错位" />
+                    </StackPanel>
+                </StackPanel>
+            </local:MyCard>
+        </StackPanel>
+    </local:MyScrollViewer>
+</local:MyPageRight>

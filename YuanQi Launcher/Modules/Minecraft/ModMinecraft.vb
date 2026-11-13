@@ -612,9 +612,20 @@ Recheck:
         End Sub
 
         ''' <summary>
-        ''' 检查 Minecraft 版本，若检查通过 State 则为 Original 且返回 True。
+        ''' 同一个实例 10 秒内重复检查直接复用结果。
+        ''' 坏实例以前每次检查都要读文件、抛异常、打一整段堆栈；实例列表在启动时会反复重载它。
         ''' </summary>
+        Private _CheckTick As Long = Long.MinValue
+        Private _CheckResult As Boolean = False
+
         Public Function Check() As Boolean
+            If _CheckTick <> Long.MinValue AndAlso CLng(Environment.TickCount) - _CheckTick < 10000 Then Return _CheckResult
+            _CheckResult = CheckCore()
+            _CheckTick = CLng(Environment.TickCount)
+            Return _CheckResult
+        End Function
+
+        Private Function CheckCore() As Boolean
 
             '检查文件夹
             If Not DirectoryUtils.Exists(PathVersion) Then

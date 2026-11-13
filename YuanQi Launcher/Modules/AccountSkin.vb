@@ -19,7 +19,8 @@ Public Module AccountSkinStore
 
     ''' <summary>取某账户的头像文件路径；没有记录返回空串。</summary>
     Public Function AccountSkinGetSkin(Type As McLoginType, Name As String) As String
-        Return ReadValue(Type, Name, "Skin")
+        '旧记录可能指向已被清掉的共享皮肤缓存，统一走一次兜底解析
+        Return ResolveSkinPath(Type, Name, ReadValue(Type, Name, "Skin"))
     End Function
 
     ''' <summary>取某账户的角色名；没有记录返回空串。</summary>
@@ -32,6 +33,21 @@ Public Module AccountSkinStore
         Return ReadValue(Type, Name, "Uuid")
     End Function
 
+    ''' <summary>旧记录可能指向已被清掉的共享皮肤缓存，这里兜一层：文件没了就试账户自己的副本。</summary>
+    Private Function ResolveSkinPath(Type As McLoginType, Name As String, Path As String) As String
+        If String.IsNullOrWhiteSpace(Path) Then Return Path
+        If IO.File.Exists(Path) Then Return Path
+        Try
+            Dim Key As String = If(Name, "").Trim()
+            If Key = "" Then Return Path
+            Dim Folder As String = PathCache & "Accounts\Avatar\"
+            Dim Target As String = Folder & Type.ToString() & "_" & Key.GetStableHashCode() & IO.Path.GetExtension(Path)
+            If IO.File.Exists(Target) Then Return Target
+        Catch ex As Exception
+        End Try
+        Return Path
+    End Function
+
     Private Function ReadValue(Type As McLoginType, Name As String, Kind As String) As String
         Try
             Dim Key As String = If(Name, "").Trim()
@@ -42,12 +58,35 @@ Public Module AccountSkinStore
         End Try
     End Function
 
+    ''' <summary>
+    ''' 把头像复制成账户自己的独立副本，返回副本路径。
+    ''' 以前只记共享皮肤缓存里的路径：手动刷新皮肤、或切到别的账户后那边文件被清掉，
+    ''' 这个账户就找不到自己的头像，显示成默认头像。存副本后与共享缓存彻底解耦。
+    ''' </summary>
+    Private Function EnsureAvatarCopy(Type As McLoginType, Name As String, SkinPath As String) As String
+        Try
+            If String.IsNullOrWhiteSpace(SkinPath) Then Return SkinPath
+            If Not IO.File.Exists(SkinPath) Then Return SkinPath
+            Dim Folder As String = PathCache & "Accounts\Avatar\"
+            If Not IO.Directory.Exists(Folder) Then IO.Directory.CreateDirectory(Folder)
+            Dim Target As String = Folder & Type.ToString() & "_" & Name.GetStableHashCode() & IO.Path.GetExtension(SkinPath)
+            '已经就是自己那份副本就不用再复制
+            If String.Equals(SkinPath, Target, StringComparison.OrdinalIgnoreCase) Then Return Target
+            IO.File.Copy(SkinPath, Target, True)
+            Return Target
+        Catch ex As Exception
+            Logger.Warn(ex, "复制账户头像失败")
+            Return SkinPath
+        End Try
+    End Function
+
     ''' <summary>记录某个账户的角色与头像。</summary>
     Public Sub AccountSkinSave(Type As McLoginType, Name As String, Role As String, Uuid As String, SkinPath As String)
         Try
             Dim Key As String = If(Name, "").Trim()
             If Key = "" Then Return
             If Not String.IsNullOrWhiteSpace(SkinPath) Then
+                SkinPath = EnsureAvatarCopy(Type, Key, SkinPath)
                 WriteIni(EntryFile("Skin", Type), Key, SkinPath)
                 WriteIni(EntryFile("Time", Type), Key, GetTimeMs().ToString()) '记录更新时间，过期的会自动重新获取
             End If

@@ -255,7 +255,7 @@ Public Class PageSelectLeft
             Return
         End If
         CreateMcFolderInCurrentPath()
-        Hint("新建 .minecraft 文件夹成功！", HintType.Green)
+        '文件夹建好后列表里立刻能看到，不再弹提示
     End Sub
     Public Shared Sub CreateMcFolderInCurrentPath()
         McFolderSelected = Paths.Base & ".minecraft\"

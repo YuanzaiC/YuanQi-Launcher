@@ -392,7 +392,8 @@ Public Module ModWatcher
             If (EndTime - StartTime).TotalMinutes < 1 Then Return '忽略不足 1 分钟的启动
             Try
                 If Instance IsNot Nothing Then
-                    PlayLogModule.AddSession(Instance.Name, StartTime, EndTime)
+                    '带上版本标识：以后版本改名 / 删除时，这条记录能跟着版本走
+                    PlayLogModule.AddSession(Instance.Name, StartTime, EndTime, InstanceIdentityModule.GetInstanceId(Instance.PathVersion))
                     RunInUi(Sub() FrmLaunchLeft?.RefreshPlayStats())
                 End If
             Catch ex As Exception

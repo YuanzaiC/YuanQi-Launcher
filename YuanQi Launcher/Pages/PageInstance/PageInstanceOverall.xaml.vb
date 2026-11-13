@@ -117,7 +117,7 @@ Public Class PageInstanceOverall
             If String.IsNullOrWhiteSpace(NewName) Then Return
             Dim NewInstance = PageInstanceLeft.Instance.Rename(NewName)
             '刷新与提示
-            Hint("重命名成功！", HintType.Green)
+            '重命名后列表里立刻能看到，不再弹提示
             PageInstanceLeft.Instance = NewInstance
             If Not IsNothing(McInstanceSelected) AndAlso McInstanceSelected.Equals(PageInstanceLeft.Instance) Then WriteIni(McFolderSelected & "YQL.ini", "Version", NewName)
             Reload()
