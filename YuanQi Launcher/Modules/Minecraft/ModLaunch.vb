@@ -1706,10 +1706,9 @@ NextInstance:
         If Instance Is Nothing Then Instance = McInstanceSelected
         Dim Result As String = PathUtils.AddSlashSuffix(PathUtils.ToShortPath(Instance.PathVersion)) & Instance.Name & "-natives\"
         If Not (IsGBKEncoding OrElse Result.IsAsciiOnly()) Then
-            Result = Paths.AppData & ".minecraft\bin\natives\"
-            If Not Result.IsAsciiOnly() Then
-                Result = OsDrive & "ProgramData\YQL\natives\"
-            End If
+            '路径里有中文时需要一个纯 ASCII 的位置：优先就在程序目录里（PathPure），
+            '实在不行才退到 %AppData% 或 ProgramData，不再固定写官启文件夹
+            Result = PathPure.Value & "natives\"
         End If
         DirectoryUtils.Create(Result) '提前创建，这样 DirectoryUtils.Shorten 才有结果（否则在长路径下首次启动 Forge 会崩溃）
         Return PathUtils.AddSlashSuffix(PathUtils.ToShortPath(Result))
@@ -1870,7 +1869,7 @@ NextInstance:
         Try
             Dim ZipFileAddress As String = McInstanceSelected.PathIndie & "resourcepacks\YQL Skin.zip"
             Dim NewTypeSetup As Boolean = McInstanceSelected.Version.Vanilla.Major >= 13 OrElse McInstanceSelected.Version.Vanilla.Major < 6
-            If McLoginLoader.Input.Type = McLoginType.Legacy AndAlso Settings.Get(Of Integer)("LaunchSkinType") = 4 AndAlso FileUtils.Exists(Paths.AppDataThenName & "CustomSkin.png") Then
+            If McLoginLoader.Input.Type = McLoginType.Legacy AndAlso Settings.Get(Of Integer)("LaunchSkinType") = 4 AndAlso FileUtils.Exists(PathSkin) Then
                 Dim MetaFileAddress As String = PathTemp & "pack.mcmeta"
                 Dim PackPicAddress As String = PathTemp & "pack.png"
                 If McInstanceSelected.Version.Vanilla.Major < 6 Then
@@ -1907,7 +1906,7 @@ NextInstance:
                 Dim Bit As New MyBitmap(PathImage & "YQL.png")
                 Bit.Save(PackPicAddress)
                 FileUtils.Write(MetaFileAddress, "{""pack"":{""pack_format"":" & PackVersion & ",""description"":""缘启自定义离线皮肤资源包""}}")
-                Dim Skin As New MyBitmap(Paths.AppDataThenName & "CustomSkin.png")
+                Dim Skin As New MyBitmap(PathSkin)
                 If (McInstanceSelected.Version.Vanilla.Major = 6 OrElse McInstanceSelected.Version.Vanilla.Major = 7) AndAlso Skin.Pic.Height = 64 Then
                     McLaunchLog("该 Minecraft 版本不支持双层皮肤，已进行裁剪")
                     Skin = Skin.Clip(0, 0, 64, 32)
@@ -2155,7 +2154,7 @@ IgnoreCustomSkin:
         WindowTitle = ArgumentReplace(WindowTitle, ReplaceTime:=False)
 
         '初始化等待
-        Dim Watcher As New Watcher(Loader, McInstanceSelected, WindowTitle)
+        Dim Watcher As New Watcher(Loader, McInstanceSelected, WindowTitle, McLoginLoader.Output.Name)
         McLaunchWatcher = Watcher
 
         '等待

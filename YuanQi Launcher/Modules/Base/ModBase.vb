@@ -6,7 +6,7 @@ Public Module ModBase
 #Region "声明"
 
     '下列版本信息由更新器自动修改
-    Public Const VersionBaseName As String = "2.14.3.1" '显示用版本名
+    Public Const VersionBaseName As String = "2.15.0" '显示用版本名
     Public Const CommitHash As String = "" 'Commit Hash，由 GitHub Workflow 自动替换
 #If RELEASE Then
     Public Const VersionCode As Integer = 411 '正式版
@@ -68,8 +68,15 @@ Public Module ModBase
     Public PathImage As String = "pack://application:,,,/YuanQi Launcher;component/Images/"
     ''' <summary>
     ''' 程序的缓存文件夹路径，以 \ 结尾。
+    ''' 放在程序目录下（YQL\Temp），不写系统临时目录，保证便携版所有可写数据都在程序目录内。
+    ''' 这个目录每次启动都会被清理，不要往里放需要长期保留的东西（那用 PathCache）。
     ''' </summary>
-    Public PathTemp As String = PathUtils.AddSlashSuffix(Path.GetTempPath() & "YQL\")
+    Public PathTemp As String = PathUtils.AddSlashSuffix(Paths.Base & "YQL\Temp\")
+    ''' <summary>
+    ''' 离线自定义皮肤的文件路径。
+    ''' 放在 YQL 下，而不是 %AppData%。
+    ''' </summary>
+    Public PathSkin As String = Paths.Base & "YQL\CustomSkin.png"
     ''' <summary>
     ''' 持久化缓存文件夹路径，以 \ 结尾。
     ''' 放在 YQL\Cache 下，不会像 %TEMP% 那样被系统清理或“清理垃圾”删掉。

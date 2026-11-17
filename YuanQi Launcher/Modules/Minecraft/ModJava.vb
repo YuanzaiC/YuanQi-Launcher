@@ -540,6 +540,17 @@ NoForcedJava:
     End Class
 
     ''' <summary>
+    ''' 这个 Java 是不是启动器自己下载并管理的。
+    ''' 分别是旧版放在 %AppData%\.minecraft\runtime 的，和便携版放在 YQL\Runtime 的。
+    ''' 这类 Java 不允许从列表里手动移除（移除了也没意义，下次扫描又会回来）。
+    ''' </summary>
+    Public Function IsLauncherManagedJava(Folder As String) As Boolean
+        If String.IsNullOrWhiteSpace(Folder) Then Return False
+        Return PathUtils.IsParentOf($"{Paths.AppData}.minecraft\runtime\", Folder) OrElse
+               PathUtils.IsParentOf($"{Paths.BaseThenName}Runtime\", Folder)
+    End Function
+
+    ''' <summary>
     ''' 构建下载指定 Java 的加载器。
     ''' </summary>
     Private Function CreateJavaDownloadLoader(Target As JavaDownloadInfo) As LoaderCombo(Of Integer)
@@ -548,7 +559,8 @@ NoForcedJava:
         Dim Address As String = Target.Java("manifest")("url")
         Logger.Info($"准备下载 Java {Target.Java("version")("name")}（{Target.ComponentName}）：{Address}")
         Dim ListFileStr As String = NetRequestByLoader(DlSourceOrder({Address}, {Address.Replace("piston-meta.mojang.com", "bmclapi2.bangbang93.com")}), IsJson:=True)
-        Dim BaseDir As String = $"{Paths.AppData}.minecraft\runtime\{Target.ComponentName}\"
+        '便携版：自动下载的 Java 放在程序目录下的 YQL\Runtime，不写 %AppData%
+        Dim BaseDir As String = $"{Paths.BaseThenName}Runtime\{Target.ComponentName}\"
         Dim FilesToDownload As New List(Of NetFile)
         For Each File As JProperty In CType(ListFileStr.DeserializeJson(), JObject)("files")
             If CType(File.Value, JObject)("downloads")?("raw") Is Nothing Then Continue For

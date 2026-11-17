@@ -13,9 +13,46 @@ Public Module ModTerracotta
     ''' 默认公共节点（用户没填自定义节点时使用）。
     ''' 陶瓦跨网络联机必须有中转节点，一个都不传时只能直连——两人不在同一局域网就会一直卡在"正在建立连接"。
     ''' </summary>
+    ''' 只有 /node1 会返回真实的中转地址（tcp://183.66.27.22:39409）；
+    ''' 根路径与 /node2 返回空内容，模块解析不出地址，等于一个节点都没有。
     Public ReadOnly DefaultPublicNodes As String() = {
-        "https://etnode.zkitefly.eu.org/"
+        "https://etnode.zkitefly.eu.org/node1"
     }
+
+    ''' <summary>拿到的节点列表缓存（一次运行只拉一次）。</summary>
+    Private CachedPublicNodes As String() = Nothing
+
+    ''' <summary>
+    ''' 联机中转节点列表。与 HMCL 用同一份官方数据（https://terracotta.glavo.site/nodes），
+    ''' 官方加节点后不用更新启动器；取不到时退回内置节点。
+    ''' </summary>
+    Public Function GetNodes() As String()
+        If CachedPublicNodes IsNot Nothing Then Return CachedPublicNodes
+        Dim Result As String() = Nothing
+        Try
+            Using Client As New HttpClient()
+                Client.Timeout = TimeSpan.FromSeconds(8)
+                Dim Json As String = Client.GetStringAsync("https://terracotta.glavo.site/nodes").Result
+                Dim Found As New List(Of String)
+                '列表很小，只取每个元素的 url 字段
+                Dim Parts As String() = Json.Split(New String() {"""url"""}, StringSplitOptions.None)
+                For Index As Integer = 1 To Parts.Length - 1
+                    Dim Text As String = Parts(Index)
+                    Dim OpenQuote As Integer = Text.IndexOf(""""c)
+                    If OpenQuote < 0 Then Continue For
+                    Dim CloseQuote As Integer = Text.IndexOf(""""c, OpenQuote + 1)
+                    If CloseQuote < 0 Then Continue For
+                    Dim Url As String = Text.Substring(OpenQuote + 1, CloseQuote - OpenQuote - 1).Trim
+                    If Url.Contains("://") Then Found.Add(Url)
+                Next
+                If Found.Any Then Result = Found.ToArray()
+            End Using
+        Catch ex As Exception
+            Logger.Info($"获取联机节点列表失败，改用内置节点：{ex.Message}")
+        End Try
+        CachedPublicNodes = If(Result, DefaultPublicNodes)
+        Return CachedPublicNodes
+    End Function
 
     ''' <summary>
     ''' 无法联网获取最新版本时使用的陶瓦版本号。
@@ -24,8 +61,9 @@ Public Module ModTerracotta
 
     ''' <summary>
     ''' 陶瓦联机的数据目录，以 \ 结尾。
+    ''' 放在程序目录下的 YQL\Terracotta，不写 %AppData%，保持便携。
     ''' </summary>
-    Public ReadOnly DataPath As String = Paths.AppDataThenName & "Terracotta\"
+    Public ReadOnly DataPath As String = Paths.Base & "YQL\Terracotta\"
     ''' <summary>
     ''' 数据目录中的陶瓦可执行文件路径。
     ''' </summary>
@@ -167,26 +205,30 @@ Public Module ModTerracotta
         Return FallbackVersion
     End Function
 
-    ''' <summary>联机模块自身日志文件。</summary>
+    ''' <summary>联机模块自身日志文件：只在需要时把内存里的末尾几行落盘，不逐行写。</summary>
     Public ReadOnly ModuleLogPath As String = DataPath & "module.log"
-    Private ReadOnly ModuleLogLock As New Object()
+
+    ''' <summary>模块最近输出的若干行（内存环形缓冲）。逐行写盘会把磁盘和界面一起拖死，所以只留内存。</summary>
+    Private ReadOnly ModuleLogBuffer As New Collections.Concurrent.ConcurrentQueue(Of String)
+    Private Const ModuleLogKeep As Integer = 300
 
     Private Sub AppendModuleLog(Line As String)
         Try
             If Line Is Nothing Then Return
-            SyncLock ModuleLogLock
-                DirectoryUtils.Create(DataPath)
-                IO.File.AppendAllText(ModuleLogPath, Line & vbCrLf, New Text.UTF8Encoding(False))
-            End SyncLock
+            ModuleLogBuffer.Enqueue(Line)
+            '只保留最后若干行，避免长时间运行占用内存
+            Do While ModuleLogBuffer.Count > ModuleLogKeep
+                Dim Dummy As String = Nothing
+                If Not ModuleLogBuffer.TryDequeue(Dummy) Then Exit Do
+            Loop
         Catch ex As Exception
         End Try
     End Sub
 
-    ''' <summary>取联机模块日志的最后若干行，用于失败提示。</summary>
+    ''' <summary>取模块日志末尾若干行（纯内存读取，不碰磁盘）。</summary>
     Public Function GetModuleLogTail(LineCount As Integer) As String
         Try
-            If Not FileUtils.Exists(ModuleLogPath) Then Return ""
-            Dim All As String() = IO.File.ReadAllLines(ModuleLogPath)
+            Dim All As String() = ModuleLogBuffer.ToArray()
             If All.Length = 0 Then Return ""
             Dim Start As Integer = Math.Max(0, All.Length - LineCount)
             Return String.Join(vbCrLf, All.Skip(Start)).Trim()
@@ -194,6 +236,127 @@ Public Module ModTerracotta
             Return ""
         End Try
     End Function
+
+    ''' <summary>
+    ''' 读取陶瓦自身 application.log 的末尾若干行。
+    ''' 模块在 --hmcl 模式下不输出控制台日志，真正的连接过程只写在
+    ''' Instance-*\terracotta\<时间>\application.log 里，所以失败时要把它取出来。
+    ''' </summary>
+    Public Function GetApplicationLogTail(LineCount As Integer) As String
+        Try
+            If Not Directory.Exists(DataPath) Then Return ""
+            Dim Newest As String = ""
+            Dim NewestTime As Date = Date.MinValue
+            For Each F As String In Directory.GetFiles(DataPath, "application.log", SearchOption.AllDirectories)
+                Dim T As Date = IO.File.GetLastWriteTime(F)
+                If T > NewestTime Then
+                    NewestTime = T
+                    Newest = F
+                End If
+            Next
+            If String.IsNullOrWhiteSpace(Newest) Then Return ""
+            '只读最后 64KB，避免大文件拖慢
+            Dim All As String() = IO.File.ReadAllLines(Newest)
+            If All.Length = 0 Then Return ""
+            Dim Start As Integer = Math.Max(0, All.Length - LineCount)
+            Return String.Join(vbCrLf, All.Skip(Start)).Trim()
+        Catch ex As Exception
+            Return ""
+        End Try
+    End Function
+    ''' <summary>
+    ''' 让联机模块正常退出，并把它自己的 application.log 抄出来。
+    ''' 模块的日志是带缓冲写的，只有进程退出时才真正刷到磁盘；而实例临时目录
+    ''' 会在退出后删除，所以必须先复制再清理，否则永远看不到失败原因。
+    ''' </summary>
+    Public Function ShutdownAndCollectLog(WaitMs As Integer, LineCount As Integer) As String
+        Try
+            Try
+                RequestPort(ApiPort, "/state/ide", 3000)
+            Catch ex As Exception
+            End Try
+            Try
+                RequestPort(ApiPort, "/panic?peaceful=true", 3000)
+            Catch ex As Exception
+            End Try
+            Dim StartTick As Integer = Environment.TickCount
+            Do While BootstrapProcess IsNot Nothing AndAlso Not BootstrapProcess.HasExited
+                If Environment.TickCount - StartTick > WaitMs Then Exit Do
+                Thread.Sleep(100)
+            Loop
+            Thread.Sleep(300)
+            PreserveApplicationLog()
+            Return GetApplicationLogTail(LineCount)
+        Catch ex As Exception
+            Return ""
+        End Try
+    End Function
+
+    ''' <summary>把本次实例的 application.log 复制到数据目录，避免随临时目录一起被删掉。</summary>
+    Private Sub PreserveApplicationLog()
+        Try
+            If Not Directory.Exists(InstanceTempPath) Then Return
+            Dim Newest As String = ""
+            Dim NewestTime As Date = Date.MinValue
+            For Each F As String In Directory.GetFiles(InstanceTempPath, "application.log", SearchOption.AllDirectories)
+                Dim T As Date = IO.File.GetLastWriteTime(F)
+                If T > NewestTime Then
+                    NewestTime = T
+                    Newest = F
+                End If
+            Next
+            If String.IsNullOrWhiteSpace(Newest) Then Return
+            DirectoryUtils.Create(DataPath)
+            IO.File.Copy(Newest, DataPath & "last-application.log", True)
+            Logger.Info("已保留联机模块日志：last-application.log")
+        Catch ex As Exception
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' 从模块日志里读出"这台机器到底连上了什么"。
+    ''' 陶瓦只管报 PingHostFail，不区分是没连上中转节点、还是连上了却没看到对面，
+    ''' 这两种情况处理方式完全不同，所以这里自己统计一遍。
+    ''' </summary>
+    Public Function DescribeNetwork() As String
+        Try
+            Dim Tail As String = GetApplicationLogTail(600)
+            If String.IsNullOrWhiteSpace(Tail) Then Return "拿不到联机模块日志"
+            Dim Peers As Integer = 0
+            Dim DnsFail As Integer = 0
+            Dim TimeoutFail As Integer = 0
+            For Each Line As String In Tail.Split({vbCrLf, vbLf}, StringSplitOptions.RemoveEmptyEntries)
+                If Line.Contains("new peer added") Then Peers += 1
+                If Line.Contains("dns lookup_ip failed") Then DnsFail += 1
+                If Line.Contains("Err(Timeout") Then TimeoutFail += 1
+            Next
+            Dim Msg As New Text.StringBuilder
+            Select Case Peers
+                Case 0
+                    Msg.Append("这台机器一个中转节点都没连上")
+                Case 1
+                    Msg.Append("这台机器只连上了 1 个中转节点，没看到对面那台机器")
+                Case Else
+                    Msg.Append($"这台机器连上了 {Peers} 个节点")
+            End Select
+            If DnsFail > 0 Then Msg.Append($"；{DnsFail} 次域名解析失败")
+            If TimeoutFail > 0 Then Msg.Append($"；{TimeoutFail} 次连接超时")
+            Return Msg.ToString()
+        Catch ex As Exception
+            Return "读取联机模块日志失败"
+        End Try
+    End Function
+
+    ''' <summary>把内存里的模块日志落盘一次，供玩家反馈问题时取用。</summary>
+    Public Sub DumpModuleLog()
+        Try
+            Dim All As String() = ModuleLogBuffer.ToArray()
+            If All.Length = 0 Then Return
+            DirectoryUtils.Create(DataPath)
+            IO.File.WriteAllText(ModuleLogPath, String.Join(vbCrLf, All), New Text.UTF8Encoding(False))
+        Catch ex As Exception
+        End Try
+    End Sub
 
     ''' <summary>
     ''' 联机模块是否已经就绪（随启动器分发，或此前已经下载过）。
@@ -380,6 +543,7 @@ Public Module ModTerracotta
                 End Try
                 '清理本实例专属的临时目录（内含内置 EasyTier 与锁文件）
                 Thread.Sleep(600)
+                PreserveApplicationLog()
                 Try
                     DirectoryUtils.Delete(InstanceTempPath)
                 Catch ex As Exception
@@ -513,8 +677,8 @@ Public Module ModTerracotta
             Case 1 : Return "与房主的连接已中断"
             Case 2 : Return "联机组件崩溃"
             Case 3 : Return "房主的联机组件崩溃"
-            Case 4 : Return "房主已关闭房间"
-            Case 5 : Return "联机协议错误"
+            Case 4 : Return "房主的游戏端口连不通"
+            Case 5 : Return "房主的大厅响应异常"
             Case Else : Return "联机出现未知错误"
         End Select
     End Function
@@ -524,12 +688,12 @@ Public Module ModTerracotta
     ''' </summary>
     Public Function GetExceptionDetail(Type As Integer) As String
         Select Case Type
-            Case 0 : Return $"连不上房主：房间可能已关闭，或者双方没能通过同一个中转节点接上。{vbCrLf}请依次确认：{vbCrLf}- 房主仍在房间里（房主退出存档后房间会关闭）{vbCrLf}- 双方用的是同一个节点（默认节点即可，自定义时两边要填一样的）{vbCrLf}- 双方联机模块版本一致（设置 → 工具 → 联机 → 检查模块更新）{vbCrLf}- 网络能访问该节点"
+            Case 0 : Return $"连不上房主：邀请码有效说明房主的房间还在，卡住的是「你和房主没接上」。{vbCrLf}中转节点每次分给双方的服务器是随机挑的，两边落到不同服务器就永远找不到对方。{vbCrLf}{vbCrLf}可以这样试：{vbCrLf}- 两边都把 设置 → 工具 → 联机 → 额外节点 填成 -（只走直连，同一局域网/同一路由器最稳）{vbCrLf}- 或两边填同一个节点：https://etnode.zkitefly.eu.org/node1{vbCrLf}- 再点一次重试也有用：每次重试会重新分配中转服务器"
             Case 1 : Return $"房主可能已离开房间，请重新加入。"
             Case 2 : Return $"请重试。若反复出现，请向开发者反馈。"
             Case 3 : Return $"请让房主重试。若反复出现，请向开发者反馈。"
-            Case 4 : Return $"房主退出存档后房间会自动关闭。"
-            Case 5 : Return $"请重试。若反复出现，请向开发者反馈。"
+            Case 4 : Return $"房主那边的游戏端口连接被重置：请让房主确认游戏还在运行、没有关闭存档后重试。"
+            Case 5 : Return $"房主的大厅响应无效：请让房主重新创建房间后重试。"
             Case Else : Return $"请重试。若反复出现，请向开发者反馈。"
         End Select
     End Function

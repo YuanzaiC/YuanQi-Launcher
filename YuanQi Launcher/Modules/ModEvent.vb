@@ -324,7 +324,8 @@ Public Class CustomEvent
                 Case EventType.修改变量, EventType.写入变量
                     If Args.Length = 1 Then Throw New Exception($"EventType {Type} 需要至少 2 个以 | 分割的参数，例如 VariableName|SomeValue")
                     Try
-                        RegistryUtils.Write($"HKEY_CURRENT_USER\Software\{RegFolder}", $"CustomEvent{Arg0}", Args(1))
+                        '变量存进 YQL\Setup.ini，不写注册表（与 {variable:...} 替换标记读取的位置一致）
+                        WriteIni("Setup", $"CustomEvent{Arg0}", Args(1))
                         If Args.Length = 2 Then Hint($"已写入变量：{Arg0} → {Args(1)}", HintType.Green)
                     Catch ex As Exception
                         Logger.Warn(ex, $"写入变量失败：{Arg0} → {Args(1)}", LogBehavior.Toast)

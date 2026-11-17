@@ -561,6 +561,7 @@ GroupDone:
                             Dim ModsFolder As String = PathUtils.RemoveLastPart(Target)
                             If Not ModsFolder.EndsWith("\"c) Then ModsFolder &= "\"
                             Dim Missing = CollectMissingDependencies(File, ModsFolder)
+                            Logger.Info($"前置检查：{File.Display} 声明 {File.RawDependencyIds.Count} 个，missing {If(Missing, New List(Of ResourceVersion)()).Count} 个，mods 文件夹 {ModsFolder}")
                             If Missing IsNot Nothing AndAlso Missing.Any() Then
                                 Dim Lines As New List(Of String)
                                 For i = 0 To Math.Min(Missing.Count, 8) - 1
@@ -661,13 +662,19 @@ GroupDone:
                                                Result As List(Of ResourceVersion), Visited As HashSet(Of String), Depth As Integer)
         Try
             If File Is Nothing OrElse Depth > 3 Then Return
-            Dim DepIds As List(Of String) = Nothing
+            '优先用版本 JSON 里原样带的 ID：Dependencies 依赖页面加载时那次额外查询，
+            '那次查询失败或被限流时它就是空的，于是"检查前置"什么都不做（时灵时不灵）
+            Dim DepIds As New List(Of String)
             Try
-                DepIds = File.Dependencies.Distinct().ToList()
-            Catch
-                Return
+                If File.RawDependencyIds IsNot Nothing Then DepIds.AddRange(File.RawDependencyIds)
+            Catch ex As Exception
             End Try
-            If DepIds Is Nothing Then Return
+            Try
+                If File.Dependencies IsNot Nothing Then DepIds.AddRange(File.Dependencies)
+            Catch ex As Exception
+            End Try
+            DepIds = DepIds.Where(Function(X) Not String.IsNullOrWhiteSpace(X)).Distinct().ToList()
+            If Not DepIds.Any Then Return
             Dim WantVersions = File.GameVersions
             Dim WantLoaders As ModLoaders = If(File.ModLoaders <> ModLoaders.None, File.ModLoaders, Project.ModLoaders)
             For Each DepId In DepIds

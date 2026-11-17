@@ -95,6 +95,8 @@ Public Class PageLaunchLeft
             AnimateModulesEnter()
         End If
         If IsLoad Then ScheduleLoadedRefresh()
+        StartLaunchButtonTimer()
+        EnsureGreetingPlayLogStarted()
 
         AprilPosTrans.X = 0
         AprilPosTrans.Y = 0
@@ -586,6 +588,401 @@ UnknownType:
         End Try
     End Function
 
+    '===============================
+    '  主页问候语
+    '===============================
+
+    Private Shared ReadOnly GreetingRandom As New Random()
+    Private Shared _GreetingPlayLog As List(Of PlayLogModule.PlaySession) = Nothing
+    Private Shared _GreetingPlayLogLoading As Boolean = False
+
+    ''' <summary>
+    ''' 游玩记录缓存：读文件放在后台线程，界面线程只用已经取到的结果。
+    ''' 启动时同步读这个文件会造成一次明显卡顿。
+    ''' </summary>
+    Private Shared Function GetGreetingPlayLogCache() As List(Of PlayLogModule.PlaySession)
+        Try
+            If _GreetingPlayLog IsNot Nothing Then Return _GreetingPlayLog
+            If Not _GreetingPlayLogLoading Then
+                _GreetingPlayLogLoading = True
+                RunInNewThread(
+                    Sub()
+                        Try
+                            _GreetingPlayLog = PlayLogModule.LoadSessions()
+                        Catch ex As Exception
+                            Logger.Warn(ex, "后台读取游玩记录失败")
+                        End Try
+                        _GreetingPlayLogLoading = False
+                    End Sub, "Greeting PlayLog", ThreadPriority.BelowNormal)
+            End If
+        Catch ex As Exception
+        End Try
+        Return _GreetingPlayLog
+    End Function
+    Private Shared _GreetingCacheKey As String = Nothing
+    Private Shared _GreetingCacheTitle As String = Nothing
+    Private Shared _GreetingCacheSub As String = Nothing
+
+    ''' <summary>刷新主页问候语。同一账号 + 同一版本下句子保持不变，避免每次刷新文字都在跳。</summary>
+    Private Sub RefreshGreeting()
+        Try
+            '与开屏动画联动：彩蛋 / 国庆 / 春节
+            Dim Special As ModSplashEvent.SpecialSplashTypes = ModSplashEvent.SpecialSplashTypes.None
+            Try
+                If FrmMain IsNot Nothing Then Special = FrmMain.SplashPlayedSpecial
+            Catch ex As Exception
+            End Try
+            Select Case Special
+                Case ModSplashEvent.SpecialSplashTypes.EasterEgg
+                    If LabGreetingTitle IsNot Nothing Then
+                        LabGreetingTitle.Text = "这是一个彩蛋"
+                        StartGreetingRainbow()
+                    End If
+                    If LabGreetingSub IsNot Nothing Then LabGreetingSub.Text = BuildGreetingSub()
+                    Return
+                Case ModSplashEvent.SpecialSplashTypes.NationalDay
+                    ShowFestiveGreeting("国庆节快乐")
+                    Return
+                Case ModSplashEvent.SpecialSplashTypes.SpringFestival
+                    ShowFestiveGreeting("春节快乐")
+                    Return
+            End Select
+            StopGreetingRainbow()
+            Dim GreetName As String = GetGreetingName()
+            If GreetName = "未登录" OrElse GreetName = "点击注册账号" OrElse String.IsNullOrWhiteSpace(GreetName) Then GreetName = "冒险家"
+            Dim VersionName As String = If(McInstanceSelected Is Nothing, "", McInstanceSelected.Name)
+            Dim Key As String = GreetName & "|" & VersionName
+            EnsureGreetingPlayLogStarted()
+            Dim CanCache As Boolean = (_GreetingPlayLog IsNot Nothing)
+            If _GreetingCacheTitle Is Nothing OrElse Key <> _GreetingCacheKey OrElse Not CanCache Then
+                _GreetingCacheKey = Key
+                _GreetingCacheTitle = BuildGreetingTitle(GreetName, VersionName)
+                _GreetingCacheSub = BuildGreetingSub()
+            End If
+            If LabGreetingTitle IsNot Nothing Then LabGreetingTitle.Text = _GreetingCacheTitle
+            If LabGreetingSub IsNot Nothing Then LabGreetingSub.Text = _GreetingCacheSub
+        Catch ex As Exception
+            Logger.Warn(ex, "生成问候语失败")
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' 从候选里抽一条，避开最近用过的（记录存在设置里，跨启动生效）。
+    ''' 池子里的句子在同样的时间/数据下是固定的，纯随机很容易反复撞到同几句。
+    ''' </summary>
+    Private Function PickGreeting(Candidates As List(Of String)) As String
+        Try
+            If Candidates Is Nothing OrElse Candidates.Count = 0 Then Return "玩得开心"
+            Dim Recent As New List(Of String)
+            Try
+                Dim Raw As String = Settings.Get(Of String)("UiGreetingRecent")
+                If Not String.IsNullOrWhiteSpace(Raw) Then
+                    Recent.AddRange(Raw.Split(New String() {vbLf}, StringSplitOptions.RemoveEmptyEntries))
+                End If
+            Catch ex As Exception
+            End Try
+            Dim Pool As New List(Of String)
+            For Each Item As String In Candidates
+                If Not Recent.Contains(Item) Then Pool.Add(Item)
+            Next
+            '候选都被用过了：清掉历史重来
+            If Pool.Count = 0 Then
+                Pool = Candidates
+                Recent.Clear()
+            End If
+            Dim Picked As String = Pool(GreetingRandom.Next(Pool.Count))
+            Recent.Add(Picked)
+            While Recent.Count > 10
+                Recent.RemoveAt(0)
+            End While
+            Dim HistoryText As String = String.Join(vbLf, Recent)
+            RunInNewThread(
+                Sub()
+                    Try
+                        Settings.Set("UiGreetingRecent", HistoryText)
+                    Catch ex As Exception
+                    End Try
+                End Sub, "Greeting History", ThreadPriority.BelowNormal)
+            Return Picked
+        Catch ex As Exception
+            Logger.Warn(ex, "抽取问候语失败")
+            Return Candidates(GreetingRandom.Next(Candidates.Count))
+        End Try
+    End Function
+
+    Private _GreetingRainbowTimer As Windows.Threading.DispatcherTimer = Nothing
+    Private _GreetingRainbowHue As Double = 0
+    Private _GreetingNormalBrush As Brush = Nothing
+
+    ''' <summary>彩蛋开屏：问候语逐帧换色，做成闪烁的彩虹色。</summary>
+    Private Sub StartGreetingRainbow()
+        Try
+            If _GreetingNormalBrush Is Nothing AndAlso LabGreetingTitle IsNot Nothing Then _GreetingNormalBrush = LabGreetingTitle.Foreground
+            If _GreetingRainbowTimer IsNot Nothing Then Return
+            _GreetingRainbowHue = 0
+            _GreetingRainbowTimer = New Windows.Threading.DispatcherTimer With {.Interval = TimeSpan.FromMilliseconds(80)}
+            AddHandler _GreetingRainbowTimer.Tick,
+                Sub()
+                    Try
+                        _GreetingRainbowHue = (_GreetingRainbowHue + 26) Mod 360
+                        If LabGreetingTitle IsNot Nothing Then
+                            LabGreetingTitle.Foreground = New SolidColorBrush(HueToColor(_GreetingRainbowHue))
+                        End If
+                    Catch ex As Exception
+                    End Try
+                End Sub
+            _GreetingRainbowTimer.Start()
+        Catch ex As Exception
+            Logger.Warn(ex, "启动问候语彩虹色失败")
+        End Try
+    End Sub
+
+    Private Sub StopGreetingRainbow()
+        Try
+            If _GreetingRainbowTimer IsNot Nothing Then
+                _GreetingRainbowTimer.Stop()
+                _GreetingRainbowTimer = Nothing
+            End If
+            If LabGreetingTitle IsNot Nothing AndAlso _GreetingNormalBrush IsNot Nothing Then
+                LabGreetingTitle.Foreground = _GreetingNormalBrush
+            End If
+        Catch ex As Exception
+        End Try
+    End Sub
+
+    ''' <summary>国庆 / 春节：喜庆红标题。</summary>
+    Private Sub ShowFestiveGreeting(Text As String)
+        Try
+            StopGreetingRainbow()
+            If LabGreetingTitle IsNot Nothing AndAlso LabGreetingTitle.Foreground IsNot Nothing AndAlso _GreetingNormalBrush Is Nothing Then
+                _GreetingNormalBrush = LabGreetingTitle.Foreground
+            End If
+            If LabGreetingTitle IsNot Nothing Then
+                LabGreetingTitle.Text = Text
+                LabGreetingTitle.Foreground = New SolidColorBrush(FestiveColorFor(Text))
+            End If
+            If LabGreetingSub IsNot Nothing Then LabGreetingSub.Text = BuildGreetingSub()
+        Catch ex As Exception
+            Logger.Warn(ex, "显示节日问候语失败")
+        End Try
+    End Sub
+
+    ''' <summary>国庆用正红，春节用更暖的灯火红。</summary>
+    Private Function FestiveColorFor(Text As String) As Color
+        If Text = "春节快乐" Then Return Color.FromRgb(214, 51, 43)
+        Return Color.FromRgb(198, 40, 40)
+    End Function
+
+    ''' <summary>色相 → 高饱和高亮度的颜色（彩虹用）。</summary>
+    Private Function HueToColor(Hue As Double) As Color
+        Try
+            Dim H As Double = ((Hue Mod 360) + 360) Mod 360
+            Dim S As Double = 0.8
+            Dim V As Double = 0.95
+            Dim C As Double = V * S
+            Dim X As Double = C * (1 - Math.Abs((H / 60) Mod 2 - 1))
+            Dim M As Double = V - C
+            Dim R As Double = 0, G As Double = 0, B As Double = 0
+            Select Case CInt(Math.Floor(H / 60)) Mod 6
+                Case 0
+                    R = C : G = X
+                Case 1
+                    R = X : G = C
+                Case 2
+                    G = C : B = X
+                Case 3
+                    G = X : B = C
+                Case 4
+                    R = X : B = C
+                Case 5
+                    R = C : B = X
+            End Select
+            Return Color.FromRgb(ClampChannel((R + M) * 255), ClampChannel((G + M) * 255), ClampChannel((B + M) * 255))
+        Catch ex As Exception
+            Return Colors.Red
+        End Try
+    End Function
+
+    Private Function ClampChannel(V As Double) As Byte
+        If V <= 0 Then Return 0
+        If V >= 255 Then Return 255
+        Return CByte(Math.Round(V))
+    End Function
+
+    Private Shared Sub EnsureGreetingPlayLogStarted()
+        Try
+            If _GreetingPlayLog IsNot Nothing OrElse _GreetingPlayLogLoading Then Return
+            GetGreetingPlayLogCache()
+        Catch ex As Exception
+        End Try
+    End Sub
+
+    Private Function BuildGreetingSub() As String
+        Dim WeekNames = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"}
+        Dim Tails = {"祝你玩得开心", "今天也要好好玩", "玩一会儿记得起来走走"}
+        Return $"{Date.Now.Month} 月 {Date.Now.Day} 日 · {WeekNames(CInt(Date.Now.DayOfWeek))} · {Tails(GreetingRandom.Next(Tails.Length))}"
+    End Function
+
+    Private Function QuoteVersion(VersionName As String) As String
+        If String.IsNullOrWhiteSpace(VersionName) Then Return "游戏"
+        Return "「" & VersionName & "」"
+    End Function
+
+    Private Function FormatDurationText(Seconds As Long) As String
+        If Seconds < 60 Then Return $"{Seconds} 秒"
+        Dim Hours As Long = Seconds \ 3600
+        Dim Minutes As Long = (Seconds Mod 3600) \ 60
+        If Hours <= 0 Then Return $"{Minutes} 分钟"
+        If Minutes <= 0 Then Return $"{Hours} 小时"
+        Return $"{Hours} 小时 {Minutes} 分钟"
+    End Function
+
+
+    ''' <summary>
+    ''' 按当前时间、账号、版本和游玩记录抽一句问候语。
+    ''' 有数据就带上数据，满足条件就用条件句，其余是普通句子和梗。
+    ''' </summary>
+    Private Function BuildGreetingTitle(GreetName As String, VersionName As String) As String
+        Try
+            Dim NowTime As Date = Date.Now
+            Dim HourNow As Integer = NowTime.Hour
+            Dim PartOfDay As String = If(HourNow >= 5 AndAlso HourNow < 11, "早上好",
+                                     If(HourNow < 13, "中午好", If(HourNow < 18, "下午好", "晚上好")))
+            Dim WeekNames = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"}
+            Dim WeekText As String = WeekNames(CInt(NowTime.DayOfWeek))
+            Dim IsWeekend As Boolean = (NowTime.DayOfWeek = DayOfWeek.Saturday OrElse NowTime.DayOfWeek = DayOfWeek.Sunday)
+            '游玩记录
+            Dim TotalCount As Integer = 0
+            Dim TodayCount As Integer = 0
+            Dim TodaySeconds As Long = 0
+            Dim TotalSeconds As Long = 0
+            Dim LastStart As Date = Date.MinValue
+            Try
+                Dim Sessions = GetGreetingPlayLogCache()
+                If Sessions IsNot Nothing Then
+                    For Each S In Sessions
+                        If S Is Nothing Then Continue For
+                        TotalCount += 1
+                        TotalSeconds += Math.Max(0, S.DurationSeconds)
+                        If S.StartTime.Date = NowTime.Date Then
+                            TodayCount += 1
+                            TodaySeconds += Math.Max(0, S.DurationSeconds)
+                        End If
+                        If S.StartTime > LastStart Then LastStart = S.StartTime
+                    Next
+                End If
+            Catch ex As Exception
+            End Try
+            Dim DaysSinceLast As Integer = If(LastStart > Date.MinValue, CInt((NowTime - LastStart).TotalDays), -1)
+            Dim HasVersion As Boolean = Not String.IsNullOrWhiteSpace(VersionName)
+            Dim Candidates As New List(Of String)
+
+            '----- 时段 · 凌晨 0–5 点 -----
+            If HourNow >= 0 AndAlso HourNow < 5 Then
+                Candidates.Add("这个点还没睡，小心明早起不来!")
+                Candidates.Add("夜深了，早点睡")
+                Candidates.Add($"{GreetName}，半夜还要玩？")
+                If HasVersion Then Candidates.Add($"这个点还在{QuoteVersion(VersionName)}里畅游，真爱党无疑")
+                Candidates.Add("凌晨了，还这么精神")
+                Candidates.Add($"{GreetName}，这个点了还不睡？")
+                Candidates.Add("夜里快开一局激情刺激的MC")
+            ElseIf HourNow < 11 Then
+                Candidates.Add($"早上好，{GreetName}")
+                Candidates.Add($"{GreetName}，吃早饭了吗")
+                Candidates.Add("一大早就来玩MC，今天劲头不小")
+                If HasVersion Then Candidates.Add($"早上好，{QuoteVersion(VersionName)}已经就位")
+                Candidates.Add($"早，{GreetName}")
+                Candidates.Add("早上好，新的一天开始了")
+            ElseIf HourNow < 14 Then
+                Candidates.Add("中午了，吃饭时间到")
+                Candidates.Add("午休与MC更配哦")
+                Candidates.Add($"中午好，{GreetName}")
+            ElseIf HourNow < 18 Then
+                Candidates.Add($"下午好，{GreetName}")
+                Candidates.Add($"{GreetName}，下午祝你活力满满")
+                Candidates.Add($"下午好，{GreetName}，今天玩点什么")
+                Candidates.Add($"{GreetName}，下午继续")
+            Else
+                Candidates.Add("晚上好，放松一下吧")
+                Candidates.Add("这个时间正是玩MC的好时机")
+                Candidates.Add($"{GreetName}，晚上好")
+                If HasVersion Then Candidates.Add($"今晚还在{QuoteVersion(VersionName)}里畅游？")
+                Candidates.Add("天黑了，正是玩MC的最佳时机")
+            End If
+            '----- 周末 -----
+            If IsWeekend Then
+                Candidates.Add("周末快乐，玩他个昏天黑地")
+                Candidates.Add("周末愉快")
+                Candidates.Add("周末快乐，尽情享受")
+                Candidates.Add($"{GreetName}，周末两天玩他个痛快")
+            End If
+            '----- 今日时长（三档互斥） -----
+            If TodaySeconds >= 5 * 3600L Then
+                Candidates.Add($"{GreetName}，今天竟然玩了 {FormatDurationText(TodaySeconds)}，真爱啊!")
+                Candidates.Add($"今天 {FormatDurationText(TodaySeconds)}，{GreetName} 是真能坐")
+            ElseIf TodaySeconds >= 2 * 3600L Then
+                Candidates.Add($"今天已经玩了 {FormatDurationText(TodaySeconds)}")
+                Candidates.Add($"今天 {FormatDurationText(TodaySeconds)}，{GreetName} 是真能坐")
+            ElseIf TodaySeconds > 0 Then
+                Candidates.Add($"今天才玩了 {FormatDurationText(TodaySeconds)}，继续继续!")
+                Candidates.Add($"今天才 {FormatDurationText(TodaySeconds)}，刚开始？")
+            End If
+            '----- 今日启动次数（三档互斥） -----
+            If TodayCount >= 5 Then
+                Candidates.Add($"{GreetName}，这已经是今天第 {TodayCount} 次启动了")
+                Candidates.Add($"{GreetName}，今天第 {TodayCount} 次，闲不住啊")
+            ElseIf TodayCount >= 3 Then
+                Candidates.Add($"今天已经启动 {TodayCount} 次了")
+                Candidates.Add($"今天第 {TodayCount} 次了，我数着呢")
+            ElseIf TodayCount = 1 Then
+                Candidates.Add("今天的第一次启动!欢迎回来")
+                If HasVersion Then Candidates.Add($"今日第一次启动，快来玩{QuoteVersion(VersionName)}")
+            End If
+            '----- 距上次游玩（三档互斥） -----
+            If DaysSinceLast >= 7 Then
+                Candidates.Add($"{GreetName}，都 {DaysSinceLast} 天没来了，有没有想我")
+                Candidates.Add($"{GreetName}，{DaysSinceLast} 天没来，我以为你退坑了")
+                If HasVersion Then Candidates.Add($"好久不见，要玩{QuoteVersion(VersionName)}吗")
+            ElseIf DaysSinceLast >= 2 Then
+                Candidates.Add($"上次启动是 {DaysSinceLast} 天前，今天继续？")
+                Candidates.Add($"隔了 {DaysSinceLast} 天，今天玩什么")
+                Candidates.Add($"{GreetName}，{DaysSinceLast} 天没见，进来坐坐")
+                If HasVersion Then Candidates.Add($"{DaysSinceLast} 天没玩{QuoteVersion(VersionName)}了，快来快来")
+            ElseIf DaysSinceLast = 0 Then
+                Candidates.Add("又见面了")
+            End If
+            '----- 累计数据 -----
+            If TotalCount > 0 Then
+                Candidates.Add($"这是你第 {TotalCount + 1} 次启动了哦")
+                Candidates.Add($"第 {TotalCount + 1} 次启动，保持住哦")
+            End If
+            If TotalSeconds >= 3600L Then
+                Candidates.Add($"你已经累计玩了 {FormatDurationText(TotalSeconds)}")
+                If TotalSeconds >= 100 * 3600L Then
+                    Candidates.Add($"我的天你竟然已经玩了 {FormatDurationText(TotalSeconds)}")
+                    Candidates.Add($"累计 {FormatDurationText(TotalSeconds)}，{GreetName} 已经是骨灰级玩家了")
+                End If
+            End If
+            '----- 版本 -----
+            If HasVersion Then
+                Candidates.Add($"{VersionName} 已经准备好了")
+                Candidates.Add($"{QuoteVersion(VersionName)}就位，随时开始")
+                Candidates.Add($"{GreetName}，今天还玩{QuoteVersion(VersionName)}？")
+            Else
+                Candidates.Add("还没选版本，先挑一个吧")
+                Candidates.Add("挑好版本就能开始")
+            End If
+            '----- 通用 -----
+            Candidates.Add("玩得开心")
+
+            If Candidates.Count = 0 Then Return $"{PartOfDay}，{GreetName}"
+            Return PickGreeting(Candidates)
+        Catch ex As Exception
+            Logger.Warn(ex, "生成问候语失败")
+            Return "祝你玩得开心"
+        End Try
+    End Function
+
     ''' <summary>按设置决定主页问候语里显示的名字。</summary>
     Private Function GetGreetingName() As String
         Try
@@ -614,6 +1011,18 @@ UnknownType:
     ''' <summary>点击问候语：选择这里显示的名字。</summary>
     Private Sub LabGreetingTitle_Click() Handles LabGreetingTitle.MouseLeftButtonUp
         Try
+            '彩蛋模式下点这句问候语：页面元素开始乱飞
+            Dim SpecialNow As ModSplashEvent.SpecialSplashTypes = ModSplashEvent.SpecialSplashTypes.None
+            Try
+                If FrmMain IsNot Nothing Then SpecialNow = FrmMain.SplashPlayedSpecial
+            Catch ex As Exception
+            End Try
+            Logger.Info($"点击问候语：特殊模式 = {SpecialNow}")
+            If SpecialNow = ModSplashEvent.SpecialSplashTypes.EasterEgg Then
+                FrmMain.ToggleEasterEggBounce()
+                UpdateDodgeState()
+                Return
+            End If
             Dim Mode As Integer = 0
             Try
                 Mode = Settings.Get(Of Integer)("UiGreetingNameMode")
@@ -949,12 +1358,12 @@ UseDefault:
                     End If
                 End Try
             Case 4 '自定义
-                If Not FileUtils.Exists(Paths.AppDataThenName & "CustomSkin.png") Then
+                If Not FileUtils.Exists(PathSkin) Then
                     Hint("未找到离线皮肤自定义文件，可能它已被删除。缘启 将使用默认的 Steve 皮肤！")
                     Settings.Set("LaunchSkinType", 1)
                     GoTo UseDefault
                 End If
-                Data.Output = Paths.AppDataThenName & "CustomSkin.png"
+                Data.Output = PathSkin
         End Select
     End Sub
 
@@ -1084,6 +1493,16 @@ Finish:
             FrmLaunchLeft.AprilPosTrans.Y = 0
             FrmMain.BtnExtraApril.ShowRefresh()
         End If
+        '当前实例正在跑（且是当前账号开的）：按钮这时是"关闭游戏"
+        If BtnLaunch.Text = "关闭游戏" Then
+            Dim RunningWatcher As ModWatcher.Watcher = GetRunningWatcherForCurrent()
+            If RunningWatcher IsNot Nothing Then
+                RunningWatcher.Kill()
+                Hint("已关闭当前实例的游戏", HintType.Green)
+            End If
+            RefreshLaunchButtonText()
+            Return
+        End If
         '实际的启动
         If BtnLaunch.Text = "启动游戏" Then
             McLaunchStart()
@@ -1091,6 +1510,185 @@ Finish:
             FrmMain.PageChange(FormMain.PageType.Download, FormMain.PageSubType.DownloadInstall)
         End If
     End Sub
+    '===============================
+    '  运行状态 → 「启动游戏」变「关闭游戏」
+    '===============================
+
+    ''' <summary>
+    ''' 取出「当前实例 + 当前账号」正在运行的游戏。
+    ''' 账号不一致时返回 Nothing：那是另一个账号开的另一份游戏，要允许继续多开。
+    ''' </summary>
+    ''' <summary>启动按钮的两个图标：右侧三角 = 启动，实心方块 = 关闭。</summary>
+    Private Const LaunchLogoPlay As String = "M6.8,4.4 L15.4,10 L6.8,15.6 Z"
+    Private Const LaunchLogoStop As String = "M5.2,5.2 L14.8,5.2 L14.8,14.8 L5.2,14.8 Z"
+
+    Private Function GetRunningWatcherForCurrent() As ModWatcher.Watcher
+        Try
+            If McInstanceSelected Is Nothing Then Return Nothing
+            Dim CurrentName As String = If(McLoginName(), "")
+            For Each Watch As ModWatcher.Watcher In McWatcherList
+                If Watch Is Nothing OrElse Watch.GameProcess Is Nothing Then Continue For
+                If Watch.GameProcess.HasExited Then Continue For
+                If Watch.Instance Is Nothing Then Continue For
+                If Not PathUtils.IsSame(Watch.Instance.PathVersion, McInstanceSelected.PathVersion) Then Continue For
+                If Not String.IsNullOrWhiteSpace(Watch.AccountName) AndAlso Not String.IsNullOrWhiteSpace(CurrentName) Then
+                    If Not String.Equals(Watch.AccountName, CurrentName, StringComparison.OrdinalIgnoreCase) Then Continue For
+                End If
+                Return Watch
+            Next
+        Catch ex As Exception
+        End Try
+        Return Nothing
+    End Function
+
+    ''' <summary>按运行状态刷新启动按钮文字（只在版本已就绪时改）。</summary>
+    Public Sub RefreshLaunchButtonText()
+        Try
+            If BtnLaunch Is Nothing OrElse Not BtnLaunch.IsLoaded Then Return
+            If BtnLaunchState <> 3 Then Return
+            Dim Running As ModWatcher.Watcher = GetRunningWatcherForCurrent()
+            Dim Want As String = If(Running Is Nothing, "启动游戏", "关闭游戏")
+            If FrmLaunchLeft.BtnLaunch.Text <> Want Then
+                FrmLaunchLeft.BtnLaunch.Text = Want
+                Logger.Info($"启动按钮：{Want}")
+            End If
+            '关闭游戏用红色 + 方块，启动游戏用主题色 + 三角
+            Try
+                If Running Is Nothing Then
+                    If FrmLaunchLeft.BtnLaunch.ColorType <> MyButton.ColorState.Highlight Then FrmLaunchLeft.BtnLaunch.ColorType = MyButton.ColorState.Highlight
+                    If FrmLaunchLeft.BtnLaunch.Logo <> LaunchLogoPlay Then FrmLaunchLeft.BtnLaunch.Logo = LaunchLogoPlay
+                Else
+                    If FrmLaunchLeft.BtnLaunch.ColorType <> MyButton.ColorState.Red Then FrmLaunchLeft.BtnLaunch.ColorType = MyButton.ColorState.Red
+                    If FrmLaunchLeft.BtnLaunch.Logo <> LaunchLogoStop Then FrmLaunchLeft.BtnLaunch.Logo = LaunchLogoStop
+                End If
+            Catch ex As Exception
+            End Try
+        Catch ex As Exception
+        End Try
+    End Sub
+
+    '---- 彩蛋：启动按钮躲开鼠标 ----
+
+    Private _DodgeTransform As TranslateTransform = Nothing
+    Private _DodgeX As Double = 0
+    Private _DodgeY As Double = 0
+    Private _DodgeActive As Boolean = False
+    Private _DodgeHooked As Boolean = False
+
+    Private Function IsEasterEggMode() As Boolean
+        Try
+            Return FrmMain IsNot Nothing AndAlso FrmMain.SplashPlayedSpecial = ModSplashEvent.SpecialSplashTypes.EasterEgg
+        Catch ex As Exception
+            Return False
+        End Try
+    End Function
+
+    ''' <summary>只有点了彩蛋问候语（整页弹跳已开始）才让按钮躲鼠标。</summary>
+    Private Sub UpdateDodgeState()
+        Try
+            Dim Running As Boolean = False
+            Try
+                Running = IsEasterEggMode() AndAlso FrmMain.EasterEggChaosRunning
+            Catch ex As Exception
+            End Try
+            If Running Then
+                If _DodgeTransform Is Nothing AndAlso BtnLaunch IsNot Nothing Then
+                    _DodgeTransform = New TranslateTransform(0, 0)
+                    BtnLaunch.RenderTransform = _DodgeTransform
+                End If
+                '按钮带投影，纯位移也会整块重绘；缓存成位图后移动只走合成器
+                If BtnLaunch IsNot Nothing AndAlso BtnLaunch.CacheMode Is Nothing Then
+                    BtnLaunch.CacheMode = New BitmapCache(RenderAtScale:=1.0)
+                End If
+                If Not _DodgeHooked Then
+                    _DodgeActive = False
+                    AddHandler CompositionTarget.Rendering, AddressOf DodgeRender
+                    _DodgeHooked = True
+                End If
+            Else
+                If _DodgeHooked Then
+                    RemoveHandler CompositionTarget.Rendering, AddressOf DodgeRender
+                    _DodgeHooked = False
+                End If
+                If BtnLaunch IsNot Nothing Then BtnLaunch.CacheMode = Nothing
+                ResetLaunchDodge()
+            End If
+        Catch ex As Exception
+            Logger.Warn(ex, "更新按钮躲避状态失败")
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' 每帧朝"远离鼠标"的目标靠拢，带阻尼与迟滞，不会抖。
+    ''' 进入 150px 开始躲，退到 225px 才回来，避免来回横跳。
+    ''' </summary>
+    Private Sub DodgeRender(sender As Object, e As EventArgs)
+        Try
+            If BtnLaunch Is Nothing OrElse Not BtnLaunch.IsLoaded OrElse _DodgeTransform Is Nothing Then Return
+            '距离要按按钮"没被推走时"的位置算：否则按钮一动，光标相对它的方向就翻了，会来回跳
+            Dim Host As UIElement = Nothing
+            Try
+                Host = TryCast(VisualTreeHelper.GetParent(BtnLaunch), UIElement)
+            Catch ex As Exception
+            End Try
+            If Host Is Nothing Then Host = BtnLaunch
+            Dim CursorInHost As Point = Mouse.GetPosition(Host)
+            Dim TopLeft As Point = BtnLaunch.TranslatePoint(New Point(0, 0), Host)
+            Dim BaseCenterX As Double = TopLeft.X - _DodgeX + BtnLaunch.ActualWidth / 2
+            Dim BaseCenterY As Double = TopLeft.Y - _DodgeY + BtnLaunch.ActualHeight / 2
+            Dim Dx As Double = CursorInHost.X - BaseCenterX
+            Dim Dy As Double = CursorInHost.Y - BaseCenterY
+            Dim Dist As Double = Math.Sqrt(Dx * Dx + Dy * Dy)
+            Const Radius As Double = 150
+            If Dist < Radius Then
+                _DodgeActive = True
+            ElseIf Dist > Radius * 1.5 Then
+                _DodgeActive = False
+            End If
+            Dim TargetX As Double = 0
+            Dim TargetY As Double = 0
+            If _DodgeActive Then
+                Dim Len As Double = Math.Max(1, Dist)
+                Dim Push As Double = Radius * 0.95
+                TargetX = Math.Max(-320, Math.Min(320, -Dx / Len * Push))
+                TargetY = Math.Max(-160, Math.Min(160, -Dy / Len * Push))
+            End If
+            _DodgeX += (TargetX - _DodgeX) * 0.22
+            _DodgeY += (TargetY - _DodgeY) * 0.22
+            _DodgeTransform.X = _DodgeX
+            _DodgeTransform.Y = _DodgeY
+        Catch ex As Exception
+        End Try
+    End Sub
+
+    Private Sub ResetLaunchDodge()
+        Try
+            _DodgeActive = False
+            _DodgeX = 0
+            _DodgeY = 0
+            If _DodgeTransform IsNot Nothing Then
+                _DodgeTransform.X = 0
+                _DodgeTransform.Y = 0
+            End If
+        Catch ex As Exception
+        End Try
+    End Sub
+    Private _LaunchButtonTimer As Windows.Threading.DispatcherTimer = Nothing
+    ''' <summary>每 500ms 同步一次：游戏启动/结束、切换账号都会反映到按钮上。</summary>
+    Private Sub StartLaunchButtonTimer()
+        Try
+            If _LaunchButtonTimer IsNot Nothing Then Return
+            _LaunchButtonTimer = New Windows.Threading.DispatcherTimer With {.Interval = TimeSpan.FromMilliseconds(500)}
+            AddHandler _LaunchButtonTimer.Tick,
+                Sub()
+                    RefreshLaunchButtonText()
+                    UpdateDodgeState()
+                End Sub
+            _LaunchButtonTimer.Start()
+        Catch ex As Exception
+        End Try
+    End Sub
+
     Private BtnLaunchState As Integer = 0
     Private BtnLaunchInstance As McInstance = Nothing
     Public Sub RefreshButtonsUI() Handles BtnLaunch.Loaded
@@ -1145,6 +1743,7 @@ Finish:
                 FrmLaunchLeft.BtnVersion.IsEnabled = True
                 FrmLaunchLeft.BtnLaunch.IsEnabled = True
                 FrmLaunchLeft.LabInstanceName.Text = McInstanceSelected.Name
+                RefreshLaunchButtonText()
                 'FrmLaunchLeft.BtnMore.Visibility = Visibility.Visible '由功能隐藏设置修改
         End Select
 ExitRefresh:
@@ -1466,15 +2065,9 @@ ExitRefresh:
             FrmMain?.RefreshAccountAvatar()
             RefreshAccountMenu()
 
-            '问候语
+            '问候语（每次启动随机一句；同一账号/实例下保持不变，切账号或换版本才重新抽）
             Try
-                Dim HourNow = Date.Now.Hour
-                Dim Greeting As String = If(HourNow >= 5 AndAlso HourNow < 11, "早上好", If(HourNow < 13, "中午好", If(HourNow < 18, "下午好", "晚上好")))
-                Dim GreetName As String = GetGreetingName()
-                If GreetName = "未登录" OrElse GreetName = "点击注册账号" OrElse String.IsNullOrWhiteSpace(GreetName) Then GreetName = "冒险家"
-                LabGreetingTitle.Text = Greeting & "，" & GreetName
-                Dim WeekNames = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"}
-                LabGreetingSub.Text = $"{Date.Now.Month} 月 {Date.Now.Day} 日 · {WeekNames(CInt(Date.Now.DayOfWeek))} · 祝你玩得开心"
+                RefreshGreeting()
             Catch ex As Exception
                 Logger.Warn(ex, "刷新问候语失败")
             End Try
@@ -1707,6 +2300,7 @@ ExitRefresh:
             End If
             AniStop("Account Menu")
             Dim Open As Boolean = PanAccountMenu.Visibility <> Visibility.Visible
+            '浮层展开时关掉胶囊的悬浮提示，否则它会在列表上方弹出来挡住账户项（见 PanAccountMenu_IsVisibleChanged）
             If Open Then
                 PanAccountMenu.Visibility = Visibility.Visible
                 PanAccountMenu.Opacity = 0
@@ -1743,6 +2337,21 @@ ExitRefresh:
             End Try
         Loop
         PanAccountMenu.Visibility = Visibility.Collapsed
+    End Sub
+
+    ''' <summary>账号浮层一展开就关掉胶囊的悬浮提示：否则提示会弹在列表上方挡住账户项。</summary>
+    Private Sub PanAccountMenu_IsVisibleChanged(sender As Object, e As DependencyPropertyChangedEventArgs) Handles PanAccountMenu.IsVisibleChanged
+        SetAccountTooltipEnabled(PanAccountMenu.Visibility <> Visibility.Visible)
+    End Sub
+
+    ''' <summary>账号浮层展开/收起时开关胶囊的悬浮提示。</summary>
+    Private Sub SetAccountTooltipEnabled(Enabled As Boolean)
+        Try
+            If BtnAccount Is Nothing Then Return
+            ToolTipService.SetIsEnabled(BtnAccount, Enabled)
+            If Not Enabled Then BtnAccount.ToolTip = Nothing Else BtnAccount.ToolTip = "切换或管理账号"
+        Catch ex As Exception
+        End Try
     End Sub
 
     ''' <summary>
@@ -2341,12 +2950,17 @@ ExitRefresh:
     ''' <summary>
     ''' 获取账户池行要显示的皮肤：当前登录的那个账户用最新加载的皮肤，
     ''' 其余账户用各自记下的皮肤，都没有则回退到 Steve/Alex 兜底头像。
+    ''' 不管哪条路，最终都显示账户自己的那份副本，不显示共享皮肤缓存里的文件——
+    ''' 共享缓存会被「刷新皮肤」清掉或被后台重写，直接指向它有概率让头像突然消失。
     ''' </summary>
     Private Function GetPoolAccountSkin(Type As McLoginType, Name As String) As String
         Try
-            '离线账户共用本机选择的离线皮肤
-            If Type = McLoginType.Legacy Then
-                If SkinLegacy IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(SkinLegacy.Output) Then Return SkinLegacy.Output
+            '离线账户共用本机选择的离线皮肤，但同样存一份副本再显示
+            If Type = McLoginType.Legacy AndAlso SkinLegacy IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(SkinLegacy.Output) Then
+                AccountSkinStore.AccountSkinSave(Type, Name, "", "", SkinLegacy.Output)
+                Dim LegacyCopy As String = AccountSkinStore.AccountSkinGetSkin(Type, Name)
+                If Not String.IsNullOrWhiteSpace(LegacyCopy) Then Return LegacyCopy
+                Return SkinLegacy.Output
             End If
             '正在登录的那个账户：用刚加载出来的皮肤，并顺手记到它自己名下
             If String.Equals(GetSessionName(Type), If(Name, "").Trim(), StringComparison.OrdinalIgnoreCase) Then
@@ -2361,12 +2975,15 @@ ExitRefresh:
                 End Select
                 If Not String.IsNullOrWhiteSpace(Live) Then
                     AccountSkinStore.AccountSkinSaveFromSession(Type, Live)
+                    '优先显示副本：共享缓存下次被刷新时就不会把这个头像一起带走
+                    Dim LiveCopy As String = AccountSkinStore.AccountSkinGetSkin(Type, Name)
+                    If Not String.IsNullOrWhiteSpace(LiveCopy) Then Return LiveCopy
                     Return Live
                 End If
             End If
             '其余账户用各自记录的头像，绝不借用别的账户的皮肤
             Dim CachedSkin As String = AccountSkinStore.AccountSkinGetSkin(Type, Name)
-            If Not String.IsNullOrWhiteSpace(CachedSkin) AndAlso IO.File.Exists(CachedSkin) Then Return CachedSkin
+            If Not String.IsNullOrWhiteSpace(CachedSkin) Then Return CachedSkin
         Catch ex As Exception
             Logger.Warn(ex, "获取账户头像失败")
         End Try

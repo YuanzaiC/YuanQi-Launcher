@@ -8,7 +8,7 @@
         <StackPanel x:Name="PanMain" Margin="24,22,24,26">
             <StackPanel Orientation="Horizontal" Margin="2,0,0,16">
                 <TextBlock Text="设置" Style="{StaticResource PageTitle}" />
-                <TextBlock Text="启动器与游戏配置" Style="{StaticResource PageSub}" />
+                <TextBlock Text="把启动器调成你喜欢的样子" Style="{StaticResource PageSub}" />
             </StackPanel>
 
             <local:MyCard Margin="0,15" Title="主题" x:Name="CardLauncher">
@@ -116,7 +116,7 @@
                                                 <local:MyCheckBox x:Name="CheckLauncherSplash" local:SettingService.Key="UiLauncherSplash" Text="打开启动器时播放主页苏醒动画" Margin="-1,0,0,1" Height="22" />
                         <local:MyCheckBox x:Name="CheckLauncherLogo" local:SettingService.Key="UiLauncherLogo" Text="打开启动器时显示 缘启 图标" Margin="-1,0,0,1" Height="22" />
                         <local:MyCheckBox x:Name="CheckLauncherSpecialSplash" local:SettingService.Key="UiLauncherSpecialSplash" Text="节日与彩蛋期间使用特殊苏醒动画" Margin="-1,0,0,1" Height="22"
-                                          ToolTip="春节、国庆期间自动使用对应的节日苏醒动画；平时有 2% 概率出现彩蛋动画。&#xa;关闭后始终使用普通的苏醒动画。&#xa;&#xa;想在任意时候预览某个特殊动画，可以给启动器快捷方式加上参数：&#xa;-spring（春节）、-national（国庆）、-egg（彩蛋）" />
+                                          ToolTip="春节、国庆期间自动换成对应的节日动画，平时有 2% 概率碰见彩蛋动画。&#xa;关掉后始终用普通动画。&#xa;&#xa;想随时预览某个特殊动画，给启动器快捷方式加上参数：&#xa;-spring（春节）、-national（国庆）、-egg（彩蛋）" />
                     </StackPanel>
                 </Grid>
             </local:MyCard>
@@ -129,10 +129,10 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock VerticalAlignment="Center" HorizontalAlignment="Left" Text="自适应方式" Margin="0,0,25,0" />
                         <local:MyComboBox local:SettingService.Key="UiBackgroundSuit" Grid.Column="1">
-                            <local:MyComboBoxItem local:SettingService.Value="0" Content="自动" ToolTip="当图片较小时选择平铺，较大时选择居中 (保持长宽比)" />
+                            <local:MyComboBoxItem local:SettingService.Value="0" Content="自动" ToolTip="图片小的时候平铺，大的时候居中（保持长宽比）" />
                             <local:MyComboBoxItem local:SettingService.Value="4" Content="平铺" />
                             <local:MyComboBoxItem local:SettingService.Value="1" Content="居中" />
-                            <local:MyComboBoxItem local:SettingService.Value="3" Content="拉伸" ToolTip="拉伸图片使其恰好填满整个窗口，很可能会导致长宽比的改变" />
+                            <local:MyComboBoxItem local:SettingService.Value="3" Content="拉伸" ToolTip="把图片拉满整个窗口，长宽比多半会变形。" />
                             <local:MyComboBoxItem local:SettingService.Value="5" Content="左上 (保持长宽比)" />
                             <local:MyComboBoxItem local:SettingService.Value="9" Content="左中 (保持长宽比)" />
                             <local:MyComboBoxItem local:SettingService.Value="7" Content="左下 (保持长宽比)" />
@@ -159,7 +159,7 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock VerticalAlignment="Center" HorizontalAlignment="Left" Text="背景模糊" Margin="0,0,25,0" />
                         <local:MySlider local:SettingService.Key="UiBackgroundBlur" x:Name="SliderBackgroundBlur" MaxValue="40" Grid.Column="1" 
-                                        ToolTip="高度的模糊会严重掉帧，请谨慎。&#13;不建议在制作整合包时开启模糊，以确保 缘启 在低性能电脑上可以流畅运行。" />
+                                        ToolTip="模糊越重越掉帧，慎用。&#xa;做整合包时别开，低性能电脑上才跑得动。" />
                     </Grid>
                     <local:MyCheckBox local:SettingService.Key="UiBackgroundColorful" Text="叠加彩色背景" Margin="-1,0,0,8" Height="22" />
                     <Grid Height="35" Margin="0,2,0,0">
@@ -168,7 +168,7 @@
                             <ColumnDefinition Width="Auto" SharedSizeGroup="Button" />
                             <ColumnDefinition Width="Auto" SharedSizeGroup="Button" />
                         </Grid.ColumnDefinitions>
-                        <local:MyButton Height="35" x:Name="BtnBackgroundOpen" MinWidth="140" Text="打开文件夹" Padding="13,0" Margin="0,0,20,0" ToolTip="将背景图片放到该文件夹，缘启 将会在每次打开时随机加载其中的一张图片"/>
+                        <local:MyButton Height="35" x:Name="BtnBackgroundOpen" MinWidth="140" Text="打开文件夹" Padding="13,0" Margin="0,0,20,0" ToolTip="把背景图片放进这个文件夹，缘启每次打开会随机抽一张。"/>
                         <local:MyButton Height="35" x:Name="BtnBackgroundRefresh" MinWidth="140" Text="刷新背景图片" Padding="13,0" Margin="0,0,20,0" ToolTip="随机加载文件夹内的一张背景图片" Grid.Column="1"/>
                         <local:MyButton Height="35" x:Name="BtnBackgroundClear" MinWidth="140" Text="清空背景图片" Visibility="Collapsed" Padding="13,0" Margin="0,0,20,0" ColorType="Red" Grid.Column="2"/>
                     </Grid>
@@ -196,7 +196,7 @@
                             <ColumnDefinition Width="Auto" SharedSizeGroup="Button" />
                             <ColumnDefinition Width="Auto" SharedSizeGroup="Button" />
                         </Grid.ColumnDefinitions>
-                        <local:MyButton Height="35" x:Name="BtnMusicOpen" Text="打开文件夹" MinWidth="140" Padding="13,0" Margin="0,0,20,0" ToolTip="将背景音乐放到该文件夹，缘启 将会播放其中的所有音乐"/>
+                        <local:MyButton Height="35" x:Name="BtnMusicOpen" Text="打开文件夹" MinWidth="140" Padding="13,0" Margin="0,0,20,0" ToolTip="把背景音乐放进这个文件夹，缘启会把里面的音乐都加进播放列表。"/>
                         <local:MyButton Height="35" x:Name="BtnMusicRefresh" Text="刷新背景音乐" MinWidth="140" Padding="13,0" Margin="0,0,20,0" ToolTip="刷新播放列表，并播放列表中的音乐" Grid.Column="1"/>
                         <local:MyButton Height="35" x:Name="BtnMusicClear" Text="清空背景音乐" MinWidth="140" Visibility="Collapsed" Padding="13,0" Margin="0,0,20,0" ColorType="Red" Grid.Column="2"/>
                     </Grid>
@@ -252,7 +252,7 @@
                         <local:MyRadioBox Text="联网更新" x:Name="RadioCustomType2" Height="22" local:SettingService.Key="UiCustomType" local:SettingService.Value="2" Grid.Column="3" />
                     </Grid>
                     <local:MyCheckBox Text="显示正版登录选项" Margin="-1,4,0,0" Height="22" x:Name="CheckOfficialLogin" local:SettingService.Key="UiLauncherOfficialLogin"
-                                      ToolTip="关闭后，主页左侧将不显示 正版 / 离线 的登录方式选择，并默认使用离线登录。" />
+                                      ToolTip="关掉后主页左侧不再显示 正版 / 离线 的选择，直接按离线登录。" />
                     <local:MyHint Margin="0,15,0,-4" Text="内容见 ModSetup" Theme="Blue" x:Name="HintCustom" />
                     <local:MyHint Margin="0,15,0,6" Text="请谨慎使用陌生人提供的主页，恶意代码可能会造成损害！" Theme="Yellow" x:Name="HintCustomWarn" 
                                   CanClose="True" RelativeSetup="HintCustomWarn" />
@@ -273,7 +273,7 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock VerticalAlignment="Center" HorizontalAlignment="Left" Text="下载地址" Margin="0,0,25,0" />
                         <local:MyTextBox x:Name="TextCustomNet" local:SettingService.Key="UiCustomNet" Grid.Column="1" MaxHeight="28"
-                                         ToolTip="你可以用替换标记动态改变网址，以传入参数或变量。&#xa;在 更多 → 帮助 中搜索 “替换标记” 以了解用法。">
+                                         ToolTip="可以用替换标记动态改网址，把参数或变量传进去。&#xa;用法在 更多 → 帮助 里搜 “替换标记”。">
                             <local:MyTextBox.ValidateRules>
                                 <local:ValidateNullable />
                                 <local:ValidateHttp />
@@ -320,7 +320,7 @@
 
 <local:MyCard x:Name="CardSwitch" Margin="0,0,0,15" Title="页面与功能隐藏（高级）">
                 <StackPanel Margin="25,38,15,15">
-                    <TextBlock Margin="0,1,0,1" Text="你可以隐藏不需要的页面或关闭特定功能。在任意界面按 F12 可以暂时显示被隐藏的功能。" TextWrapping="Wrap" />
+                    <TextBlock Margin="0,1,0,1" Text="可以藏起不用的页面，或关掉某些功能。任意界面按 F12 能临时显示被藏起来的东西。" TextWrapping="Wrap" />
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
@@ -354,11 +354,11 @@
                         <local:MyCheckBox Height="22" VerticalAlignment="Center" Grid.Row="2" Grid.Column="4" Text="个性化" x:Name="CheckHiddenSetupUI" local:SettingService.Key="UiHiddenSetupUi" />
                         <local:MyCheckBox Height="22" VerticalAlignment="Center" Grid.Row="2" Grid.Column="5" Text="其他" x:Name="CheckHiddenSetupSystem" local:SettingService.Key="UiHiddenSetupSystem" />
                         <TextBlock Grid.Row="3" VerticalAlignment="Center" HorizontalAlignment="Left" Text="特定功能" />
-                        <local:MyCheckBox Height="22" VerticalAlignment="Center" Grid.Row="3" Grid.Column="2" Text="邮箱隐藏" x:Name="CheckLauncherEmail" local:SettingService.Key="UiLauncherEmail" ToolTip="隐藏第三方登录的账号邮箱显示，以避免隐私泄露。&#xa;此选项的更改将在重启启动器后生效。" />
+                        <local:MyCheckBox Height="22" VerticalAlignment="Center" Grid.Row="3" Grid.Column="2" Text="邮箱隐藏" x:Name="CheckLauncherEmail" local:SettingService.Key="UiLauncherEmail" ToolTip="隐藏第三方登录账号的邮箱，免得泄露隐私。&#xa;改完要重启启动器才生效。" />
                         <local:MyCheckBox Height="22" VerticalAlignment="Center" Grid.Row="3" Grid.Column="3" Text="版本管理" x:Name="CheckHiddenFunctionSelect" local:SettingService.Key="UiHiddenFunctionSelect" ToolTip="隐藏启动按钮下方的版本选择与版本设置入口。" />
                         <local:MyCheckBox Height="22" VerticalAlignment="Center" Grid.Row="3" Grid.Column="4" Text="Mod 更新" x:Name="CheckHiddenFunctionModUpdate" local:SettingService.Key="UiHiddenFunctionModUpdate" ToolTip="禁止在 Mod 管理页面更新 Mod。" />
                         <local:MyCheckBox Height="22" VerticalAlignment="Center" Grid.Row="3" Grid.Column="5" Text="版本修改" x:Name="CheckHiddenFunctionModify" local:SettingService.Key="UiHiddenFunctionInstanceModify" ToolTip="隐藏版本设置中的版本修改功能。" />
-                        <local:MyCheckBox Height="22" VerticalAlignment="Center" Grid.Row="3" Grid.Column="6" Text="功能隐藏" x:Name="CheckHiddenFunctionHidden" local:SettingService.Key="UiHiddenFunctionHidden" ToolTip="仅隐藏本选项卡，设置的禁用内容依然有效。&#xa;可以在保留个性化设置页面的情况下避免隐藏设置被修改。" />
+                        <local:MyCheckBox Height="22" VerticalAlignment="Center" Grid.Row="3" Grid.Column="6" Text="功能隐藏" x:Name="CheckHiddenFunctionHidden" local:SettingService.Key="UiHiddenFunctionHidden" ToolTip="只藏这个选项卡，已经生效的禁用不受影响。&#xa;想保留个性化设置页面、又不让人改隐藏设置时用它。" />
                     </Grid>
                 </StackPanel>
             </local:MyCard>

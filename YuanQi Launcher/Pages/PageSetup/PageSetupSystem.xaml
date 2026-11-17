@@ -8,13 +8,13 @@
         <StackPanel x:Name="PanMain" Margin="24,22,24,26">
             <StackPanel Orientation="Horizontal" Margin="2,0,0,16">
                 <TextBlock Text="设置" Style="{StaticResource PageTitle}" />
-                <TextBlock Text="下载来源、速度与 Mod 名称显示" Style="{StaticResource PageSub}" />
+                <TextBlock Text="下载要快，Mod 名字要好认" Style="{StaticResource PageSub}" />
             </StackPanel>
 
             <local:MyCard Margin="0,15" Title="下载来源">
                 <StackPanel Margin="25,40,25,20">
                     <TextBlock FontSize="12" LineHeight="17" Foreground="{StaticResource ColorBrushGray4}" TextWrapping="Wrap" Margin="0,0,0,12"
-                        Text="官方源稳但慢，镜像源快但可能缺新版本；不确定就保持默认。" />
+                        Text="官方源稳但慢，镜像源快但可能缺新版本。拿不准就保持默认。" />
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                         <TextBlock Text="游戏文件" VerticalAlignment="Center" Width="110" />
                         <local:MyComboBox Height="32" x:Name="ComboDownloadSource" local:SettingService.Key="ToolDownloadSource" Width="300" HorizontalAlignment="Left"
@@ -44,7 +44,7 @@
                     </StackPanel>
                     <local:MyCheckBox Height="24" Text="连接 CurseForge" x:Name="CheckDownloadCurseForge" local:SettingService.Key="ToolDownloadCurseForge"
                                       ToolTip="关闭后搜索资源时会跳过 CurseForge" />
-                    <local:MyCheckBox Height="28" Text="正版登录时验证 SSL 证书" local:SettingService.Key="ToolDownloadCert" ToolTip="开启后校验登录连接的证书，更安全；个别网络环境下会导致正版登录失败，若提示“未能为 SSL/TLS 安全通道建立信任关系”，关掉此项即可。" />
+                    <local:MyCheckBox Height="28" Text="正版登录时验证 SSL 证书" local:SettingService.Key="ToolDownloadCert" ToolTip="开启后校验登录连接的证书，更安全。个别网络下会让正版登录失败，如果提示 “未能为 SSL/TLS 安全通道建立信任关系”，把这项关掉就好。" />
                 </StackPanel>
             </local:MyCard>
 

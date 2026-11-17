@@ -276,6 +276,7 @@
       <DependentUpon>MyLocalModItem.xaml</DependentUpon>
     </Compile>
     <Compile Include="Modules\ModEvent.vb" />
+    <Compile Include="Modules\ModPortable.vb" />
     <Compile Include="Modules\ModTools.vb" />
     <Compile Include="Modules\AccountPool.vb" />
     <Compile Include="Modules\AccountSkin.vb" />

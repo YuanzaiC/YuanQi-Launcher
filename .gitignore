@@ -346,3 +346,7 @@ MaskFiles/
 
 # WPF 标记编译临时项目
 *_wpftmp.vbproj
+# 联机模块运行时二进制（首次联机自动下载，不入库）
+/YuanQi Launcher/Terracotta/*.exe
+/YuanQi Launcher/Terracotta/*.dll
+/YuanQi Launcher/Terracotta/*.DLL

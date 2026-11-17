@@ -7,5 +7,5 @@ Imports System.Runtime.InteropServices
 <Assembly: AssemblyProduct("缘启 YuanQi Launcher")>
 <Assembly: AssemblyCopyright("Copyright © 缘栽")>
 <Assembly: ComVisible(False)>
-<Assembly: AssemblyVersion("2.14.3.1")>
-<Assembly: AssemblyFileVersion("2.14.3.1")>
+<Assembly: AssemblyVersion("2.15.0")>
+<Assembly: AssemblyFileVersion("2.15.0")>

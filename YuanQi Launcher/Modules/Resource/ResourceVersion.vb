@@ -106,6 +106,15 @@ Public Class ResourceVersion
     ''' 作为该版本依赖项的项目 ID。
     ''' </summary>
     Public Dependencies As New List(Of String)
+    ''' <summary>
+    ''' 版本 JSON 里原样带的前置项目 ID。
+    ''' 与 Dependencies 不同：这一份不需要额外查询就能拿到，页面加载时那次补充查询失败也不会丢。
+    ''' </summary>
+    Public ReadOnly Property RawDependencyIds As List(Of String)
+        Get
+            Return RawDependencies
+        End Get
+    End Property
 
     '初始化
 

@@ -60,13 +60,16 @@ Public Module ModWatcher
         '初始化
         Public GameProcess As Process
         Public Instance As McInstance
+        ''' <summary>启动这个实例时使用的账号名。切到别的账号后就不该显示"关闭游戏"。</summary>
+        Public AccountName As String = ""
         Private WindowTitle As String = ""
         Private PID As Integer
         Private PlayStartTicks As Long = 0
         Public Loader As LoaderTask(Of Process, Integer)
-        Public Sub New(Loader As LoaderTask(Of Process, Integer), Instance As McInstance, WindowTitle As String)
+        Public Sub New(Loader As LoaderTask(Of Process, Integer), Instance As McInstance, WindowTitle As String, Optional AccountName As String = Nothing)
             Me.Loader = Loader
             Me.Instance = Instance
+            Me.AccountName = If(AccountName, "")
             Me.WindowTitle = WindowTitle
             Me.PID = Loader.Input.Id
             PlayStartTicks = Date.Now.Ticks '记录本次游玩开始时间

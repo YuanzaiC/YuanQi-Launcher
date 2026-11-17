@@ -8,13 +8,13 @@
         <StackPanel x:Name="PanMain" Margin="24,22,24,26">
             <StackPanel Orientation="Horizontal" Margin="2,0,0,16">
                 <TextBlock Text="设置" Style="{StaticResource PageTitle}" />
-                <TextBlock Text="联机与种子地图" Style="{StaticResource PageSub}" />
+                <TextBlock Text="联机怎么连，地图怎么看" Style="{StaticResource PageSub}" />
             </StackPanel>
 
             <!-- 联机 -->
             <TextBlock Text="联机（陶瓦）" FontSize="12.5" FontWeight="SemiBold" Foreground="{DynamicResource BrushText3}" Margin="4,0,0,8" />
             <TextBlock FontSize="12" LineHeight="17" Foreground="{StaticResource ColorBrushGray4}" TextWrapping="Wrap" Margin="4,0,0,10"
-                Text="开房间与加入别人的房间。" />
+                Text="开房间，或者加入别人的房间。" />
 
             <local:MyCard Margin="0,0,0,15" Title="房间里的身份">
                 <Grid Margin="25,40,25,20">
@@ -47,10 +47,10 @@
                     </Grid.RowDefinitions>
                     <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Left" Text="额外节点" Margin="0,0,25,0" />
                     <local:MyTextBox Grid.Row="0" Grid.Column="1" x:Name="TextCustomPeer" local:SettingService.Key="LinkCustomPeer" MaxHeight="28"
-                        ToolTip="一般不用填。内置节点连不上时，用逗号分隔填几个备用节点" />
+                        ToolTip="一般不用填。内置节点连不上时，填几个备用节点，逗号隔开。" />
                     <TextBlock Grid.Row="1" Grid.Column="1" Margin="1,9,0,0" FontSize="12" LineHeight="17"
                         Foreground="{StaticResource ColorBrushGray4}" TextWrapping="Wrap"
-                        Text="留空用默认节点（跨网络联机需要它）；填 - 表示只直连；自定义时逗号分隔，双方须用同一节点。" />
+                        Text="留空用默认节点（跨网络联机要用它）。填 - 就只直连。自己填的话逗号隔开，两边得用同一个节点。" />
                 </Grid>
             </local:MyCard>
 
@@ -81,23 +81,23 @@
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                         <TextBlock Text="地图清晰度" VerticalAlignment="Center" Margin="0,0,12,0" Foreground="{StaticResource ColorBrushGray2}" />
                         <local:MyComboBox x:Name="ComboSeedQuality" local:SettingService.Key="SeedMapQuality" Width="180" Height="32" VerticalAlignment="Center" HorizontalAlignment="Left"
-                                          ToolTip="清晰度越高越清楚，加载也更慢；低档最省资源">
+                                          ToolTip="越高越清楚，加载也越慢。机器吃力就选低档。">
                             <local:MyComboBoxItem Content="低（最省资源）" local:SettingService.Value="0" />
                             <local:MyComboBoxItem Content="中" local:SettingService.Value="1" />
                             <local:MyComboBoxItem Content="高（最清晰）" local:SettingService.Value="2" IsSelected="True" />
                         </local:MyComboBox>
                     </StackPanel>
                     <TextBlock FontSize="12" LineHeight="17" Foreground="{StaticResource ColorBrushGray4}" TextWrapping="Wrap" Margin="1,0,0,12"
-                        Text="越高越清晰、加载越慢；后台跑游戏建议低档。" />
+                        Text="越高越清晰，也越慢。后台跑着游戏就用低档。" />
                     <local:MyCheckBox x:Name="CheckSeedStructName" local:SettingService.Key="SeedMapStructNamesAlways"
                                       Text="结构名字常显" Height="22" Margin="-1,0,0,1"
-                                      ToolTip="打开后每个结构图标下面一直显示名字；关闭则只在鼠标移上去时显示，视野更干净" />
+                                      ToolTip="打开后每个结构图标下面常显名字。关掉则只在鼠标移上去时显示，地图更干净。" />
                     <TextBlock FontSize="12" LineHeight="17" Foreground="{StaticResource ColorBrushGray4}" TextWrapping="Wrap" Margin="1,14,0,8"
-                        Text="右键点地图即按此格式复制坐标；含 /tp 的高度写作 ~，粘贴后直接落到地面。" />
+                        Text="右键点地图就按这个格式复制坐标。带 /tp 的格式里高度写作 ~，粘进游戏直接落到地面。" />
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="右键复制格式" VerticalAlignment="Center" Margin="0,0,12,0" Foreground="{StaticResource ColorBrushGray2}" />
                         <local:MyComboBox Height="32" x:Name="ComboSeedCopyFormat" local:SettingService.Key="SeedMapCopyFormat" Width="360" VerticalAlignment="Center" HorizontalAlignment="Left"
-                                          ToolTip="选中哪个，右键复制出来就是哪种写法；默认是给人看的坐标文本">
+                                          ToolTip="选中哪个，右键复制出来就是哪种写法。默认那种是给人看的坐标文本。">
                             <local:MyComboBoxItem Content="X: 123 ,Z: -456（默认，方便手抄）" local:SettingService.Value="0" IsSelected="True" />
                             <local:MyComboBoxItem Content="123 -456（X 空格 Z）" local:SettingService.Value="1" />
                             <local:MyComboBoxItem Content="123, -456（X 逗号 Z）" local:SettingService.Value="2" />
@@ -109,12 +109,12 @@
 
                     <local:MyCheckBox x:Name="CheckSeedDiskCache" local:SettingService.Key="SeedMapDiskCache"
                                       Text="缓存地图数据（推荐）" Height="22" Margin="-1,16,0,1"
-                                      ToolTip="把已经算过的地图瓦片存到本地，翻回看过的区域、下次打开同一个存档都不用重新计算" />
+                                      ToolTip="算过的地图瓦片存到本地，翻回看过的区域、下次打开同一个存档都不用重算。" />
                     <TextBlock FontSize="12" LineHeight="17" Foreground="{StaticResource ColorBrushGray4}" TextWrapping="Wrap" Margin="1,4,0,10"
-                        Text="看过的地方存到本地，再看或下次打开同一存档更快；每存档 20 MB、合计 200 MB，超出自动清理最久未用的。" />
+                        Text="看过的地方存在本地，再看或下次打开同一存档更快。每个存档最多 20 MB、总共 200 MB，超了就从最久没看的开始清。" />
                     <StackPanel Orientation="Horizontal">
                         <local:MyButton Height="35" x:Name="BtnSeedCacheClear" MinWidth="140" Text="清空地图缓存" Padding="13,0" HorizontalAlignment="Left"
-                            ToolTip="删除全部存档的地图缓存，不会影响存档本身" />
+                            ToolTip="删掉所有存档的地图缓存，存档本身不受影响。" />
                         <TextBlock x:Name="LabSeedCacheUsage" VerticalAlignment="Center" Margin="16,0,0,0" FontSize="12"
                                    Foreground="{StaticResource ColorBrushGray4}" Text="计算中…" />
                     </StackPanel>

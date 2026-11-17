@@ -124,6 +124,7 @@ Public Class PageLinkMain
     '创建房间
     Private Sub Create_MouseLeftButtonUp() Handles PanSelectCreate.MouseLeftButtonUp
         '陶瓦会自动扫描本机 Minecraft 端口，因此不需要玩家填写端口号
+        JoinNodesFromInvite = False '建房时按自己的设置走
         IsServerSide = True
         RoomCode = Nothing
         Logger.Info("尝试使用陶瓦联机创建房间")
@@ -184,6 +185,24 @@ Public Class PageLinkMain
     End Sub
     Public Sub JoinInternal(Code As String)
         If Code Is Nothing Then Return
+        '房主发的整条消息里可能带一行"节点：…"，用它就和房主走同一个中转节点
+        JoinNodesFromInvite = False
+        JoinNodesOverride = Nothing
+        If Code.Contains("节点") Then
+            Dim Matched As Text.RegularExpressions.Match = Text.RegularExpressions.Regex.Match(Code, "节点\s*[:：]\s*([^\r\n]+)")
+            If Matched.Success Then
+                Dim NodeText As String = Matched.Groups(1).Value.Trim
+                If NodeText <> "" Then
+                    If NodeText <> "-" AndAlso NodeText <> "直连" Then
+                        JoinNodesOverride = NodeText.Split({","c, "，"c, ";"c, " "c}, StringSplitOptions.RemoveEmptyEntries).
+                            Select(Function(Item) Item.Trim).Where(Function(Item) Item <> "").ToArray
+                    End If
+                    JoinNodesFromInvite = True
+                    Logger.Info($"使用房主消息里的节点：{NodeText}")
+                End If
+                Code = Code.Replace(Matched.Value, "")
+            End If
+        End If
         '基础格式校验
         Dim ValidateResult = ValidateCodeFormat(Code)
         If ValidateResult IsNot Nothing Then
@@ -262,11 +281,11 @@ Public Class PageLinkMain
         OpenWebsite("https://burningtnt.github.io/Terracotta/")
     End Sub
 
-#End Region
+    '===============================
+    '  页面 UI
+    '===============================
 
-#Region "加载页面 (Loading | Failed)"
-
-    '由 Waiting 或 Failed 状态切换到 Loading
+    ''' <summary>由 Waiting 切换到 Loading。</summary>
     Private Sub SwitchToLoading(OldState As LinkStates)
         '清理变量
         FailCount = 0
@@ -281,52 +300,60 @@ Public Class PageLinkMain
         If BtnLoadCancel IsNot Nothing Then BtnLoadCancel.Visibility = Visibility.Visible
         If PanLoadRetryGroup IsNot Nothing Then PanLoadRetryGroup.Visibility = Visibility.Collapsed
         ShowLayer(PanRoom)
-        LabLoadTitle.Text = If(IsServerSide, "房间" & If(IsServerSide, "创建", "加入"), "加入房间")
+        StartLyricTimer()
+        LabLoadTitle.Text = If(IsServerSide, "房间创建", "加入房间")
         UpdateLoadingPage("正在准备联机模块……", "准备联机模块")
     End Sub
 
-    '由 Loading 状态切换到 Failed
+    ''' <summary>由 Loading 切换到 Failed。</summary>
     Private Sub SwitchToFailed(OldState As LinkStates)
         '加载器与进程状态（失败时彻底停止模块，避免残留异常状态影响下次建房）
         LinkLoader.Cancel()
-        ProcessStop(True)
+        '不要立刻杀掉模块：它在退出时才会把 application.log 写完。
+        '后台等几秒再停，然后把日志末尾贴到失败卡片上，省得玩家到处找文件。
+        RunInNewThread(
+            Sub()
+                '模块的 application.log 只在退出时才刷盘，实例临时目录随后又会被清掉，
+                '所以先让它正常退出、把日志复制出来，再兜底强停。
+                Dim Tail As String = ModTerracotta.ShutdownAndCollectLog(6000, 25)
+                Try
+                    ProcessStop(True)
+                Catch ex As Exception
+                End Try
+                If String.IsNullOrWhiteSpace(Tail) Then Return
+                RunInUi(
+                    Sub()
+                        Try
+                            If FrmLinkMain Is Nothing OrElse FrmLinkMain.LabLoadDesc Is Nothing Then Return
+                            If LinkState <> LinkStates.Failed Then Return
+                            FrmLinkMain.LabLoadDesc.Text = FrmLinkMain.LabLoadDesc.Text & vbCrLf & vbCrLf & "模块日志：" & vbCrLf & Tail
+                        Catch ex As Exception
+                        End Try
+                    End Sub)
+            End Sub, "Link Failure Diag")
         'UI 更新
         UpdateProgressBar(1)
         UpdateStepBar(LinkLoader.Progress, IsFailed:=True)
+        '失败时把内存里的模块日志落盘一份，方便反馈时取用（只写一次，不会拖慢界面）
+        ModTerracotta.DumpModuleLog()
         '显示错误信息
         LabLoadTitle.Text = FailReason
         Dim Brief As String = LinkLoader.Error.GetDisplay(False)
         Dim InnerEx As Exception = LinkLoader.Error
         If InnerEx.Message.StartsWithF("$") Then Brief = InnerEx.Message
-        Do Until InnerEx.InnerException Is Nothing
+        '取出最内层带 $ 前缀的那句，它才是写给玩家看的
+        Do While InnerEx.InnerException IsNot Nothing
             InnerEx = InnerEx.InnerException
             If InnerEx.Message.StartsWithF("$") Then Brief = InnerEx.Message
         Loop
+        DescPhase = "idle"
+        DescPendingText = Nothing
+        If LabLoadDesc IsNot Nothing Then LabLoadDesc.Opacity = 1
         LabLoadDesc.Text = If(Brief.StartsWithF("$"), Brief.TrimStart("$"), LinkLoader.Error.GetDisplay(True))
         If BtnLoadCancel IsNot Nothing Then BtnLoadCancel.Visibility = Visibility.Collapsed
         If PanLoadRetryGroup IsNot Nothing Then PanLoadRetryGroup.Visibility = Visibility.Visible
-        '失败时收起等待操作提示条
-        If HintLoad IsNot Nothing Then HintLoad.Visibility = Visibility.Collapsed
         Logger.Warn(LinkLoader.Error, LabLoadTitle.Text)
-    End Sub
-
-    '===============================
-    '  页面 UI
-    '===============================
-
-    '两行操作的悬停高亮
-    Private Sub Row_MouseEnter(sender As Object, e As MouseEventArgs) Handles PanSelectCreate.MouseEnter, PanSelectJoin.MouseEnter
-        Try
-            DirectCast(sender, Border).Opacity = 0.86
-        Catch ex As Exception
-        End Try
-    End Sub
-
-    Private Sub Row_MouseLeave(sender As Object, e As MouseEventArgs) Handles PanSelectCreate.MouseLeave, PanSelectJoin.MouseLeave
-        Try
-            DirectCast(sender, Border).Opacity = 1
-        Catch ex As Exception
-        End Try
+        StopLyricTimer()
     End Sub
 
     Private Sub SetLoadDescStyle(HintMode As Boolean)
@@ -344,16 +371,13 @@ Public Class PageLinkMain
         Logger.Info($"开始步骤：{Title}")
         RunInUiWait(
         Sub()
-            If FrmLinkMain Is Nothing OrElse Not FrmLinkMain.LabLoadDesc.IsLoaded Then Return
-            FrmLinkMain.LabLoadDesc.Text = Title
-            '需要在游戏里操作时，用醒目的提示条提醒，避免被误认为启动器卡住
-            If FrmLinkMain.HintLoad Is Nothing Then Return
-            If String.IsNullOrEmpty(WaitHint) Then
-                If FrmLinkMain.HintLoad.Visibility <> Visibility.Collapsed Then FrmLinkMain.HintLoad.Visibility = Visibility.Collapsed
-            Else
-                If FrmLinkMain.HintLoad.Text <> WaitHint Then FrmLinkMain.HintLoad.Text = WaitHint
-                If FrmLinkMain.HintLoad.Visibility <> Visibility.Visible Then FrmLinkMain.HintLoad.Visibility = Visibility.Visible
-            End If
+            Try
+                If FrmLinkMain Is Nothing OrElse FrmLinkMain.LabLoadDesc Is Nothing Then Return
+                '文字先挂起，等阶段动画滚到这一步时一起显示
+                FrmLinkMain.PendingDesc = Title
+                FrmLinkMain.ShowPhase(FailBrief)
+            Catch ex As Exception
+            End Try
         End Sub)
     End Sub
     Private FailReason As String = "准备联机模块"
@@ -361,8 +385,7 @@ Public Class PageLinkMain
     '取消加载 / 返回等待页
     ''' <summary>
     ''' 直接退回「未连接」面板。
-    ''' 之前只调了 ChangeState(Waiting)，它内部走的是页面级退出流程，取消后画面没有真的切回来，
-    ''' 看起来就是"点了没反应"。这里把加载器、模块和三个面板一起复位，保证一定回到选择界面。
+    ''' 加载器、模块和三个面板一起复位，保证一定回到选择界面。
     ''' </summary>
     Private Sub BackToWaiting()
         Try
@@ -386,41 +409,530 @@ Public Class PageLinkMain
         BackToWaiting()
     End Sub
 
-    '（原来"点整张卡片重试"已移除：鼠标抬起事件会从取消按钮冒泡上来，
-    '  点取消会立刻又被切回加载页，表现就是"点了没反应"。现在重试有独立按钮。）
+    '===============================
+    '  阶段（歌词式滚动）
+    '===============================
+    '约定：四行文字始终填满（上一行 / 当前 / 下一步 / 再下一步），
+    '任何时刻都不留空格；过渡只做"整块上移一行 + 两行字号互换"，由定时器按时间推进。
+    '每一步的数值都会写进日志，可以仅凭日志核对动画是否真的在走。
 
-    '进度条
-    ''' <summary>把 0~1 的进度映射到四步指示（准备 / 模块 / 房间 / 就绪）。</summary>
-    Private Sub UpdateStepBar(Progress As Double, Optional IsFailed As Boolean = False)
+    Private Const LyricRowHeight As Double = 42.0
+    ''' <summary>每个阶段的保底停留时间（毫秒）。</summary>
+    Private Const LyricMinDwell As Integer = 900
+    ''' <summary>划线时长（毫秒）。</summary>
+    Private Const LyricStrikeMs As Integer = 180
+    ''' <summary>划线结束后停一下再滚。</summary>
+    Private Const LyricStrikeHold As Integer = 120
+    ''' <summary>整块上移一行的时长（毫秒）。</summary>
+    Private Const LyricRollMs As Integer = 620
+
+    Private LyricStages As String() = Nothing
+    Private LyricIndex As Integer = -1 '当前中间那一行是第几阶段
+    Private LyricWanted As Integer = -1 '流程真正走到第几阶段
+    Private LyricPhase As String = "idle" '"dwell" / "strike" / "roll"
+    Private LyricPhaseStart As Integer = 0
+    Private LyricTimer As System.Windows.Threading.DispatcherTimer = Nothing
+    Private LyricLastLogTick As Integer = 0
+    Private PendingDesc As String = Nothing
+    '描述文字的进场/退场
+    Private Const DescFadeOutMs As Integer = 130
+    Private Const DescFadeInMs As Integer = 190
+    Private DescPhase As String = "idle" '"idle" / "out" / "in"
+    Private DescPhaseStart As Integer = 0
+    Private DescPendingText As String = Nothing
+    Private LyricBrushRow1 As SolidColorBrush = Nothing
+    Private LyricBrushRow2 As SolidColorBrush = Nothing
+    Private LyricBrushBar As SolidColorBrush = Nothing
+    Private BarRollFrom As Double = 0
+    Private BarRollTo As Double = 0
+    Private BarFullAt165 As Double = 0
+
+    Private Function LyricLabs() As TextBlock()
+        If LabLyric0 Is Nothing OrElse LabLyric1 Is Nothing OrElse LabLyric2 Is Nothing OrElse LabLyric3 Is Nothing Then Return Nothing
+        Return {LabLyric0, LabLyric1, LabLyric2, LabLyric3}
+    End Function
+
+    Private Function LyricBars() As Shapes.Rectangle()
+        If BarLyric0 Is Nothing OrElse BarLyric1 Is Nothing OrElse BarLyric2 Is Nothing Then Return Nothing
+        Return {BarLyric0, BarLyric1, BarLyric2, Nothing}
+    End Function
+
+    ''' <summary>各阶段的名字（房主 / 加入方不同）。</summary>
+    Private Function GetStages() As String()
+        Return If(IsServerSide,
+            {"准备联机模块", "检查联机组件", "等待开放局域网", "接入中转节点", "房间创建完成"},
+            {"准备联机模块", "检查联机组件", "加入房间", "连接房主", "进入房间完成"})
+    End Function
+
+    ''' <summary>把当前步骤归到阶段序号。</summary>
+    Private Function StageFromPhase(PhaseKey As String) As Integer
+        If PhaseKey Is Nothing Then Return 0
+        If PhaseKey.Contains("房间创建完成") OrElse PhaseKey.Contains("进入房间完成") Then Return 4
+        If PhaseKey.Contains("等待开放局域网") Then Return 2
+        If IsServerSide Then
+            If PhaseKey.Contains("创建房间") OrElse PhaseKey.Contains("接入中转") Then Return 3
+        Else
+            If PhaseKey.Contains("加入房间") Then Return 2
+            If PhaseKey.Contains("连接房主") OrElse PhaseKey.Contains("建立连接") OrElse
+               PhaseKey.Contains("等待联机模块") Then Return 3
+        End If
+        If PhaseKey.Contains("检查") OrElse PhaseKey.Contains("下载") OrElse PhaseKey.Contains("解压") OrElse
+           PhaseKey.Contains("启动") OrElse PhaseKey.Contains("CPU") OrElse PhaseKey.Contains("地址") Then Return 1
+        Return 0
+    End Function
+
+    ''' <summary>步骤变了：阶段与下方文字一起走。</summary>
+    Private Sub ShowPhase(PhaseKey As String)
         Try
-            If StepDot0 Is Nothing Then Return
-            Dim Index As Integer
-            If Progress < 0.05 Then
-                Index = 0
-            ElseIf Progress < 0.4 Then
-                Index = 1
-            ElseIf Progress < 0.55 Then
-                Index = 2
-            Else
-                Index = 3
-            End If
-            Dim Dots As Shapes.Ellipse() = {StepDot0, StepDot1, StepDot2, StepDot3}
-            If LabLoadStage IsNot Nothing Then
-                LabLoadStage.Text = {If(IsServerSide, "准备创建房间", "准备加入房间"), "检查联机模块", If(IsServerSide, "创建房间", "连接房主"), "房间已就绪"}(Index)
-            End If
-            Dim Accent As Brush = TryCast(Application.Current.FindResource(If(IsFailed, "ColorBrushRed", "ColorBrush3")), Brush)
-            Dim Pending As Brush = TryCast(Application.Current.FindResource("ColorBrushGray6"), Brush)
-            For i As Integer = 0 To 3
-                '走过的和当前节点上色，当前节点稍大，未到的节点是浅灰
-                Dots(i).Fill = If(i <= Index, Accent, Pending)
-                Dim Size As Double = If(i = Index, 16.0, 12.0)
-                Dots(i).Width = Size
-                Dots(i).Height = Size
-            Next
+            SetLyricStage(GetStages(), StageFromPhase(PhaseKey), False)
+            FlushDescIfCaught()
         Catch ex As Exception
         End Try
     End Sub
 
+    ''' <summary>阶段追上流程了才换下方文字。</summary>
+    Private Sub FlushDescIfCaught()
+        Try
+            If LabLoadDesc Is Nothing Then Return
+            If LyricPhase <> "idle" Then Return
+            If LyricIndex <> LyricWanted Then Return
+            If PendingDesc Is Nothing Then Return
+            Dim Text As String = PendingDesc
+            PendingDesc = Nothing
+            If Text = LabLoadDesc.Text Then Return
+            DescPendingText = Text
+            '正在淡入淡出就只更新目标文字，等这一轮走完再换
+            If DescPhase <> "idle" Then Return
+            DescPhase = "out"
+            DescPhaseStart = GetTimeMs()
+            StartLyricTimer()
+        Catch ex As Exception
+        End Try
+    End Sub
+
+    ''' <summary>描述文字：淡出 → 换字 → 淡入（由同一个定时器驱动，不依赖动画对象）。</summary>
+    Private Sub TickDesc()
+        Try
+            If DescPhase = "idle" Then Return
+            If LabLoadDesc Is Nothing Then
+                DescPhase = "idle"
+                Return
+            End If
+            Dim Elapsed As Integer = GetTimeMs() - DescPhaseStart
+            Select Case DescPhase
+                Case "out"
+                    Dim Q As Double = Math.Min(1.0, Elapsed / DescFadeOutMs)
+                    LabLoadDesc.Opacity = 1 - 0.92 * Q
+                    If Elapsed >= DescFadeOutMs Then
+                        If DescPendingText IsNot Nothing Then
+                            LabLoadDesc.Text = DescPendingText
+                            DescPendingText = Nothing
+                        End If
+                        DescPhase = "in"
+                        DescPhaseStart = GetTimeMs()
+                    End If
+                Case "in"
+                    Dim Q As Double = Math.Min(1.0, Elapsed / DescFadeInMs)
+                    LabLoadDesc.Opacity = 0.08 + 0.92 * Q
+                    If Elapsed >= DescFadeInMs Then
+                        LabLoadDesc.Opacity = 1
+                        DescPhase = "idle"
+                    End If
+            End Select
+        Catch ex As Exception
+            DescPhase = "idle"
+        End Try
+    End Sub
+
+    ''' <summary>等阶段动画彻底走完。</summary>
+    Private Sub WaitLyricIdle(MaxMs As Integer)
+        Try
+            Dim Start As Integer = GetTimeMs()
+            Do
+                If LyricPhase = "idle" AndAlso DescPhase = "idle" AndAlso LyricIndex >= LyricWanted Then Return
+                If GetTimeMs() - Start > MaxMs Then Return
+                Thread.Sleep(50)
+            Loop
+        Catch ex As Exception
+        End Try
+    End Sub
+
+    ''' <summary>失败 / 完成时用。</summary>
+    Private Sub UpdateStepBar(Progress As Double, Optional IsFailed As Boolean = False)
+        Try
+            Dim Stages As String() = GetStages()
+            If IsFailed Then
+                SetLyricStage(Stages, Math.Max(0, LyricIndex), True)
+            ElseIf Progress >= 0.99 Then
+                SetLyricStage(Stages, Stages.Length - 1, False)
+            End If
+        Catch ex As Exception
+        End Try
+    End Sub
+
+    ''' <summary>流程走到第 Index 阶段：直接落位或开始推进动画。</summary>
+    Private Sub SetLyricStage(Stages As String(), Index As Integer, Optional IsFailed As Boolean = False)
+        Try
+            If PanLyricInner Is Nothing OrElse LyricLabs() Is Nothing Then Return
+            If Not Dispatcher.CheckAccess() Then
+                Dispatcher.BeginInvoke(New Action(Sub() SetLyricStage(Stages, Index, IsFailed)))
+                Return
+            End If
+            Dim Changed As Boolean = (LyricStages Is Nothing OrElse String.Join("|", LyricStages) <> String.Join("|", Stages))
+            LyricStages = Stages
+            Dim Target As Integer = Math.Max(0, Math.Min(Index, Stages.Length - 1))
+            If IsFailed Then
+                LyricPhase = "idle"
+                If LyricIndex < 0 Then RenderLyric(Target)
+                SetAccentColor(True)
+                LyricWanted = Math.Max(0, LyricIndex)
+                Return
+            End If
+            If Changed OrElse LyricIndex < 0 OrElse Target < LyricIndex Then
+                RenderLyric(Target)
+                LyricWanted = Target
+                FlushDescIfCaught()
+                Return
+            End If
+            LyricWanted = Target
+            If LyricPhase = "idle" Then BeginDwell()
+        Catch ex As Exception
+            Logger.Warn(ex, "切换联机阶段失败")
+        End Try
+    End Sub
+
+    Private Sub BeginDwell()
+        Try
+            If LyricIndex >= LyricWanted Then
+                LyricPhase = "idle"
+                FlushDescIfCaught()
+                Return
+            End If
+            LyricPhase = "dwell"
+            LyricPhaseStart = GetTimeMs()
+            StartLyricTimer()
+        Catch ex As Exception
+        End Try
+    End Sub
+
+    Private Sub StartLyricTimer()
+        Try
+            If LyricTimer Is Nothing Then
+                LyricTimer = New System.Windows.Threading.DispatcherTimer With {.Interval = TimeSpan.FromMilliseconds(25)}
+                AddHandler LyricTimer.Tick, Sub(Sender As Object, Args As EventArgs) LyricTick()
+            End If
+            If Not LyricTimer.IsEnabled Then LyricTimer.Start()
+        Catch ex As Exception
+            Logger.Warn(ex, "启动联机阶段定时器失败")
+        End Try
+    End Sub
+
+    Private Sub StopLyricTimer()
+        Try
+            If LyricTimer IsNot Nothing Then LyricTimer.Stop()
+        Catch ex As Exception
+        End Try
+    End Sub
+
+    ''' <summary>心跳：停留 → 划线 → 滚一行 → 落位。</summary>
+    Private Sub LyricTick()
+        Try
+            TickDesc()
+            If LyricStages Is Nothing Then Exit Sub
+            If LyricPhase = "idle" Then
+                If LyricIndex < LyricWanted Then
+                    BeginDwell()
+                ElseIf LyricIndex > LyricWanted Then
+                    RenderLyric(LyricWanted)
+                Else
+                    FlushDescIfCaught()
+                End If
+                Return
+            End If
+            Dim Elapsed As Integer = GetTimeMs() - LyricPhaseStart
+            Select Case LyricPhase
+                Case "dwell"
+                    If LyricIndex >= LyricWanted Then
+                        LyricPhase = "idle"
+                        FlushDescIfCaught()
+                        Return
+                    End If
+                    If Elapsed >= LyricMinDwell Then
+                        If LyricIndex >= LyricStages.Length - 1 Then
+                            LyricPhase = "idle"
+                            FlushDescIfCaught()
+                            Return
+                        End If
+                        LyricPhase = "strike"
+                        LyricPhaseStart = GetTimeMs()
+                        Logger.Info($"联机阶段：开始划线（第 {LyricIndex + 1} 行，共 {LyricStages.Length} 行）")
+                    End If
+                Case "strike"
+                    ApplyStrike(Math.Min(1.0, Elapsed / LyricStrikeMs))
+                    If Elapsed >= LyricStrikeMs + LyricStrikeHold Then
+                        LyricPhase = "roll"
+                        LyricPhaseStart = GetTimeMs()
+                        LyricLastLogTick = 0
+                        '划线长度按字号比例换算（16.5 → 13），不重新测量，避免量到缓存值导致"线不变"
+                        If BarLyric1 IsNot Nothing Then
+                            BarRollFrom = BarLyric1.Width
+                            If BarRollFrom <= 1 Then BarRollFrom = MeasureText(LabLyric1) + 2
+                            BarRollTo = BarRollFrom * 13.0 / 16.5
+                        End If
+                        ApplyRoll(0)
+                        Logger.Info("联机阶段：开始滚动")
+                    End If
+                Case "roll"
+                    Dim P As Double = EaseRoll(Math.Min(1.0, Elapsed / LyricRollMs))
+                    ApplyRoll(P)
+                    If Elapsed - LyricLastLogTick >= 120 Then
+                        LyricLastLogTick = Elapsed
+                        Dim LabsLog As TextBlock() = LyricLabs()
+                        Logger.Info($"联机阶段：滚动 {Elapsed}ms 位移={PanLyricInner.Margin.Top:0.0} 上字号={LabsLog(1).FontSize:0.0} 中字号={LabsLog(2).FontSize:0.0} 线长={If(BarLyric1 Is Nothing, -1, BarLyric1.Width):0.0} 上色={ColorText(LabsLog(1).Foreground)} 中色={ColorText(LabsLog(2).Foreground)}")
+                    End If
+                    If Elapsed >= LyricRollMs Then
+                        '先把 p=1 这一帧画出来，落位帧与它完全一致，收尾不会有一点跳动
+                        ApplyRoll(1.0)
+                        Dim NextIdx As Integer = Math.Min(LyricIndex + 1, LyricStages.Length - 1)
+                        RenderLyric(NextIdx)
+                        Logger.Info($"联机阶段：落位到第 {NextIdx + 1} 行 [{LabLyric0.Text}|{LabLyric1.Text}|{LabLyric2.Text}|{LabLyric3.Text}] 位移={PanLyricInner.Margin.Top:0.0}")
+                        BeginDwell()
+                    End If
+                Case Else
+                    LyricPhase = "idle"
+                    FlushDescIfCaught()
+            End Select
+        Catch ex As Exception
+            LyricPhase = "idle"
+            Logger.Warn(ex, "联机阶段动画出错")
+        End Try
+    End Sub
+
+    ''' <summary>划线：当前行从左往右长出线。</summary>
+    Private Sub ApplyStrike(Progress As Double)
+        Try
+            If LabLyric1 Is Nothing OrElse BarLyric1 Is Nothing Then Return
+            Dim Full As Double = MeasureText(LabLyric1) + 2
+            BarLyric1.Width = Full * Math.Max(0.0, Math.Min(1.0, Progress))
+            BarLyric1.Opacity = 0.85
+            If Progress >= 1 Then BarFullAt165 = Full
+        Catch ex As Exception
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' 滚动：整块上移一行；同时上格缩到 13 号变灰、中格放大到 16.5 变主题色、划线一起缩短。
+    ''' Progress 从 0 到 1，所有属性都是绝对赋值，不存在累积误差。
+    ''' </summary>
+    Private Sub ApplyRoll(Progress As Double)
+        Try
+            If PanLyricInner Is Nothing Then Return
+            Dim Labs As TextBlock() = LyricLabs()
+            If Labs Is Nothing Then Return
+            Dim P As Double = Math.Max(0.0, Math.Min(1.0, Progress))
+            PanLyricInner.Margin = New Thickness(0, -LyricRowHeight * P, 0, 0)
+            Labs(1).FontSize = 16.5 - 3.5 * P
+            Labs(1).Opacity = 1.0 - 0.58 * P
+            Labs(2).FontSize = 13.0 + 3.5 * P
+            Labs(2).Opacity = 0.42 + 0.58 * P
+            '最下面那一格正在滑进等待位：透明度从 0.16 升到 0.42，落位后正好接上，不会突然变"灰"
+            Labs(3).Opacity = 0.16 + 0.26 * P
+            '划线：先做这一步，且单独保护，颜色出问题也不影响线长
+            Try
+                If BarLyric1 IsNot Nothing Then
+                    '线长跟着当前字号走：16.5 号时的完整线长 × (当前字号 / 16.5)
+                    If BarFullAt165 <= 1 Then BarFullAt165 = MeasureTextAt(Labs(1), 16.5) + 2
+                    BarLyric1.Width = BarFullAt165 * (Labs(1).FontSize / 16.5)
+                    BarLyric1.Opacity = 0.85 - 0.30 * P
+                End If
+            Catch ex As Exception
+                Logger.Warn(ex, "滚动时调整划线失败")
+            End Try
+            '颜色：文字与划线一起按进度插值
+            Try
+                Dim AccentColor As Color = ColorOf(AccentBrush(False), Colors.Green)
+                Dim FadedColor As Color = ColorOf(FadedBrush(), Colors.Gray)
+                '每帧新建画刷再赋值：改已赋值画刷的 Color 在冻结状态下会抛异常，颜色就永远不变
+                Labs(1).Foreground = New SolidColorBrush(LerpColor(AccentColor, FadedColor, P))
+                Labs(2).Foreground = New SolidColorBrush(LerpColor(FadedColor, AccentColor, P))
+                If BarLyric1 IsNot Nothing Then BarLyric1.Fill = New SolidColorBrush(LerpColor(AccentColor, FadedColor, P))
+            Catch ex As Exception
+                Logger.Warn(ex, "滚动时颜色过渡失败")
+            End Try
+        Catch ex As Exception
+            Logger.Warn(ex, "滚动失败")
+        End Try
+    End Sub
+
+    ''' <summary>两端缓动（划线的淡入这类短动画用）。</summary>
+    Private Function ColorText(B As Brush) As String
+        Dim S As SolidColorBrush = TryCast(B, SolidColorBrush)
+        If S Is Nothing Then Return "非纯色"
+        Return $"#{S.Color.R:X2}{S.Color.G:X2}{S.Color.B:X2}"
+    End Function
+
+    Private Sub EnsureLyricBrushes()
+        If LyricBrushRow1 Is Nothing Then LyricBrushRow1 = New SolidColorBrush(Colors.Gray)
+        If LyricBrushRow2 Is Nothing Then LyricBrushRow2 = New SolidColorBrush(Colors.Gray)
+        If LyricBrushBar Is Nothing Then LyricBrushBar = New SolidColorBrush(Colors.Gray)
+    End Sub
+
+    Private Function ColorOf(B As Brush, Fallback As Color) As Color
+        Dim S As SolidColorBrush = TryCast(B, SolidColorBrush)
+        If S Is Nothing Then Return Fallback
+        Return S.Color
+    End Function
+
+    ''' <summary>两色按进度插值（颜色也能平滑过渡）。</summary>
+    Private Function ClampByte(V As Double) As Byte
+        If V <= 0 Then Return 0
+        If V >= 255 Then Return 255
+        Return CByte(Math.Round(V))
+    End Function
+
+    ''' <summary>
+    ''' 两色按进度插值。注意：VB 里 Byte - Byte 的运算结果仍是 Byte，
+    ''' 通道值下降时（例如 0x9B → 0x8A）会直接抛 OverflowException，
+    ''' 所以必须先转成 Double 再算，否则整段颜色代码每帧都会失败。
+    ''' </summary>
+    Private Function LerpColor(A As Color, B As Color, P As Double) As Color
+        Dim T As Double = Math.Max(0.0, Math.Min(1.0, P))
+        Dim CA As Color = A, CB As Color = B
+        Dim Alpha As Double = CDbl(CA.A) + (CDbl(CB.A) - CDbl(CA.A)) * T
+        Dim Red As Double = CDbl(CA.R) + (CDbl(CB.R) - CDbl(CA.R)) * T
+        Dim Green As Double = CDbl(CA.G) + (CDbl(CB.G) - CDbl(CA.G)) * T
+        Dim Blue As Double = CDbl(CA.B) + (CDbl(CB.B) - CDbl(CA.B)) * T
+        Return Color.FromArgb(ClampByte(Alpha), ClampByte(Red), ClampByte(Green), ClampByte(Blue))
+    End Function
+
+    Private Function EaseInOut(P As Double) As Double
+        Return (1 - Math.Cos(Math.PI * P)) / 2
+    End Function
+
+    ''' <summary>
+    ''' 滚动专用曲线：起步略快、尾段长距离缓慢衰减（幂次越高，收尾越"软"）。
+    ''' 直接线性或余弦曲线在结束瞬间速度归零太快，看起来就像"滑到位又被钉住"。
+    ''' </summary>
+    Private Function EaseRoll(P As Double) As Double
+        Dim X As Double = Math.Max(0.0, Math.Min(1.0, P))
+        Return 1 - Math.Pow(1 - X, 2.4)
+    End Function
+
+    ''' <summary>直接落位：四行填满、样式归位、位移归零。</summary>
+    Private Sub RenderLyric(Index As Integer)
+        Try
+            If LyricStages Is Nothing OrElse LyricStages.Length = 0 Then Return
+            Dim Labs As TextBlock() = LyricLabs()
+            Dim Bars As Shapes.Rectangle() = LyricBars()
+            If Labs Is Nothing OrElse Bars Is Nothing OrElse PanLyricInner Is Nothing Then Return
+            Index = Math.Max(0, Math.Min(Index, LyricStages.Length - 1))
+            LyricIndex = Index
+            LyricPhase = "idle"
+            PanLyricInner.Margin = New Thickness(0)
+            PanLyricInner.Opacity = 1
+            For k As Integer = 0 To 3
+                Dim StageIdx As Integer = Index - 1 + k
+                Dim Text As String = If(StageIdx >= 0 AndAlso StageIdx < LyricStages.Length, LyricStages(StageIdx), "")
+                Labs(k).Text = Text
+                Labs(k).FontWeight = FontWeights.SemiBold
+                Select Case k
+                    Case 0
+                        Labs(k).FontSize = 13
+                        Labs(k).Opacity = 0.42
+                    Case 1
+                        Labs(k).FontSize = 16.5
+                        Labs(k).Opacity = 1
+                    Case 2
+                        Labs(k).FontSize = 13
+                        Labs(k).Opacity = 0.42
+                    Case Else
+                        Labs(k).FontSize = 13
+                        Labs(k).Opacity = 0.16
+                End Select
+                '上一行已完成：带满划线；其余收起
+                SetStrike(Bars(k), Labs(k), k = 0 AndAlso Text <> "")
+            Next
+            If BarLyric1 IsNot Nothing Then
+                BarLyric1.Width = 0
+                BarLyric1.Opacity = 0
+            End If
+            BarFullAt165 = 0
+            SetAccentColor(False)
+        Catch ex As Exception
+            Logger.Warn(ex, "渲染联机阶段失败")
+        End Try
+    End Sub
+
+    Private Sub SetStrike(Bar As Shapes.Rectangle, Line As TextBlock, Visible As Boolean)
+        Try
+            If Bar Is Nothing OrElse Line Is Nothing Then Return
+            If Not Visible Then
+                Bar.Width = 0
+                Bar.Opacity = 0
+                Return
+            End If
+            Bar.Fill = FadedBrush()
+            Bar.Width = MeasureText(Line) + 2
+            Bar.Opacity = 0.8
+        Catch ex As Exception
+        End Try
+    End Sub
+
+    Private Function MeasureText(Line As TextBlock) As Double
+        Try
+            If Line Is Nothing Then Return 120
+            Line.Measure(New Size(Double.PositiveInfinity, Double.PositiveInfinity))
+            Dim Width As Double = Line.DesiredSize.Width
+            If Width <= 1 Then Width = 120
+            Return Width
+        Catch ex As Exception
+            Return 120
+        End Try
+    End Function
+
+    ''' <summary>按指定字号量宽度（不改变控件当前状态）。</summary>
+    Private Function MeasureTextAt(Line As TextBlock, Size As Double) As Double
+        Try
+            If Line Is Nothing Then Return 120
+            Dim Old As Double = Line.FontSize
+            Line.FontSize = Size
+            Line.Measure(New Size(Double.PositiveInfinity, Double.PositiveInfinity))
+            Dim Width As Double = Line.DesiredSize.Width
+            Line.FontSize = Old
+            If Width <= 1 Then Width = 120
+            Return Width
+        Catch ex As Exception
+            Return 120
+        End Try
+    End Function
+
+    Private Function AccentBrush(IsFailed As Boolean) As Brush
+        Dim Result As Brush = Nothing
+        Try
+            Result = TryCast(Application.Current.FindResource(If(IsFailed, "ColorBrushRedDark", "ColorBrush3")), Brush)
+        Catch ex As Exception
+        End Try
+        If Result Is Nothing Then Result = Brushes.Green
+        Return Result
+    End Function
+
+    Private Function FadedBrush() As Brush
+        Dim Result As Brush = TryCast(Application.Current.FindResource("ColorBrushGray3"), Brush)
+        If Result Is Nothing Then Result = Brushes.Gray
+        Return Result
+    End Function
+
+    ''' <summary>当前行的强调色 / 失败红。</summary>
+    Private Sub SetAccentColor(IsFailed As Boolean)
+        Try
+            If LabLyric1 IsNot Nothing Then LabLyric1.Foreground = New SolidColorBrush(ColorOf(AccentBrush(IsFailed), Colors.Green))
+            If BarLyric1 IsNot Nothing Then BarLyric1.Fill = AccentBrush(IsFailed)
+            If LabLyric0 IsNot Nothing Then LabLyric0.Foreground = New SolidColorBrush(ColorOf(FadedBrush(), Colors.Gray))
+            If LabLyric2 IsNot Nothing Then LabLyric2.Foreground = FadedBrush()
+            If LabLyric3 IsNot Nothing Then LabLyric3.Foreground = FadedBrush()
+        Catch ex As Exception
+        End Try
+    End Sub
     ''' <summary>
     ''' 在同一张卡片里换内容：旧层淡出+微缩，新层微缩到正常大小并淡入，卡片外框完全不动。
     ''' </summary>
@@ -534,17 +1046,33 @@ Public Class PageLinkMain
             PanFinishHall.Visibility = Visibility.Collapsed
             LabFinishCode.Text = If(String.IsNullOrWhiteSpace(RoomCode), "—", RoomCode)
             BtnFinishExit.Text = "关闭房间"
-            HintFinish.Visibility = Visibility.Collapsed
+            SetFinishTip(Nothing)
             Copy() '立即复制邀请码
+            '房主自己看不到"别人能不能加进来"：连不上中转节点时房间建得出来但谁进不来，
+            '必须当面提示房主，否则会一直以为是加入方的问题。
+            RunInNewThread(
+                Sub()
+                    Thread.Sleep(9000)
+                    Dim Net As String = ModTerracotta.DescribeNetwork()
+                    If Not Net.Contains("一个中转节点都没连上") Then Return
+                    RunInUi(
+                        Sub()
+                            Try
+                                If LinkState <> LinkStates.Finished Then Return
+                                SetFinishTip("这台电脑连不上中转节点，别人加不进来：换个节点或重启网络后再建房", Warn:=True)
+                            Catch ex As Exception
+                            End Try
+                        End Sub)
+                End Sub, "Link Host NetCheck")
         Else
             LabFinishTitle.Text = "已连接房主"
             PanFinishCode.Visibility = Visibility.Collapsed
             PanFinishHall.Visibility = Visibility.Visible
             LabFinishIp.Text = If(CurrentState Is Nothing OrElse String.IsNullOrWhiteSpace(CurrentState.Url), "—", CurrentState.Url)
             BtnFinishExit.Text = "离开房间"
-            '访客只需要知道入口在哪：单行提示条，不写解释
-            HintFinish.Text = "进游戏 → 多人游戏 → 最下方双击「陶瓦联机大厅」"
+            SetFinishTip("进游戏 → 多人游戏 → 最下方双击「陶瓦联机大厅」")
         End If
+        StopLyricTimer()
         '立即刷新（不使用网络请求，避免阻塞 UI 线程）
         If CurrentState IsNot Nothing Then RefreshFinishedUi(CurrentState)
     End Sub
@@ -577,8 +1105,11 @@ Public Class PageLinkMain
 
     '复制邀请码
     Private Sub Copy() Handles BtnFinishCopy.Click
-        '只复制房间码本身，方便直接粘贴
-        ClipboardSet(RoomCode, False)
+        '复制房间码，并带上房主自己用的节点：两边节点不一致时联机模块永远找不到对方
+        Dim RawNode As String = Settings.Get(Of String)("LinkCustomPeer")
+        Dim CopyText As String = RoomCode
+        If Not String.IsNullOrWhiteSpace(RawNode) Then CopyText &= vbCrLf & "节点：" & RawNode.Trim
+        ClipboardSet(CopyText, False)
         Settings.Set("LinkLastAutoJoinInviteCode", RoomCode)
         Hint("已复制邀请码！", HintType.Green)
     End Sub
@@ -599,6 +1130,9 @@ Public Class PageLinkMain
     ''' 当前是服务端还是客户端。
     ''' </summary>
     Private IsServerSide As Boolean
+    ''' <summary>这次加入要用的节点（从房主发来的消息里读出来的），Nothing 表示按设置走。</summary>
+    Private JoinNodesOverride As String() = Nothing
+    Private JoinNodesFromInvite As Boolean = False
     ''' <summary>
     ''' 当前使用的房间邀请码（房主在房间就绪后才有值）。
     ''' </summary>
@@ -740,6 +1274,9 @@ Public Class PageLinkMain
         Dim LastProgress As Double = -1
         Dim ScanTime As Double = 0 'host-scanning 的独立计时器
         Dim GuestTime As Double = 0 'guest-starting 的独立计时器（等待房主开放局域网）
+        Dim GuestRetry As Integer = 0 '模块 15 秒就放弃，这里自己再试两次，免得为了几秒时差让玩家重走流程
+        Dim HostNetWait As Double = 0 '房主拿到房间码后，等联机组件真正挂上中转节点的秒数
+        Dim HostNetTry As Integer = 0 '房主接入中转失败后重建房间的次数
         Do
             Thread.Sleep(300)
             If Task.IsCanceled Then Throw New OperationCanceledException
@@ -762,6 +1299,35 @@ Public Class PageLinkMain
             '处理状态
             Select Case Current.State
                 Case "host-ok", "guest-ok"
+                    '房主拿到房间码不代表别人能进来：联机组件没挂上中转服务器时，房间建得出来但谁都找不到。
+                    '所以先等它真的接上，接不上就重建房间，重建之后才有新的房间码。
+                    If IsServerSide Then
+                        If HostNetWait < 12 Then
+                            HostNetWait += 0.3
+                            UpdateLoadingPage("正在接入中转节点……", "接入中转节点")
+                            Continue Do
+                        End If
+                        If HostNetTry < 3 AndAlso ModTerracotta.DescribeNetwork().Contains("一个中转节点都没连上") Then
+                            HostNetTry += 1
+                            Logger.Info($"房主没能接入中转节点，第 {HostNetTry} 次重建房间")
+                            Try
+                                ModTerracotta.ApiGet("/state/ide", 4000)
+                            Catch ex As Exception
+                            End Try
+                            Thread.Sleep(1200)
+                            Try
+                                ModTerracotta.CreateRoom(PlayerName, PublicNodes)
+                            Catch ex As Exception
+                                Logger.Warn(ex, "重建房间失败")
+                            End Try
+                            HostNetWait = 0
+                            Continue Do
+                        End If
+                    End If
+                    '先把最后一格演完再切界面，否则邀请码会抢在动画前面弹出来
+                    UpdateLoadingPage(If(IsServerSide, "房间已创建", "已进入房间"),
+                                      If(IsServerSide, "房间创建完成", "进入房间完成"))
+                    WaitLyricIdle(3200)
                     FinalState = Current
                     Exit Do
                 Case "host-scanning"
@@ -787,28 +1353,58 @@ Public Class PageLinkMain
                 Case "guest-starting"
                     '访客侧：房间已经找到，剩下在等房主把局域网开放出来。访客什么都不用做，只提示他去找房主。
                     GuestTime += 0.3
-                    Dim GuestTitle As String = "等待房主开放局域网"
+                    '能拿到邀请码就说明房主早已开放局域网，这一步与"房主开局域网"无关，
+                    '真正在等的是与房主之间建立连接通道（直连打洞成功，或通过中转节点成功）。
+                    Dim GuestTitle As String = If(GuestRetry = 0, "正在与房主建立连接", $"正在与房主建立连接（第 {GuestRetry + 1} 次）")
                     Dim GuestHint As String = Nothing
-                    If GuestTime < 20 Then
-                        GuestHint = "这一步由房主完成，你无需操作"
-                    ElseIf GuestTime < 60 Then
-                        GuestHint = "请联系房主：进入存档 → 按 ESC → 对局域网开放"
+                    If GuestTime < 15 Then
+                        GuestHint = "正在尝试直连，通常几秒内完成"
+                    ElseIf GuestTime < 45 Then
+                        GuestTitle = "直连没通，正在尝试中转节点"
+                        GuestHint = "跨网络联机需要中转，这一步可能要多等一会儿"
                     Else
-                        GuestTitle = "房主那边还没有开放局域网"
-                        GuestHint = "让房主确认已开放局域网、房间还开着；仍然不行就稍后重试"
+                        GuestTitle = "和房主的连接一直没建立"
+                        GuestHint = "多为网络无法互通：让双方确认节点可用，或在设置里把节点填成 - 只走直连再试"
+                    End If
+                    '卡住超过 12 秒就把联机模块自己的最后一行日志亮出来，便于直接看出卡在哪
+                    If GuestTime >= 12 Then
+                        Dim LogTail As String = ModTerracotta.GetModuleLogTail(2)
+                        If Not String.IsNullOrWhiteSpace(LogTail) Then
+                            LogTail = LogTail.Replace(vbCr, " ").Replace(vbLf, " ").Trim()
+                            If LogTail.Length > 90 Then LogTail = LogTail.Substring(LogTail.Length - 90)
+                            GuestHint = "模块日志：" & LogTail
+                        End If
                     End If
                     UpdateLoadingPage(GuestTitle, "建立连接" & (If(GuestTime < 20, "1", If(GuestTime < 60, "2", "3"))), GuestHint)
                     '0.5 → 0.85 缓慢推进（90 秒），既不假装完成，也不让进度条一动不动
                     Task.Progress = Math.Min(0.5 + GuestTime / 90 * 0.35, 0.85)
                     '进度在动，停滞判定就永远不会触发，所以这里自己掐 90 秒
                     If GuestTime > 90 Then
-                        Panic("等待房主开放局域网超时", $"房主已开放局域网、双方版本也一致时，多半是公共中转节点没连上（跨网络联机必须靠它）。{vbCrLf}请确认：{vbCrLf}- 房主已进入存档，按 ESC → 对局域网开放{vbCrLf}- 双方网络都能访问 etnode.zkitefly.eu.org{vbCrLf}- 在 设置 → 工具 → 联机 里点「检查模块更新」保持版本一致{vbCrLf}{vbCrLf}联机模块日志：{vbCrLf}{ModTerracotta.GetModuleLogTail(15)}{vbCrLf}{vbCrLf}{GetRecentLog()}")
+                        Panic("与房主的连接没能建立", $"邀请码有效说明房主已开放局域网，卡住的是你与房主之间的连接通道。{vbCrLf}常见原因：{vbCrLf}- 双方网络无法互通，且中转节点不可用{vbCrLf}- 两边联机模块版本不一致{vbCrLf}{vbCrLf}可以这样试：{vbCrLf}- 双方在 设置 → 工具 → 联机 → 额外节点 填同一个可用节点{vbCrLf}- 或两边都填 - 只走直连（同一局域网/同一路由器下最稳）{vbCrLf}- 双方都点「检查模块更新」保证版本一致{vbCrLf}{vbCrLf}联机模块日志：{vbCrLf}{ModTerracotta.GetModuleLogTail(15)}{vbCrLf}{vbCrLf}{GetRecentLog()}")
                         Throw New OperationCanceledException
                     End If
                 Case "exception"
+                    '模块自己 15 秒就判定"找不到房主"，而房主可能只是晚几秒才出现在中转网络上，
+                    '所以加入方自动重试两次，不用玩家自己重走一遍流程。
+                    If Not IsServerSide AndAlso Current.ExceptionType = 0 AndAlso GuestRetry < 5 Then
+                        GuestRetry += 1
+                        Logger.Info($"没找到房主，自动重试第 {GuestRetry} 次")
+                        Try
+                            ModTerracotta.ApiGet("/state/ide", 4000)
+                        Catch ex As Exception
+                        End Try
+                        Thread.Sleep(800)
+                        Try
+                            ModTerracotta.JoinRoom(RoomCode, PlayerName, PublicNodes)
+                        Catch ex As Exception
+                        End Try
+                        GuestTime = 0
+                        Continue Do
+                    End If
                     Dim ExceptionLog As String = ModTerracotta.GetModuleLogTail(15)
                     Panic(ModTerracotta.GetExceptionBrief(Current.ExceptionType),
                           ModTerracotta.GetExceptionDetail(Current.ExceptionType) &
+                          vbCrLf & vbCrLf & "网络情况：" & ModTerracotta.DescribeNetwork() &
                           If(String.IsNullOrWhiteSpace(ExceptionLog), "", vbCrLf & vbCrLf & "联机模块日志：" & vbCrLf & ExceptionLog))
                     Throw New OperationCanceledException
                 Case Else
@@ -826,7 +1422,7 @@ Public Class PageLinkMain
                         Case "host-scanning"
                             Panic("没有检测到局域网房间", $"请确认你已经在游戏中按 ESC 并选择「对局域网开放」，{vbCrLf}且游戏仍在运行、没有关闭存档。")
                         Case "guest-starting"
-                            Panic("等待房主开放局域网超时", $"房主已开放局域网、双方版本也一致时，多半是公共中转节点没连上（跨网络联机必须靠它）。{vbCrLf}请确认：{vbCrLf}- 房主已进入存档，按 ESC → 对局域网开放{vbCrLf}- 双方网络都能访问 etnode.zkitefly.eu.org{vbCrLf}- 在 设置 → 工具 → 联机 里点「检查模块更新」保持版本一致{vbCrLf}{vbCrLf}联机模块日志：{vbCrLf}{ModTerracotta.GetModuleLogTail(15)}{vbCrLf}{vbCrLf}{GetRecentLog()}")
+                            Panic("与房主的连接没能建立", $"邀请码有效说明房主已开放局域网，卡住的是你与房主之间的连接通道。{vbCrLf}常见原因：{vbCrLf}- 双方网络无法互通，且中转节点不可用{vbCrLf}- 两边联机模块版本不一致{vbCrLf}{vbCrLf}可以这样试：{vbCrLf}- 双方在 设置 → 工具 → 联机 → 额外节点 填同一个可用节点{vbCrLf}- 或两边都填 - 只走直连（同一局域网/同一路由器下最稳）{vbCrLf}- 双方都点「检查模块更新」保证版本一致{vbCrLf}{vbCrLf}联机模块日志：{vbCrLf}{ModTerracotta.GetModuleLogTail(15)}{vbCrLf}{vbCrLf}{GetRecentLog()}")
                         Case "waiting"
                             Panic("联机模块没有响应", $"联机模块没有接受创建或加入房间的请求。{vbCrLf}请点击重试；若反复出现，请向开发者反馈。")
                         Case Else
@@ -867,13 +1463,15 @@ Public Class PageLinkMain
     ''' 获取玩家填写在设置中的自定义公共节点。
     ''' </summary>
     Private Function GetPublicNodes() As String()
+        '房主发来的消息里带了自己用的节点时，就用房主那个：两边节点不一致是连不上最常见的原因
+        If JoinNodesFromInvite Then Return JoinNodesOverride
         Dim Raw As String = Settings.Get(Of String)("LinkCustomPeer")
-        If String.IsNullOrWhiteSpace(Raw) Then Return ModTerracotta.DefaultPublicNodes '没填就用内置公共节点，否则跨网络联机建不起通道
+        If String.IsNullOrWhiteSpace(Raw) Then Return ModTerracotta.GetNodes() '没填就用官方节点列表，取不到才退回内置节点
         '填 "-" 或 "直连" 表示不用节点、只走直连（同一局域网或 NAT 友好时更快）
         If Raw.Trim() = "-" OrElse Raw.Trim() = "直连" Then Return Nothing
         Dim Custom As String() = Raw.Split({","c, "，"c, ";"c, "；"c, vbCr, vbLf, " "c}, StringSplitOptions.RemoveEmptyEntries).
             Select(Function(Node) Node.Trim).Where(Function(Node) Node <> "").ToArray
-        If Custom.Length = 0 Then Return ModTerracotta.DefaultPublicNodes
+        If Custom.Length = 0 Then Return ModTerracotta.GetNodes()
         Return Custom
     End Function
 
@@ -1016,25 +1614,31 @@ Public Class PageLinkMain
         If Not IsServerSide Then
             LabFinishIp.Text = If(String.IsNullOrWhiteSpace(State.Url), "—", State.Url)
         End If
-        '------------------------
-        '  提示条
-        '------------------------
-        HintFinish.Visibility = Visibility.Collapsed
+        '完成页底部只留一行说明，不再用提示条
         If State.PeopleCount <= 1 Then
-            HintFinish.Text = If(IsServerSide, "等待朋友加入房间……", "正在等待房主开始游戏……")
-            HintFinish.Theme = MyHint.Themes.Blue
-            HintFinish.Visibility = Visibility.Visible
+            SetFinishTip(If(IsServerSide, "等待朋友加入房间", "正在等待房主开始游戏"))
             Return
         End If
         If Not IsServerSide AndAlso State.Difficulty = "TOUGH" Then
-            HintFinish.Text = "你和房主的网络环境较差，可能正在通过中继连接，延迟会比较高。"
-            HintFinish.Theme = MyHint.Themes.Yellow
-            HintFinish.Visibility = Visibility.Visible
+            SetFinishTip("和房主的网络较差，可能走了中继，延迟会偏高", Warn:=True)
             Return
         End If
-        HintFinish.Text = $"房间内已有 {State.PeopleCount} 名玩家：{GetMemberSummary(State)}"
-        HintFinish.Theme = MyHint.Themes.Blue
-        HintFinish.Visibility = Visibility.Visible
+        SetFinishTip($"房间内已有 {State.PeopleCount} 名玩家：{GetMemberSummary(State)}")
+    End Sub
+
+    ''' <summary>完成页底部那一行说明（不是提示条）。</summary>
+    Private Sub SetFinishTip(Text As String, Optional Warn As Boolean = False)
+        Try
+            If LabFinishTip Is Nothing Then Return
+            LabFinishTip.Text = If(Text, "")
+            Dim TipBrush As Brush = Nothing
+            Try
+                TipBrush = TryCast(Application.Current.FindResource(If(Warn, "ColorBrushRedDark", "ColorBrushGray4")), Brush)
+            Catch ex As Exception
+            End Try
+            If TipBrush IsNot Nothing Then LabFinishTip.Foreground = TipBrush
+        Catch ex As Exception
+        End Try
     End Sub
 
 #End Region

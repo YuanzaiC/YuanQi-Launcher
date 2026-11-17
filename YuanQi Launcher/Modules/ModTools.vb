@@ -34,7 +34,20 @@ Public Module ModTools
     ''' 检查启动器更新。仓库尚未建立时只给出提示。
     ''' </summary>
     ''' <param name="Silent">自动检测时为 True：没有更新就静默，不做任何弹窗。</param>
+    ''' <summary>临时开关：检测期间关掉启动器更新检查。恢复时改成 False 即可。</summary>
+    Friend Const UpdateCheckPaused As Boolean = False
+    ''' <summary>
+    ''' 测试开关：不比较版本号，一律按"有更新"处理，直接走下载/安装流程。
+    ''' 恢复正常行为时改成 False。
+    ''' </summary>
+    Friend Const UpdateCheckIgnoreVersion As Boolean = False
+
     Public Sub CheckLauncherUpdate(Optional Silent As Boolean = False)
+        If UpdateCheckPaused Then
+            Logger.Info("启动器更新检查已临时关闭（UpdateCheckPaused = True）")
+            If Not Silent Then Hint("更新检查已临时关闭", HintType.Blue)
+            Return
+        End If
         If Not IsRepoReady() Then
             If Not Silent Then Hint("暂时无法检查更新，请稍后再试。", HintType.Blue)
             Logger.Info("启动器仓库地址为空，跳过更新检查")
@@ -82,8 +95,11 @@ Public Module ModTools
         Dim Latest As String = NormalizeVersion(TagRaw)
         Logger.Info($"启动器最新版本：{Latest}（tag：{TagRaw}），当前版本：{VersionBaseName}")
         If String.Equals(Latest, VersionBaseName, StringComparison.OrdinalIgnoreCase) Then
-            If Not Silent Then RunInUiWait(Sub() MyMsgBox($"当前已是最新版本（{VersionBaseName}）。", "检查更新"))
-            Return
+            If Not UpdateCheckIgnoreVersion Then
+                If Not Silent Then RunInUiWait(Sub() MyMsgBox($"当前已是最新版本（{VersionBaseName}）。", "检查更新"))
+                Return
+            End If
+            Logger.Info("已跳过版本号比较（UpdateCheckIgnoreVersion = True），按可更新处理")
         End If
         If Silent Then
             '自动检测：只提示，不打扰
@@ -93,6 +109,8 @@ Public Module ModTools
         '直接从 release 的资产里取安装包，不依赖固定命名（tag 大小写、资产名都能对上）
         Dim AssetName As String = Nothing
         Dim AssetUrl As String = Nothing
+        Dim AssetSize As Long = -1
+        Dim AssetHash As String = Nothing
         Dim Assets = TryCast(ReleaseJson?("assets"), JArray)
         If Assets IsNot Nothing Then
             For Each Item In Assets
@@ -100,6 +118,16 @@ Public Module ModTools
                 If Not Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) Then Continue For
                 AssetName = Name
                 AssetUrl = Item?("browser_download_url")?.ToString()
+                '顺手取大小和官方给的 sha256：有了这两个，下载引擎才能分段多线程并做完整性校验
+                Try
+                    If Item?("size") IsNot Nothing Then AssetSize = Item("size").ToObject(Of Long)()
+                Catch ex As Exception
+                End Try
+                Try
+                    Dim Digest As String = If(Item?("digest")?.ToString(), "")
+                    If Digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase) Then AssetHash = Digest.Substring(7)
+                Catch ex As Exception
+                End Try
                 If Name.IndexOf("Setup", StringComparison.OrdinalIgnoreCase) >= 0 Then Exit For
             Next
         End If
@@ -112,48 +140,78 @@ Public Module ModTools
         Sub()
             If MyMsgBox($"发现新版本：{Latest}{vbCrLf}当前版本：{VersionBaseName}{vbCrLf}{vbCrLf}是否立即下载安装包并更新？{vbCrLf}更新只替换程序文件，设置、游戏与存档都会保留。",
                         "检查更新", "立即更新", "稍后") = 1 Then
-                DownloadInstaller(AssetUrl, AssetName)
+                DownloadInstaller(AssetUrl, AssetName, AssetSize, AssetHash)
             End If
         End Sub)
     End Sub
 
     ''' <summary>
-    ''' 下载发布页里的单文件安装包，下载完成后引导用户启动它完成更新。
+    ''' 走启动器自己的下载器下载安装包：任务列表里能看到进度，支持多源切换与分段下载。
     ''' </summary>
-    Private Sub DownloadInstaller(Url As String, FileName As String)
-        If String.IsNullOrWhiteSpace(FileName) Then FileName = "YuanQi-Setup.exe"
-        Dim SavePath As String = IO.Path.Combine(IO.Path.GetTempPath(), FileName)
-        Hint($"正在下载安装包（约 17 MB）……", HintType.Blue, False)
-        RunInNewThread(
-        Sub()
+    Private Sub DownloadInstaller(Url As String, FileName As String, Optional Size As Long = -1, Optional Hash As String = Nothing)
+        Try
+            If String.IsNullOrWhiteSpace(FileName) Then FileName = "YuanQi-Setup.exe"
+            Dim SavePath As String = IO.Path.Combine(PathTemp, FileName)
+            '上一次剩下的半截文件会让下载器以为已经下完，先清掉
             Try
-                Using Client As New Net.WebClient()
-                    Client.DownloadFile(Url, SavePath)
-                End Using
-                RunInUiWait(
-                Sub()
-                    If MyMsgBox($"安装包已下载完成：{FileName}{vbCrLf}{vbCrLf}立即启动安装程序吗？{vbCrLf}安装程序会自动关闭缘启并替换程序文件，设置与存档不会丢失。",
-                                "检查更新", "立即安装", "稍后") = 1 Then
-                        StartProcess(SavePath)
-                        FrmMain.Close()
-                    Else
-                        Hint($"安装包已保存到：{SavePath}", HintType.Blue)
-                    End If
-                End Sub)
+                If FileUtils.Exists(SavePath) Then FileUtils.Delete(SavePath)
             Catch ex As Exception
-                Logger.Warn(ex, $"下载安装包失败：{Url}")
-                RunInUi(
-                Sub()
-                    Hint("下载安装包失败，已为你打开下载页面。", HintType.Red)
-                    OpenWebsite(RepoUrl & "/releases/latest")
-                End Sub)
             End Try
-        End Sub, "Download Installer", ThreadPriority.BelowNormal)
+            Dim Urls As New List(Of String) From {Url}
+            'GitHub 直链在国内经常连不上，再挂一个镜像，下载器会自己挑能用的
+            If Url.Contains("https://github.com/") Then Urls.Add(Url.Replace("https://github.com/", "https://ghfast.top/https://github.com/"))
+            Dim Checker As FileChecker = Nothing
+            If Size > 0 Then Checker = New FileChecker With {.ActualSize = Size}
+            If Not String.IsNullOrWhiteSpace(Hash) Then
+                If Checker Is Nothing Then Checker = New FileChecker
+                Checker.Hash = Hash
+            End If
+            Dim Files As New List(Of NetFile) From {New NetFile(Urls, SavePath, Checker)}
+            Dim Tasks As New List(Of LoaderBase) From {New LoaderDownload("下载安装包", Files) With {.Block = True}}
+            Dim Loader As New LoaderCombo(Of Integer)("启动器更新", Tasks) With {
+                .OnStateChanged =
+                Sub(MyLoader)
+                    LoaderStateChangedHintOnly(MyLoader)
+                    Select Case MyLoader.State
+                        Case LoadState.Finished
+                            PromptInstallInstaller(SavePath, FileName)
+                        Case LoadState.Failed
+                            Hint("下载安装包失败，已为你打开下载页面。", HintType.Red)
+                            OpenWebsite(RepoUrl & "/releases/latest")
+                    End Select
+                End Sub
+            }
+            Loader.Start(1)
+            LoaderTaskbarAdd(Loader)
+            FrmMain.BtnExtraDownload.ShowRefresh()
+            Hint("已开始下载安装包，进度在右下角任务列表里", HintType.Blue, False)
+        Catch ex As Exception
+            Logger.Warn(ex, "启动安装包下载失败")
+            Hint("下载安装包失败，已为你打开下载页面。", HintType.Red)
+            OpenWebsite(RepoUrl & "/releases/latest")
+        End Try
     End Sub
 
+    ''' <summary>下载完成后询问是否立即安装。</summary>
+    Private Sub PromptInstallInstaller(SavePath As String, FileName As String)
+        Try
+            RunInUi(
+            Sub()
+                If MyMsgBox($"安装包已下载完成：{FileName}{vbCrLf}{vbCrLf}立即启动安装程序吗？{vbCrLf}安装程序会自动关闭缘启并替换程序文件，设置与存档不会丢失。",
+                            "检查更新", "立即安装", "稍后") = 1 Then
+                    StartProcess(SavePath)
+                    FrmMain.Close()
+                Else
+                    Hint($"安装包已保存到：{SavePath}", HintType.Blue)
+                End If
+            End Sub)
+        Catch ex As Exception
+        End Try
+    End Sub
     ''' <summary>启动时按设置自动检测更新（默认关闭）。</summary>
     Public Sub AutoCheckLauncherUpdate()
         Try
+            If UpdateCheckPaused Then Return
             If Not Settings.Get(Of Boolean)("UiAutoCheckUpdate") Then Return
             RunInNewThread(Sub()
                                Thread.Sleep(8000) '错开启动高峰

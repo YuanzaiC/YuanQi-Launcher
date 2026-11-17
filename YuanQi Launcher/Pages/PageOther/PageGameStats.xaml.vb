@@ -408,40 +408,97 @@ Public Class PageGameStats
         Return Sp
     End Function
 
+    ''' <summary>最近游玩最多列出几个游戏。</summary>
+    Private Const RecentMaxGames As Integer = 6
+    ''' <summary>同一个游戏最多展开几条记录，超出的收成一行「还有 N 次」。</summary>
+    Private Const RecentMaxSessions As Integer = 4
+
+    ''' <summary>
+    ''' 最近游玩：按游戏归组，同一个游戏的名字只出现一次，它玩过的几次缩进排在下面。
+    ''' 原来是逐条平铺，连玩几次同一个版本就会刷出一串一模一样的名字，看着像重复。
+    ''' 标题行给「共 N 次 · 合计X」，子行给每次的时间与时长。
+    ''' </summary>
     Private Sub BuildRecent(InRange As List(Of PlayLogModule.PlaySession))
         PanRecentList.Children.Clear()
         If InRange Is Nothing OrElse InRange.Count = 0 Then
             PanRecentList.Children.Add(MutedLine("还没有游玩记录，启动一次游戏后就会出现在这里"))
             Return
         End If
-        Dim Shown As Integer = 0
-        For Each S In InRange.OrderByDescending(Function(X) X.StartTime)
-            If Shown >= 8 Then Exit For
-            PanRecentList.Children.Add(BuildRecentRow(S))
-            Shown += 1
+        Dim Groups = InRange.
+            GroupBy(Function(S) PlayLogModule.GetSessionDisplayName(S)).
+            Select(Function(G)
+                       Return New With {
+                           .Name = G.Key,
+                           .Sessions = G.OrderByDescending(Function(S) S.StartTime).ToList()
+                       }
+                   End Function).
+            OrderByDescending(Function(X) X.Sessions(0).StartTime).
+            Take(RecentMaxGames).
+            ToList()
+        For Each Item In Groups
+            PanRecentList.Children.Add(BuildRecentGroup(Item.Name, Item.Sessions))
         Next
     End Sub
 
-    Private Function BuildRecentRow(S As PlayLogModule.PlaySession) As FrameworkElement
-        Dim G As New Grid With {.Margin = New Thickness(0, 0, 0, 7)}
-        G.ColumnDefinitions.Add(New ColumnDefinition With {.Width = GridLength.Auto})
-        G.ColumnDefinitions.Add(New ColumnDefinition With {.Width = New GridLength(1, GridUnitType.Star)})
-        G.ColumnDefinitions.Add(New ColumnDefinition With {.Width = GridLength.Auto})
+    ''' <summary>一组：标题行（名字 + 共 N 次 / 合计），下面是缩进的每次记录。</summary>
+    Private Function BuildRecentGroup(Name As String, Sessions As List(Of PlayLogModule.PlaySession)) As FrameworkElement
+        Dim Box As New StackPanel With {.Margin = New Thickness(0, 0, 0, 8)}
+        Dim TotalSeconds As Long = Sessions.Sum(Function(S) Math.Max(0L, S.DurationSeconds))
+
+        '标题行
+        Dim Head As New Grid
+        Head.ColumnDefinitions.Add(New ColumnDefinition With {.Width = GridLength.Auto})
+        Head.ColumnDefinitions.Add(New ColumnDefinition With {.Width = New GridLength(1, GridUnitType.Star)})
+        Head.ColumnDefinitions.Add(New ColumnDefinition With {.Width = GridLength.Auto})
         Dim Dot As New Border With {.Width = 6, .Height = 6, .CornerRadius = New CornerRadius(3),
                                     .VerticalAlignment = VerticalAlignment.Center, .Background = New SolidColorBrush(AccentColor())}
-        G.Children.Add(Dot)
-        Dim N As New TextBlock With {.Text = PlayLogModule.GetSessionDisplayName(S),
-                                     .FontSize = 12, .Margin = New Thickness(10, 0, 0, 0), .TextTrimming = TextTrimming.CharacterEllipsis}
+        Head.Children.Add(Dot)
+        Dim N As New TextBlock With {.Text = Name, .FontSize = 12,
+                                     .Margin = New Thickness(10, 0, 0, 0), .TextTrimming = TextTrimming.CharacterEllipsis}
         N.SetResourceReference(TextBlock.ForegroundProperty, "BrushText1")
         Grid.SetColumn(N, 1)
-        G.Children.Add(N)
+        Head.Children.Add(N)
         Dim Info As New TextBlock With {
-            .Text = $"{S.StartTime.ToString("M月d日 HH:mm")} · {FormatDuration(S.DurationSeconds)}",
+            .Text = If(Sessions.Count > 1,
+                       $"共 {Sessions.Count} 次 · 合计 {FormatDuration(TotalSeconds)}",
+                       $"{Sessions(0).StartTime.ToString("M月d日 HH:mm")} · {FormatDuration(TotalSeconds)}"),
             .FontSize = 11, .Margin = New Thickness(12, 0, 0, 0)}
         Info.SetResourceReference(TextBlock.ForegroundProperty, "BrushText3")
         Grid.SetColumn(Info, 2)
-        G.Children.Add(Info)
-        Return G
+        Head.Children.Add(Info)
+        Box.Children.Add(Head)
+
+        '只玩过一次就不展开，标题行已经写清楚了
+        If Sessions.Count <= 1 Then Return Box
+
+        For Each S In Sessions.Take(RecentMaxSessions)
+            Box.Children.Add(BuildRecentSessionRow(S))
+        Next
+        If Sessions.Count > RecentMaxSessions Then
+            Dim Rest As New TextBlock With {
+                .Text = $"还有 {Sessions.Count - RecentMaxSessions} 次",
+                .FontSize = 11, .Margin = New Thickness(16, 3, 0, 0)}
+            Rest.SetResourceReference(TextBlock.ForegroundProperty, "BrushText3")
+            Box.Children.Add(Rest)
+        End If
+        Return Box
+    End Function
+
+    ''' <summary>一次记录：左边时间，右边时长，整体缩进到名字下面。</summary>
+    Private Function BuildRecentSessionRow(S As PlayLogModule.PlaySession) As FrameworkElement
+        Dim Row As New Grid With {.Margin = New Thickness(0, 2, 0, 0)}
+        Row.ColumnDefinitions.Add(New ColumnDefinition With {.Width = New GridLength(1, GridUnitType.Star)})
+        Row.ColumnDefinitions.Add(New ColumnDefinition With {.Width = GridLength.Auto})
+        Dim TimeText As New TextBlock With {
+            .Text = S.StartTime.ToString("M月d日 HH:mm"),
+            .FontSize = 11, .Margin = New Thickness(16, 0, 0, 0), .TextTrimming = TextTrimming.CharacterEllipsis}
+        TimeText.SetResourceReference(TextBlock.ForegroundProperty, "BrushText3")
+        Row.Children.Add(TimeText)
+        Dim DurText As New TextBlock With {.Text = FormatDuration(S.DurationSeconds), .FontSize = 11}
+        DurText.SetResourceReference(TextBlock.ForegroundProperty, "BrushText3")
+        Grid.SetColumn(DurText, 1)
+        Row.Children.Add(DurText)
+        Return Row
     End Function
 
     Private Function MutedLine(Text As String) As FrameworkElement

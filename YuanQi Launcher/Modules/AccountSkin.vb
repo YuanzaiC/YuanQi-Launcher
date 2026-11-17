@@ -10,9 +10,6 @@ Imports Newtonsoft.Json.Linq
 ''' </summary>
 Public Module AccountSkinStore
 
-    ''' <summary>是否已经检查过账户头像（每个会话只检查一次）。</summary>
-    Private AccountSkinEnsured As Boolean = False
-
     Private Function EntryFile(Kind As String, Type As McLoginType) As String
         Return PathCache & "Accounts\" & Kind & Type.ToString() & ".ini"
     End Function
@@ -33,19 +30,29 @@ Public Module AccountSkinStore
         Return ReadValue(Type, Name, "Uuid")
     End Function
 
-    ''' <summary>旧记录可能指向已被清掉的共享皮肤缓存，这里兜一层：文件没了就试账户自己的副本。</summary>
+    ''' <summary>旧记录可能指向已被清掉的共享皮肤缓存，这里兜一层：文件没了就试账户自己的副本。
+    ''' 全都不在时返回空串，交给上层兜底头像，并让 NeedProbe 重新取一次。</summary>
     Private Function ResolveSkinPath(Type As McLoginType, Name As String, Path As String) As String
-        If String.IsNullOrWhiteSpace(Path) Then Return Path
+        If String.IsNullOrWhiteSpace(Path) Then Return ""
+        'pack:// 是启动器内置的默认头像资源，不需要做文件校验
+        If Path.StartsWithF("pack://", True) Then Return Path
         If IO.File.Exists(Path) Then Return Path
         Try
             Dim Key As String = If(Name, "").Trim()
-            If Key = "" Then Return Path
+            If Key = "" Then Return ""
             Dim Folder As String = PathCache & "Accounts\Avatar\"
             Dim Target As String = Folder & Type.ToString() & "_" & Key.GetStableHashCode() & IO.Path.GetExtension(Path)
             If IO.File.Exists(Target) Then Return Target
         Catch ex As Exception
         End Try
-        Return Path
+        Return ""
+    End Function
+
+    ''' <summary>这个路径现在能不能用来显示头像。</summary>
+    Private Function IsUsableSkinPath(Path As String) As Boolean
+        If String.IsNullOrWhiteSpace(Path) Then Return False
+        If Path.StartsWithF("pack://", True) Then Return True
+        Return IO.File.Exists(Path)
     End Function
 
     Private Function ReadValue(Type As McLoginType, Name As String, Kind As String) As String
@@ -66,16 +73,40 @@ Public Module AccountSkinStore
     Private Function EnsureAvatarCopy(Type As McLoginType, Name As String, SkinPath As String) As String
         Try
             If String.IsNullOrWhiteSpace(SkinPath) Then Return SkinPath
-            If Not IO.File.Exists(SkinPath) Then Return SkinPath
+            'pack:// 内置默认头像不用复制
+            If SkinPath.StartsWithF("pack://", True) Then Return SkinPath
             Dim Folder As String = PathCache & "Accounts\Avatar\"
-            If Not IO.Directory.Exists(Folder) Then IO.Directory.CreateDirectory(Folder)
             Dim Target As String = Folder & Type.ToString() & "_" & Name.GetStableHashCode() & IO.Path.GetExtension(SkinPath)
             '已经就是自己那份副本就不用再复制
             If String.Equals(SkinPath, Target, StringComparison.OrdinalIgnoreCase) Then Return Target
-            IO.File.Copy(SkinPath, Target, True)
+            '源文件不在（可能是刚被清掉的共享缓存）：保留原有副本，别把记录弄坏
+            If Not IO.File.Exists(SkinPath) Then Return If(IO.File.Exists(Target), Target, SkinPath)
+            If Not IO.Directory.Exists(Folder) Then IO.Directory.CreateDirectory(Folder)
+            '大小一致就认为还是同一张：不再覆盖，避免正在显示这张图时读到写了一半的文件
+            Dim TargetInfo As New IO.FileInfo(Target)
+            If TargetInfo.Exists AndAlso TargetInfo.Length = New IO.FileInfo(SkinPath).Length Then Return Target
+            '先写临时文件再原子替换，彻底避免读到半张图
+            Dim Tmp As String = Target & ".tmp"
+            IO.File.Copy(SkinPath, Tmp, True)
+            Try
+                IO.File.Replace(Tmp, Target, Nothing)
+            Catch ex As Exception
+                Logger.Warn(ex, "替换账户头像失败，改用覆盖写入")
+                IO.File.Copy(Tmp, Target, True)
+                Try
+                    IO.File.Delete(Tmp)
+                Catch ex2 As Exception
+                End Try
+            End Try
             Return Target
         Catch ex As Exception
             Logger.Warn(ex, "复制账户头像失败")
+            '复制失败也不要返回共享路径去覆盖已有记录：能用的副本优先
+            Try
+                Dim Existing As String = PathCache & "Accounts\Avatar\" & Type.ToString() & "_" & Name.GetStableHashCode() & IO.Path.GetExtension(SkinPath)
+                If IO.File.Exists(Existing) Then Return Existing
+            Catch ex2 As Exception
+            End Try
             Return SkinPath
         End Try
     End Function
@@ -86,9 +117,15 @@ Public Module AccountSkinStore
             Dim Key As String = If(Name, "").Trim()
             If Key = "" Then Return
             If Not String.IsNullOrWhiteSpace(SkinPath) Then
-                SkinPath = EnsureAvatarCopy(Type, Key, SkinPath)
-                WriteIni(EntryFile("Skin", Type), Key, SkinPath)
-                WriteIni(EntryFile("Time", Type), Key, GetTimeMs().ToString()) '记录更新时间，过期的会自动重新获取
+                Dim Copy As String = EnsureAvatarCopy(Type, Key, SkinPath)
+                '只有新路径确实能用、或者旧记录已经废了，才覆盖记录。
+                '否则一次复制失败就会把好记录退化成共享缓存路径，之后一清缓存头像就没了。
+                If IsUsableSkinPath(Copy) OrElse Not IsUsableSkinPath(ReadValue(Type, Key, "Skin")) Then
+                    WriteIni(EntryFile("Skin", Type), Key, Copy)
+                    WriteIni(EntryFile("Time", Type), Key, GetTimeMs().ToString()) '记录更新时间，过期的会自动重新获取
+                Else
+                    Logger.Warn($"账户头像未能更新，保留原记录（{Key}）")
+                End If
             End If
             If Not String.IsNullOrWhiteSpace(Role) Then WriteIni(EntryFile("Role", Type), Key, Role)
             If Not String.IsNullOrWhiteSpace(Uuid) Then WriteIni(EntryFile("Uuid", Type), Key, Uuid)
@@ -117,13 +154,14 @@ Public Module AccountSkinStore
         End Try
     End Sub
 
+    ''' <summary>已经探测过的账户，避免同一会话反复登录。头像文件丢了的账户仍允许再补一次。</summary>
+    Private ReadOnly ProbedKeys As New HashSet(Of String)
+
     ''' <summary>
     ''' 为所有还没有头像记录（或记录已过期）的第三方账户补齐一次（后台静默登录）。
-    ''' 全程只做一次：补齐后刷新界面，刷新界面又会重建账户列表，不设标记会无限循环。
+    ''' 只做一次：补齐后刷新界面，刷新界面又会重建账户列表，不设标记会无限循环。
     ''' </summary>
     Public Sub AccountSkinEnsureAll()
-        If AccountSkinEnsured Then Return
-        AccountSkinEnsured = True
         RunInNewThread(
         Sub()
             Dim Changed As Boolean = False
@@ -131,6 +169,10 @@ Public Module AccountSkinStore
                 For Each Ref As AccountRef In AccountPool.GetAllAccounts()
                     If Ref.Type <> McLoginType.Nide AndAlso Ref.Type <> McLoginType.Auth Then Continue For
                     If Not NeedProbe(Ref) Then Continue For
+                    Dim Key As String = Ref.Type.ToString() & "|" & Ref.Name
+                    '探测过一次就别再反复登录；但头像文件后来丢了（被清理掉）要允许再补
+                    If ProbedKeys.Contains(Key) AndAlso IsUsableSkinPath(AccountSkinGetSkin(Ref.Type, Ref.Name)) Then Continue For
+                    ProbedKeys.Add(Key)
                     If ProbeAccount(Ref) Then Changed = True
                 Next
             Catch ex As Exception
@@ -146,8 +188,7 @@ Public Module AccountSkinStore
     ''' <summary>头像记录缺失、文件丢了或超过一天没更新时才需要重新获取。</summary>
     Private Function NeedProbe(Ref As AccountRef) As Boolean
         Try
-            Dim SkinPath As String = AccountSkinGetSkin(Ref.Type, Ref.Name)
-            If String.IsNullOrWhiteSpace(SkinPath) OrElse Not IO.File.Exists(SkinPath) Then Return True
+            If Not IsUsableSkinPath(AccountSkinGetSkin(Ref.Type, Ref.Name)) Then Return True
             Dim Ticks As Long = 0
             Long.TryParse(ReadIni(EntryFile("Time", Ref.Type), Ref.Name), Ticks)
             If Ticks <= 0 Then Return True

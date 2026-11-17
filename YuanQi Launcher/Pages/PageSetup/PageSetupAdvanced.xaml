@@ -19,7 +19,7 @@
                     <local:MyCheckBox Text="调试模式" Height="22" x:Name="CheckDebugMode" local:SettingService.Key="SystemDebugMode"
                                       ToolTip="显示调试信息与更详细的错误" />
                     <local:MyCheckBox Text="下载时不复用已有文件" Height="22" Margin="0,6,0,0" x:Name="CheckDebugSkipCopy" local:SettingService.Key="SystemDebugSkipCopy"
-                                      ToolTip="不复制本地已有的同名文件，而是重新下载，用于测试下载速度" />
+                                      ToolTip="每次都重新下载，不复用本地同名文件，用来测下载速度" />
                     <local:MyCheckBox Text="添加随机延迟" Height="22" Margin="0,6,0,0" x:Name="CheckDebugDelay" local:SettingService.Key="SystemDebugDelay"
                                       ToolTip="在各环节加入随机延迟，用于测试弱网表现" />
                     <StackPanel Orientation="Horizontal" Margin="0,10,0,0">

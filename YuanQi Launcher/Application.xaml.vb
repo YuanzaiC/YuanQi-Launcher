@@ -85,12 +85,15 @@ Public Class Application
             '核心初始化
             MeloongCore.Main.Init("YQL")
             MeloongCore.Wpf.Main.Init()
+            '绿色便携化：先把注册表与 %AppData% 里的历史数据搬进程序目录，必须早于任何 Settings 读取
+            ModPortable.MigrateToPortable()
             If Not (e.Args.Contains("--update") OrElse e.Args.Contains("--gpu") OrElse e.Args.Contains("--memory")) Then '若是通过命令行调用，则不检查单例、不轮换日志（#9137）
                 WaitingMutex(e)
                 '不再使用系统级 SplashScreen（那张单独飘在屏幕中央的小图标）：
                 '开屏视觉统一交给主窗口里的白色覆盖层 + 卡片（UiLauncherSplash），
                 '否则会出现"一个小图标 → 又一张卡片"的重复观感。
                 Logger.Instance = New PclLogger With {.logFolder = Paths.BaseThenName, .MinLevel = If(ModeDebug, LogLevel.Trace, LogLevel.Info)}
+                ModPortable.FlushMigrationLog()
             End If
             '记录命令行参数，便于排查快捷方式参数（如 -egg）是否真的传进来了
             Try
@@ -105,8 +108,9 @@ Public Class Application
             Thread.CurrentThread.Priority = ThreadPriority.Highest
             '多核 JIT：记录启动期 JIT 热点，下次启动由后台线程并行编译，加快热启动
             Try
-                DirectoryUtils.Create(Paths.AppDataThenName)
-                System.Runtime.ProfileOptimization.SetProfileRoot(Paths.AppDataThenName)
+                '热点文件也放程序目录（原先在 %AppData%\YQL，便携版不留外部文件）
+                DirectoryUtils.Create(Paths.Base & "YQL\")
+                System.Runtime.ProfileOptimization.SetProfileRoot(Paths.Base & "YQL\")
                 System.Runtime.ProfileOptimization.StartProfile("JitProfileStartup")
             Catch ex As Exception
                 Logger.Warn(ex, "多核 JIT 配置失败")
@@ -163,7 +167,8 @@ Public Class Application
                                                  New Typeface(SystemFonts.MessageFontFamily, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal),
                                                  96, New MyColor, DPI)
             Catch ex As UriFormatException
-                Environment.SetEnvironmentVariable("windir", Environment.GetEnvironmentVariable("SystemRoot"), EnvironmentVariableTarget.User)
+                '写进程级环境变量就够了，便携版不去动 HKCU\Environment
+                Environment.SetEnvironmentVariable("windir", Environment.GetEnvironmentVariable("SystemRoot"), EnvironmentVariableTarget.Process)
                 Dim _unused As New FormattedText("", Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Fonts.SystemTypefaces.First, 96, New MyColor, DPI)
             End Try
             '初始化文件结构（失败时先重试：刚更新完或安全软件扫描时文件可能被短暂占用）
@@ -215,7 +220,7 @@ Public Class Application
                     Logger.Warn(ex, $"迁移旧缓存失败：{CacheName}")
                 End Try
             Next
-            DirectoryUtils.Create(Paths.AppDataThenName)
+            DirectoryUtils.Create(Paths.Base & "YQL\")
             '设置网络配置默认值
             ServicePointManager.Expect100Continue = False
             ServicePointManager.DefaultConnectionLimit = 10000

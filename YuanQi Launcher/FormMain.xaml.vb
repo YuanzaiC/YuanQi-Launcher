@@ -313,6 +313,8 @@ Public Class FormMain
         '加载 UI
         InitializeComponent()
         ApplyWindowAccelerationMode()
+        AddHandler Me.PreviewMouseDown, AddressOf OnSplashPreviewMouseDown
+        AddHandler Me.PreviewMouseLeftButtonDown, AddressOf OnEggPreviewMouseDown
         '硬件加速模式的窗口是不透明的：Show 之后到首帧渲染之间会露出"启动器本体页面"一瞬。
         '透明模式下这段被窗口 Opacity=0 挡住了，这里改用开屏白幕先盖上（Show 之前设置），
         '后面的开屏动画 / 白幕淡出流程会照常把它收掉；异常兜底时 SplashFinishInstant 也会收起它。
@@ -348,10 +350,10 @@ Public Class FormMain
 
     '---- 硬件加速模式：摘掉系统非客户区边框 ----
 
-    <Runtime.InteropServices.DllImport("user32.dll")>
+    <Runtime.InteropServices.DllImport("user32.dll", EntryPoint:="GetWindowLongW")>
     Private Shared Function AccelGetWindowLong(hWnd As IntPtr, nIndex As Integer) As Integer
     End Function
-    <Runtime.InteropServices.DllImport("user32.dll")>
+    <Runtime.InteropServices.DllImport("user32.dll", EntryPoint:="SetWindowLongW")>
     Private Shared Function AccelSetWindowLong(hWnd As IntPtr, nIndex As Integer, dwNewLong As Integer) As Integer
     End Function
     <Runtime.InteropServices.DllImport("user32.dll")>
@@ -362,6 +364,8 @@ Public Class FormMain
 
     Private Const GWL_STYLE As Integer = -16
     Private Const DWMWA_TRANSITIONS_FORCEDISABLED As Integer = 3
+    ''' <summary>窗口圆角偏好（Windows 11 起支持）。</summary>
+    Private Const DWMWA_WINDOW_CORNER_PREFERENCE As Integer = 33
     Private Const WS_CAPTION As Integer = &HC00000
     Private Const WS_THICKFRAME As Integer = &H40000
     Private Const WS_BORDER As Integer = &H800000
@@ -393,6 +397,13 @@ Public Class FormMain
                 AccelSetWindowLong(H, GWL_STYLE, NewStyle)
                 SetWindowPos(H, IntPtr.Zero, 0, 0, 0, 0, SWP_NOSIZE Or SWP_NOMOVE Or SWP_NOZORDER Or SWP_FRAMECHANGED)
             End If
+            '硬件加速模式没有系统边框，窗口是直角；让 DWM 直接画圆角（Windows 11 起支持）
+            Try
+                Dim RoundCorners As Integer = 2 'DWMWCP_ROUND
+                Dim Result As Integer = DwmSetWindowAttribute(H, DWMWA_WINDOW_CORNER_PREFERENCE, RoundCorners, 4)
+                If Result <> 0 Then Logger.Info("当前系统不支持窗口圆角（需要 Windows 11 及以上）")
+            Catch ex As Exception
+            End Try
             '摘掉边框后客户区变大（多出边框那一圈），WPF 默认要等下一次布局才把内容铺满，
             '中间那一帧就是内容比窗口小一圈、右边和下边露出底色。这里立刻按新尺寸重排一次，
             '让首帧就是铺满的。
@@ -657,6 +668,18 @@ Public Class FormMain
         BtnExtraShutdown.ShowCheck = AddressOf BtnExtraShutdown_ShowCheck
         BtnExtraApril.ShowRefresh()
         '初始化尺寸改变
+        '缩放热区原本只靠 0.0001 的描边做命中，几乎点不到；给一个近乎全透明的填充让它可命中
+        Try
+            Dim HitBrush As New SolidColorBrush(Color.FromArgb(1, 0, 0, 0))
+            For Each Item As FrameworkElement In New FrameworkElement() {ResizerT, ResizerB, ResizerL, ResizerR, ResizerLT, ResizerLB, ResizerRB, ResizerRT}
+                Dim Rect As Shapes.Rectangle = TryCast(Item, Shapes.Rectangle)
+                If Rect IsNot Nothing Then Rect.Fill = HitBrush
+                '内容在加速模式下铺满到窗口边缘，会把热区盖住：把热区提到最上层
+                Panel.SetZIndex(Item, 9999)
+            Next
+        Catch ex As Exception
+            Logger.Warn(ex, "设置缩放热区填充失败")
+        End Try
         Dim Resizer As New MyResizer(Me)
         Resizer.addResizerDown(ResizerB)
         Resizer.addResizerLeft(ResizerL)
@@ -816,6 +839,15 @@ Public Class FormMain
     Private SplashCardShown As Boolean = False
     ''' <summary>本次启动选中的特殊苏醒动画。彩蛋需要「先弹图标再播视频」，因此在揭示阶段才真正接管。</summary>
     Private SplashSpecialMode As ModSplashEvent.SpecialSplashTypes = ModSplashEvent.SpecialSplashTypes.None
+    ''' <summary>本次启动已经播过的特殊开屏动画（消费后仍保留，供其它页面联动）。</summary>
+    Private _SplashPlayedSpecial As ModSplashEvent.SpecialSplashTypes = ModSplashEvent.SpecialSplashTypes.None
+    ''' <summary>本次启动实际播放的特殊开屏动画类型。</summary>
+    Public ReadOnly Property SplashPlayedSpecial As ModSplashEvent.SpecialSplashTypes
+        Get
+            If _SplashPlayedSpecial <> ModSplashEvent.SpecialSplashTypes.None Then Return _SplashPlayedSpecial
+            Return SplashSpecialMode '还没被消费时直接从待播放状态取
+        End Get
+    End Property
     ''' <summary>彩蛋视频是否正在播放（播放期间主页可见但不可交互）。</summary>
     Private SplashVideoPlaying As Boolean = False
     ''' <summary>彩蛋视频的 WebView2 是否已初始化完成。</summary>
@@ -996,12 +1028,14 @@ Public Class FormMain
         SplashSettleTick = 0
         '彩蛋动画：图标已经弹出来了，这里改为播放视频（不再飞向主页）
         If SplashSpecialMode = ModSplashEvent.SpecialSplashTypes.EasterEgg Then
+            _SplashPlayedSpecial = ModSplashEvent.SpecialSplashTypes.EasterEgg
             SplashSpecialMode = ModSplashEvent.SpecialSplashTypes.None
             SplashBeginEasterEggVideo()
             Return
         End If
         '国庆动画：图标已经弹出来了，先把白底渐变成红色，再继续原版飞行动画
         If SplashSpecialMode = ModSplashEvent.SpecialSplashTypes.NationalDay Then
+            _SplashPlayedSpecial = ModSplashEvent.SpecialSplashTypes.NationalDay
             SplashSpecialMode = ModSplashEvent.SpecialSplashTypes.None
             SplashFadeToFestival("国庆", {CType(PaletteRedDark, Color), CType(PaletteRedDark2, Color),
                                          CType(PaletteRedDeep, Color), CType(PaletteRedMain, Color)})
@@ -1009,6 +1043,7 @@ Public Class FormMain
         End If
         '春节动画：同样的流程，目标色换成更暖更亮的灯火红
         If SplashSpecialMode = ModSplashEvent.SpecialSplashTypes.SpringFestival Then
+            _SplashPlayedSpecial = ModSplashEvent.SpecialSplashTypes.SpringFestival
             SplashSpecialMode = ModSplashEvent.SpecialSplashTypes.None
             SplashFadeToFestival("春节", {CType(PaletteSpringDark, Color), CType(PaletteSpringDark2, Color),
                                          CType(PaletteSpringRed, Color), CType(PaletteSpringRed2, Color)})
@@ -1140,8 +1175,23 @@ Public Class FormMain
                     FlightProg += i
                     Dim t As Double = FlightProg.Clamp(0, 1)
                     Dim Inv = 1 - t
-                    SplashBlockPos.X = 2 * Inv * t * CtrlX + t * t * BlockDelta.X
-                    SplashBlockPos.Y = 2 * Inv * t * CtrlY + t * t * BlockDelta.Y
+                    '落点每帧重新取一次：飞行途中滚动页面时，图标会跟着目标一起移，不会掉在原地
+                    Dim DeltaX As Double = BlockDelta.X
+                    Dim DeltaY As Double = BlockDelta.Y
+                    Dim CtrlNowX As Double = CtrlX
+                    Dim CtrlNowY As Double = CtrlY
+                    Try
+                        If HeroImg IsNot Nothing AndAlso HeroImg.IsArrangeValid AndAlso PanForm IsNot Nothing Then
+                            Dim NowPoint As Point = HeroImg.TransformToAncestor(PanForm).Transform(New Point(HeroImg.ActualWidth / 2, HeroImg.ActualHeight / 2))
+                            DeltaX = NowPoint.X - BlockCenter.X
+                            DeltaY = NowPoint.Y - BlockCenter.Y
+                            CtrlNowX = DeltaX / 2 - DeltaY * 0.1
+                            CtrlNowY = DeltaY / 2 + DeltaX * 0.1
+                        End If
+                    Catch ex As Exception
+                    End Try
+                    SplashBlockPos.X = 2 * Inv * t * CtrlNowX + t * t * DeltaX
+                    SplashBlockPos.Y = 2 * Inv * t * CtrlNowY + t * t * DeltaY
                 End Sub, 1, 880, 0, New AniEaseSplashGlide),
                 AaDouble(SplashBlockScale, ScaleTransform.ScaleXProperty, BlockScale - SplashBlockScale.ScaleX, 720, 0, New AniEaseOutFluent(AniEasePower.Weak)),
                 AaDouble(SplashBlockScale, ScaleTransform.ScaleYProperty, BlockScale - SplashBlockScale.ScaleY, 720, 0, New AniEaseOutFluent(AniEasePower.Weak)),
@@ -1203,6 +1253,20 @@ Public Class FormMain
             Logger.Warn(ex, "打断开屏动画失败")
             SplashAborting = False
             SplashFinishInstant()
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' 开屏图标还在飞的时候，用户按到任何按钮都算"他要开始操作了"：
+    ''' 立刻淡出收掉开屏，不要继续霸着屏幕。滚轮不算（那是想滚动看内容）。
+    ''' </summary>
+    Private Sub OnSplashPreviewMouseDown(Sender As Object, E As MouseButtonEventArgs)
+        Try
+            If Not SplashIsActive OrElse Not SplashFlightStarted Then Return
+            '按到哪儿都算"要开始用了"：启动器自己的按钮是画出来的，不是 ButtonBase，
+            '所以不能靠控件类型判断，直接看有没有按下鼠标。滚轮不触发这个事件，滚动仍然只跟随。
+            AbortSplashFlight("鼠标点击")
+        Catch ex As Exception
         End Try
     End Sub
 
@@ -1794,14 +1858,14 @@ Public Class FormMain
         End If
         '被移除的窗口设置选项
         If Settings.Get(Of Integer)("LaunchArgumentWindowType") = 5 Then Settings.Set("LaunchArgumentWindowType", 1)
-        '移动自定义皮肤
-        If LastVersionCode <= 161 AndAlso FileUtils.Exists(Paths.Base & "YQL\CustomSkin.png") AndAlso Not FileUtils.Exists(Paths.AppDataThenName & "CustomSkin.png") Then
-            FileUtils.Copy(Paths.Base & "YQL\CustomSkin.png", Paths.AppDataThenName & "CustomSkin.png")
-            Logger.Info("已移动离线自定义皮肤 (162)")
-        End If
-        If LastVersionCode <= 263 AndAlso FileUtils.Exists(PathTemp & "CustomSkin.png") AndAlso Not FileUtils.Exists(Paths.AppDataThenName & "CustomSkin.png") Then
-            FileUtils.Copy(PathTemp & "CustomSkin.png", Paths.AppDataThenName & "CustomSkin.png")
-            Logger.Info("已移动离线自定义皮肤 (264)")
+        '移动自定义皮肤（旧版放在系统临时目录，便携版统一收进 YQL\CustomSkin.png）
+        '%AppData%\YQL 里那份由 ModPortable 在启动时迁移，这里只补临时目录这个更老的位置
+        If LastVersionCode <= 263 AndAlso Not FileUtils.Exists(PathSkin) Then
+            Dim LegacySkin As String = PathUtils.AddSlashSuffix(IO.Path.GetTempPath() & "YQL\") & "CustomSkin.png"
+            If FileUtils.Exists(LegacySkin) Then
+                FileUtils.Copy(LegacySkin, PathSkin)
+                Logger.Info("已移动离线自定义皮肤 (264)")
+            End If
         End If
 
         '单向迁移微软登录结果（#4836）
@@ -2148,8 +2212,9 @@ Public Class FormMain
                 BorderForm.BorderThickness = New Thickness(0)
                 BorderForm.BorderBrush = Nothing
             End If
-            ResizeMode = System.Windows.ResizeMode.CanResize '拖边改大小交给 WindowChrome.ResizeBorderThickness
-            SetResizers(False) '连热区也一起藏掉，否则它们的渐变会再画出一圈黑边
+            ResizeMode = System.Windows.ResizeMode.CanResize
+            '摘掉 WS_THICKFRAME 后系统不再提供缩放边框，只能靠这 8 条自定义热区
+            SetResizers(True)
             Return
         End If
         '状态没变就不重复改窗口样式：反复重建 HWND 样式会打断系统的还原/激活流程
@@ -4014,8 +4079,129 @@ Public Class FormMain
             Logger.Error(ex, "强制关闭所有 Minecraft 失败")
         End Try
     End Sub
+    '---- 彩蛋开关：点问候语切换（首页用它决定启动按钮要不要躲鼠标）----
+
+    Private _EggDodgeActive As Boolean = False
+
+    ''' <summary>彩蛋是否已开启（点了问候语之后才为 True）。</summary>
+    Public ReadOnly Property EasterEggChaosRunning As Boolean
+        Get
+            Return _EggDodgeActive
+        End Get
+    End Property
+
+    Private ReadOnly _EggRand As New Random()
+
+    ''' <summary>彩蛋：点什么都没反应在原来的按钮上，直接随机跳一个页面。</summary>
+    Private Sub EggRandomNavigate()
+        Try
+            Dim Targets As New List(Of (Page As PageType, SubPage As PageSubType)) From {
+                (PageType.Launch, PageSubType.Default),
+                (PageType.Download, PageSubType.DownloadInstall),
+                (PageType.Link, PageSubType.LinkMain),
+                (PageType.Setup, PageSubType.SetupLaunch),
+                (PageType.Tools, PageSubType.OtherTools),
+                (PageType.SeedMap, PageSubType.Default),
+                (PageType.Other, PageSubType.Default),
+                (PageType.InstanceSelect, PageSubType.Default)
+            }
+            Dim Pick = Targets(_EggRand.Next(Targets.Count))
+            Logger.Info($"彩蛋：随机跳到 {Pick.Page}")
+            PageChange(Pick.Page, Pick.SubPage)
+        Catch ex As Exception
+            Logger.Warn(ex, "彩蛋随机跳转失败")
+        End Try
+    End Sub
+
+    ''' <summary>彩蛋开启期间：点按钮就随机跳页（问候语、标题栏按钮、滚动条放行）。</summary>
+    Private Sub OnEggPreviewMouseDown(Sender As Object, E As MouseButtonEventArgs)
+        Try
+            If Not _EggDodgeActive Then Return
+            Dim Node As DependencyObject = TryCast(E.OriginalSource, DependencyObject)
+            Dim IsButton As Boolean = False
+            Dim Depth As Integer = 0
+            Do While Node IsNot Nothing AndAlso Depth < 40
+                Dim Fe As FrameworkElement = TryCast(Node, FrameworkElement)
+                If Fe IsNot Nothing Then
+                    Dim N As String = If(Fe.Name, "")
+                    If N = "LabGreetingTitle" OrElse N = "BtnMin" OrElse N = "BtnMax" OrElse N = "BtnClose" Then Return
+                    If TypeOf Fe Is System.Windows.Controls.Primitives.ScrollBar Then Return
+                    If TypeOf Fe Is System.Windows.Controls.Primitives.ButtonBase OrElse TypeOf Fe Is MyButton OrElse TypeOf Fe Is MyIconButton OrElse TypeOf Fe Is MyTextButton Then IsButton = True
+                End If
+                Node = VisualTreeHelper.GetParent(Node)
+                Depth += 1
+            Loop
+            If Not IsButton Then Return
+            E.Handled = True
+            EggRandomNavigate()
+        Catch ex As Exception
+            Logger.Warn(ex, "彩蛋点击拦截失败")
+        End Try
+    End Sub
+
+    '---- 彩蛋：彩色渐变背景 ----
+
+    Private _EggGradient As LinearGradientBrush = Nothing
+    Private _EggBackSaved As Boolean = False
+    Private _EggPrevWindow As Brush = Nothing
+    Private _EggPrevPanBack As Brush = Nothing
+    Private _EggPrevPanForm As Brush = Nothing
+
+    Private Sub EggBackground_Enable()
+        Try
+            If _EggBackSaved Then Return
+            _EggPrevWindow = Background
+            If PanBack IsNot Nothing Then _EggPrevPanBack = PanBack.Background
+            If PanForm IsNot Nothing Then _EggPrevPanForm = PanForm.Background
+            _EggBackSaved = True
+            Dim B As New LinearGradientBrush With {.StartPoint = New Point(0, 0), .EndPoint = New Point(1, 1)}
+            B.GradientStops.Add(New GradientStop(Color.FromRgb(255, 126, 126), 0.0))
+            B.GradientStops.Add(New GradientStop(Color.FromRgb(255, 190, 110), 0.17))
+            B.GradientStops.Add(New GradientStop(Color.FromRgb(255, 242, 140), 0.33))
+            B.GradientStops.Add(New GradientStop(Color.FromRgb(150, 232, 150), 0.5))
+            B.GradientStops.Add(New GradientStop(Color.FromRgb(128, 200, 255), 0.67))
+            B.GradientStops.Add(New GradientStop(Color.FromRgb(178, 160, 255), 0.84))
+            B.GradientStops.Add(New GradientStop(Color.FromRgb(255, 150, 220), 1.0))
+            _EggGradient = B
+            Background = B
+            If PanBack IsNot Nothing Then PanBack.Background = B
+            If PanForm IsNot Nothing Then PanForm.Background = B
+        Catch ex As Exception
+            Logger.Warn(ex, "开启彩蛋渐变背景失败")
+        End Try
+    End Sub
+
+    Private Sub EggBackground_Disable()
+        Try
+            If Not _EggBackSaved Then Return
+            Background = _EggPrevWindow
+            If PanBack IsNot Nothing Then PanBack.Background = _EggPrevPanBack
+            If PanForm IsNot Nothing Then PanForm.Background = _EggPrevPanForm
+            _EggBackSaved = False
+            _EggGradient = Nothing
+        Catch ex As Exception
+            Logger.Warn(ex, "还原彩蛋背景失败")
+        End Try
+    End Sub
+
+    ''' <summary>切换彩蛋：开启后首页的启动按钮会躲鼠标，再点一次关闭。</summary>
+    Public Sub ToggleEasterEggBounce()
+        Try
+            _EggDodgeActive = Not _EggDodgeActive
+            If _EggDodgeActive Then
+                EggBackground_Enable()
+            Else
+                EggBackground_Disable()
+            End If
+            Logger.Info($"彩蛋按钮躲避：{If(_EggDodgeActive, "开启", "关闭")}")
+            Hint(If(_EggDodgeActive, "彩蛋：启动按钮开始躲你了", "彩蛋已关掉"), If(_EggDodgeActive, HintType.Green, HintType.Blue))
+        Catch ex As Exception
+            Logger.Warn(ex, "切换彩蛋失败")
+        End Try
+    End Sub
     Public Function BtnExtraShutdown_ShowCheck() As Boolean
-        Return HasRunningMinecraft
+        '不再在右下角显示"关闭游戏"：这一职责移到首页的启动按钮（按当前实例 + 当前账号判断）
+        Return False
     End Function
 
     ''' <summary>

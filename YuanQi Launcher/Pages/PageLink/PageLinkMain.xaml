@@ -84,39 +84,54 @@
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="1*" />
                         </Grid.ColumnDefinitions>
-                        <local:MyLoading x:Name="Load" Width="46" Height="46" VerticalAlignment="Center" AutoRun="True"
+                        <local:MyLoading x:Name="Load" Width="72" Height="64" VerticalAlignment="Center" AutoRun="True"
                                          Text="" TextError="" TextErrorInherit="False" IsHitTestVisible="False" />
                         <StackPanel Grid.Column="1" Margin="18,0,0,0" VerticalAlignment="Center">
                             <TextBlock x:Name="LabLoadTitle" Text="创建房间" FontSize="21" Foreground="{StaticResource ColorBrush1}" />
-                            <TextBlock x:Name="LabLoadStage" Text="准备创建房间" FontSize="13" Margin="0,5,0,0" Foreground="{StaticResource ColorBrushGray3}" />
                         </StackPanel>
                     </Grid>
 
-                    <!-- 四步进度轨道 -->
-                    <Grid x:Name="StepBar" Grid.Row="1" Margin="0,28,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="1*" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="1*" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="1*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <Ellipse x:Name="StepDot0" Grid.Column="0" Width="14" Height="14" VerticalAlignment="Center" Fill="{StaticResource ColorBrush3}" />
-                        <Rectangle Grid.Column="1" Height="3" Margin="10,0" VerticalAlignment="Center" Fill="{StaticResource ColorBrushGray6}" />
-                        <Ellipse x:Name="StepDot1" Grid.Column="2" Width="14" Height="14" VerticalAlignment="Center" Fill="{StaticResource ColorBrushGray6}" />
-                        <Rectangle Grid.Column="3" Height="3" Margin="10,0" VerticalAlignment="Center" Fill="{StaticResource ColorBrushGray6}" />
-                        <Ellipse x:Name="StepDot2" Grid.Column="4" Width="14" Height="14" VerticalAlignment="Center" Fill="{StaticResource ColorBrushGray6}" />
-                        <Rectangle Grid.Column="5" Height="3" Margin="10,0" VerticalAlignment="Center" Fill="{StaticResource ColorBrushGray6}" />
-                        <Ellipse x:Name="StepDot3" Grid.Column="6" Width="14" Height="14" VerticalAlignment="Center" Fill="{StaticResource ColorBrushGray6}" />
+                    <!-- 阶段：像歌词一样向上滚动 -->
+                    <!-- 阶段：像歌词一样向上滚动（四行等高，滚一格正好一行） -->
+                    <Grid x:Name="PanLyric" Grid.Row="1" Margin="0,18,0,0" Height="126" ClipToBounds="True">
+                        <Grid x:Name="PanLyricInner">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="42" />
+                                <RowDefinition Height="42" />
+                                <RowDefinition Height="42" />
+                                <RowDefinition Height="42" />
+                            </Grid.RowDefinitions>
+                            <Grid Grid.Row="0">
+                                <TextBlock x:Name="LabLyric0" FontSize="13" Opacity="0.42" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" Foreground="{StaticResource ColorBrushGray3}" />
+                                <Rectangle x:Name="BarLyric0" Height="1.6" Width="0" Opacity="0" RadiusX="1" RadiusY="1"
+                                           HorizontalAlignment="Left" VerticalAlignment="Center" IsHitTestVisible="False"
+                                           Fill="{StaticResource ColorBrushGray3}" />
+                            </Grid>
+                            <Grid Grid.Row="1">
+                                <TextBlock x:Name="LabLyric1" FontSize="16.5" FontWeight="SemiBold" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" Foreground="{DynamicResource ColorBrush3}" />
+                                <Rectangle x:Name="BarLyric1" Height="1.6" Width="0" Opacity="0" RadiusX="1" RadiusY="1"
+                                           HorizontalAlignment="Left" VerticalAlignment="Center" IsHitTestVisible="False"
+                                           Fill="{DynamicResource ColorBrush3}" />
+                            </Grid>
+                            <Grid Grid.Row="2">
+                                <TextBlock x:Name="LabLyric2" FontSize="13" Opacity="0.26" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" Foreground="{StaticResource ColorBrushGray3}" />
+                                <Rectangle x:Name="BarLyric2" Height="1.6" Width="0" Opacity="0" RadiusX="1" RadiusY="1"
+                                           HorizontalAlignment="Left" VerticalAlignment="Center" IsHitTestVisible="False"
+                                           Fill="{StaticResource ColorBrushGray3}" />
+                            </Grid>
+                            <Grid Grid.Row="3">
+                                <TextBlock x:Name="LabLyric3" FontSize="13" Opacity="0.16" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" Foreground="{StaticResource ColorBrushGray3}" />
+                            </Grid>
+                        </Grid>
                     </Grid>
-
                     <!-- 当前要做什么：一句醒目的话 -->
                     <TextBlock x:Name="LabLoadDesc" Grid.Row="2" Margin="0,22,0,0" Text="" FontSize="17" FontWeight="SemiBold"
                                LineHeight="24" MaxHeight="80" TextWrapping="Wrap" Foreground="{StaticResource ColorBrush1}" />
 
-                    <local:MyHint x:Name="HintLoad" Grid.Row="3" Margin="0,14,0,0" Visibility="Collapsed" Text="" Theme="Blue" />
 
                     <!-- 进度 -->
                     <Grid Grid.Row="4" Margin="0,24,0,0">
@@ -209,7 +224,8 @@
                         </Grid>
                     </Border>
 
-                    <local:MyHint x:Name="HintFinish" Grid.Row="2" Margin="0,16,0,0" Visibility="Collapsed" Text="" Theme="Blue" />
+                    <TextBlock x:Name="LabFinishTip" Grid.Row="2" Margin="0,16,0,0" Text="" FontSize="12.5"
+                               TextWrapping="Wrap" LineHeight="18" Foreground="{StaticResource ColorBrushGray4}" />
 
                     <Grid Grid.Row="3" Margin="0,18,0,0">
                         <local:MyButton x:Name="BtnFinishExit" Text="退出" Padding="26,9" MinWidth="118" HorizontalAlignment="Right" />

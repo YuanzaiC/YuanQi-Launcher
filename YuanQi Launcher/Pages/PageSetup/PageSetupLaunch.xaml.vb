@@ -58,7 +58,7 @@ Public Class PageSetupLaunch
     Private Sub RadioSkinType3_Check(sender As Object, e As RouteEventArgs) Handles RadioSkinType4.PreviewCheck
         If Not (AniControlEnabled = 0 AndAlso e.RaiseByMouse) Then Return
         '已有图片则不再选择
-        If FileUtils.Exists(Paths.AppDataThenName & "CustomSkin.png") Then Return
+        If FileUtils.Exists(PathSkin) Then Return
         '没有图片则要求选择
         Dim SkinInfo As McSkinInfo = McSkinSelect()
         If Not SkinInfo.IsVaild Then
@@ -72,17 +72,17 @@ Public Class PageSetupLaunch
     Private Function ChangeSkin(SkinInfo As McSkinInfo) As Boolean
         Try
             '复制文件
-            FileUtils.Copy(SkinInfo.LocalFile, Paths.AppDataThenName & "CustomSkin.png")
+            FileUtils.Copy(SkinInfo.LocalFile, PathSkin)
             '将单层皮肤扩展到双层
-            Dim Bitmap As New MyBitmap(Paths.AppDataThenName & "CustomSkin.png")
+            Dim Bitmap As New MyBitmap(PathSkin)
             If Bitmap.Pic.Width = 64 AndAlso Bitmap.Pic.Height = 32 Then
                 Dim Img As System.Drawing.Image = Bitmap
                 Dim NewBitmap As New System.Drawing.Bitmap(64, 64)
                 Using g As System.Drawing.Graphics = System.Drawing.Graphics.FromImage(NewBitmap)
                     g.DrawImageUnscaled(Img, New System.Drawing.Point(0, 0))
                 End Using
-                FileUtils.Delete(Paths.AppDataThenName & "CustomSkin.png")
-                NewBitmap.Save(Paths.AppDataThenName & "CustomSkin.png")
+                FileUtils.Delete(PathSkin)
+                NewBitmap.Save(PathSkin)
             End If
             '更新设置
             Settings.Set("LaunchSkinSlim", SkinInfo.IsSlim)
@@ -97,7 +97,7 @@ Public Class PageSetupLaunch
     End Function
     Private Sub BtnSkinDelete_Click(sender As Object, e As EventArgs) Handles BtnSkinDelete.Click
         Try
-            FileUtils.Delete(Paths.AppDataThenName & "CustomSkin.png")
+            FileUtils.Delete(PathSkin)
             RadioSkinType0.SetChecked(True, True)
             Hint("离线皮肤已清空！", HintType.Green)
         Catch ex As Exception
@@ -396,7 +396,7 @@ PreFin:
                 AddHandler DownButton.Click, Sub() MoveJavaInList(JavaEntry, 1)
                 Buttons.Add(DownButton)
                 '从列表中移除按钮
-                Dim IsOfficial As Boolean = PathUtils.IsParentOf($"{Paths.AppData}.minecraft\runtime\", JavaEntry.Folder)
+                Dim IsOfficial As Boolean = IsLauncherManagedJava(JavaEntry.Folder)
                 Dim DeleteButton As New MyIconButton With {.Logo = Logo.IconButtonStop, .Height = 24, .Width = 24}
                 DeleteButton.IsEnabled = Not IsOfficial
                 DeleteButton.ToolTip = If(DeleteButton.IsEnabled, "从列表中移除", "无法移除官方 Java")

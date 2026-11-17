@@ -104,7 +104,7 @@ Public Class Settings
         New Setting("LaunchAdvanceRunWait", True),
         New Setting("LaunchAdvanceDisableJLW", False),
         New Setting("LaunchAdvanceDisableLUA", False),
-        New Setting("LaunchAdvanceGraphicCard", True, Source:=Sources.Registry),
+        New Setting("LaunchAdvanceGraphicCard", False, Source:=Sources.Registry), '绿色便携版默认不碰注册表，所以这一项不再默认开启（会写 HKCU\...\DirectX\UserGpuPreferences）
         New Setting("LaunchAdvanceGC", 4),
         New Setting("LaunchRamType", 0, OnChanged:=AddressOf PageSetupLaunch.UpdateRamType),
         New Setting("LaunchRamCustom", 15),
@@ -227,8 +227,14 @@ Public Class Settings
     }).ToDictionary(Function(e) e.Key)
 
     Public Enum Sources
+        ''' <summary>保存在 YQL\Setup.ini。</summary>
         Normal
+        ''' <summary>
+        ''' 历史上保存在 HKCU\Software\YQL 的那一批设置项。
+        ''' 便携版改为同样存进 YQL\Setup.ini，这里保留枚举值只是为了标明来源与迁移范围。
+        ''' </summary>
         Registry
+        ''' <summary>保存在各版本自己的 YQL\Setup.ini。</summary>
         Instance
     End Enum
     Public Class Setting
@@ -273,7 +279,9 @@ Public Class Settings
         End Sub
 
         ''' <summary>
-        ''' 立即将当前的 Value 写入对应的注册表或文件。
+        ''' 立即将当前的 Value 写入对应的文件。
+        ''' Registry 类设置项现在也写进 YQL\Setup.ini（便携版不写注册表），
+        ''' 历史注册表数据由 ModPortable 在启动时一次性迁移过来。
         ''' </summary>
         Public Sub Save(Optional Instance As McInstance = Nothing)
             Dim Value As String = GetCache(Instance)
@@ -287,14 +295,9 @@ Public Class Settings
                 End Try
             End If
             Select Case Source
-                Case Sources.Normal
+                Case Sources.Normal, Sources.Registry
+                    'Registry 只表示「历史上存在注册表里的那一批设置项」，现在统一落在 YQL\Setup.ini
                     WriteIni("Setup", Key, Value)
-                Case Sources.Registry
-                    Try
-                        RegistryUtils.Write($"HKEY_CURRENT_USER\Software\{RegFolder}", Key, Value)
-                    Catch ex As Exception
-                        Logger.Warn(ex, $"写入注册表失败（{Key} → {Value}）", LogBehavior.Toast)
-                    End Try
                 Case Sources.Instance
                     If Instance Is Nothing Then Throw New Exception($"保存版本独立设置 {Key} 时未提供目标版本")
                     WriteIni(Instance.PathVersion & "YQL\Setup.ini", Key, Value)
@@ -354,10 +357,8 @@ Public Class Settings
             Dim GotValue As String = Nothing '先用 String 储存，避免类型转换
             Dim DefaultValue As String = If(Entry.Encrypted, DesEncrypt(Entry.DefaultValue, "YQL" & Identify), Entry.DefaultValue)
             Select Case Entry.Source
-                Case Sources.Normal
+                Case Sources.Normal, Sources.Registry
                     GotValue = ReadIni("Setup", Key, DefaultValue)
-                Case Sources.Registry
-                    GotValue = RegistryUtils.TryRead($"HKEY_CURRENT_USER\Software\{RegFolder}", Key, DefaultValue)
                 Case Sources.Instance
                     If Instance Is Nothing Then
                         Throw New Exception($"读取版本设置 {Key} 时未提供目标版本")
@@ -413,14 +414,8 @@ Public Class Settings
             '设置新值
             Entry.Set(Entry.DefaultValue, Instance)
             Select Case Entry.Source
-                Case Sources.Normal
+                Case Sources.Normal, Sources.Registry
                     DeleteIniKey("Setup", Key)
-                Case Sources.Registry
-                    Try
-                        RegistryUtils.Delete($"HKEY_CURRENT_USER\Software\{RegFolder}", Key)
-                    Catch ex As Exception
-                        Logger.Warn(ex, $"删除注册表失败（{Key}）", LogBehavior.Toast)
-                    End Try
                 Case Sources.Instance
                     If Instance Is Nothing Then Throw New Exception($"重置版本设置 {Key} 时未提供目标版本")
                     DeleteIniKey(Instance.PathVersion & "YQL\Setup.ini", Key)
@@ -440,20 +435,13 @@ Public Class Settings
     End Function
 
     ''' <summary>
-    ''' 对应的注册表或文件是否已经储存了某个设置项。
+    ''' 对应的文件是否已经储存了某个设置项。
     ''' 若改成了和默认值一样的，在 2.12.3- 会储存更改，在 2.12.4+ 不会储存更改。
     ''' </summary>
     Public Shared Function HasSaved(Key As String, Optional Instance As McInstance = Nothing) As Boolean
         Select Case Entries(Key).Source
-            Case Sources.Normal
+            Case Sources.Normal, Sources.Registry
                 Return HasIniKey("Setup", Key)
-            Case Sources.Registry
-                Try
-                    Return RegistryUtils.Has($"HKEY_CURRENT_USER\Software\{RegFolder}", Key)
-                Catch ex As Exception
-                    Logger.Warn(ex, $"判断注册表 {Key} 是否存在时出错")
-                    Return False
-                End Try
             Case Else 'Source.Instance
                 If Instance Is Nothing Then Throw New Exception($"判断版本设置 {Key} 是否存在时未提供目标版本")
                 Return HasIniKey(Instance.PathVersion & "YQL\Setup.ini", Key)

@@ -90,7 +90,7 @@
             <local:MyCard Margin="0,0,0,15" Title="法律信息" IsSwapped="True" CanSwap="True">
                 <StackPanel Margin="25,39,23,20">
                     <TextBlock Text="隐私声明与个人信息保护政策" TextWrapping="Wrap" Margin="0,0,0,4" FontWeight="Bold" />
-                    <TextBlock Margin="0,0,0,2" LineHeight="17" Text="缘启不收集、不上传任何个人信息，也没有内置任何数据上报通道。&#xa;你的登录凭据、设置与缓存仅保存在本机，并且可以在任何时候手动删除。" TextWrapping="Wrap" />
+                    <TextBlock Margin="0,0,0,2" LineHeight="17" Text="缘启不收集、不上传任何个人信息，也没有内置任何数据上报通道。&#xa;你的登录凭据、设置与缓存仅保存在本机，并且可以在任何时候手动删除。&#xa;&#xa;这些数据全部放在程序目录下的 YQL 文件夹里，不写注册表；把整个文件夹拷走，就等于带走了全部设置。迁移期间另有唯一例外：你在设置里主动勾选「使用高性能显卡」时，会往系统注册表写一条显卡首选项。" TextWrapping="Wrap" />
                     <TextBlock Text="其他信息" TextWrapping="Wrap" Margin="0,10,0,4" FontWeight="Bold" />
                     <TextBlock Margin="0,0,0,2" LineHeight="17" Text="缘启 (YuanQi Launcher, YQL) 基于 Plain Craft Launcher 2.14.0.0 开源版本二次开发，原程序的著作权归其原作者所有。&#xa;非 MINECRAFT 官方产品。未经 MOJANG 或 MICROSOFT 批准，也不与 MOJANG 或 MICROSOFT 关联。" TextWrapping="Wrap" />
                 </StackPanel>
