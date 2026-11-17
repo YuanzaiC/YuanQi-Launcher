@@ -6,13 +6,16 @@
 
 启动 · 版本 · 下载 · 联机 · 存档 · 工具，一站搞定
 
-[![Platform](https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Windows%2010%20%2B-1f6feb?style=flat-square)](#快速开始)
-[![Framework](https://img.shields.io/badge/.NET%20Framework-4.8-512bd4?style=flat-square)](#从源码构建)
+🌐 **[官网 · 在线浏览](https://yuanzaic.github.io/YuanQi-Launcher/)** ・ ⬇️ **[下载最新版](https://github.com/YuanzaiC/YuanQi-Launcher/releases/latest)**
+
+[![Version](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-2.15.0-3d8a2d?style=flat-square)](#快速开始)
+[![Platform](https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Windows%2010%20%2B-1f6feb?style=flat-square)](#运行环境)
+[![Framework](https://img.shields.io/badge/.NET%20Framework-4.8-512bd4?style=flat-square)](#运行环境)
 [![Language](https://img.shields.io/badge/VB.NET-WPF-3b6ea5?style=flat-square)](#从源码构建)
 [![Based on](https://img.shields.io/badge/%E5%9F%BA%E4%BA%8E-Plain%20Craft%20Launcher%202.14-1f883d?style=flat-square)](#与-pcl-的关系)
 [![License](https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF-PCL%20%E5%88%86%E5%8F%91%E6%9C%89%E9%99%90%E8%AE%B8%E5%8F%AF-444444?style=flat-square)](#许可与致谢)
 
-[功能](#功能) · [界面一览](#界面一览) · [快速开始](#快速开始) · [从源码构建](#从源码构建) · [反馈](#反馈)
+[功能](#功能) · [界面一览](#界面一览) · [官网](#官网) · [快速开始](#快速开始) · [从源码构建](#从源码构建) · [反馈](#反馈)
 
 </div>
 
@@ -22,9 +25,11 @@
 
 ## 简介
 
-**缘启（YuanQi Launcher，简称 YQL）** 是基于 [Plain Craft Launcher](https://github.com/Meloong-Git/PCL) 2.14 开源版本二次创作的 Minecraft 启动器，面向 Windows 10 及以上，使用 VB.NET / WPF（.NET Framework 4.8）构建。
+**缘启（YuanQi Launcher，简称 YQL）** 是基于 [Plain Craft Launcher](https://github.com/Meloong-Git/PCL) 2.14.0.0 开源版本二次创作的 Minecraft 启动器，面向 Windows 10 及以上，使用 VB.NET / WPF（.NET Framework 4.8）构建。当前版本 **2.15.0**。
 
-保留 PCL 的启动、下载与版本管理能力，重做界面与配置项，并提供内置陶瓦联机、存档查看与修改、版本归档压缩、空间与环境体检、多开、界面缩放、全屏待机赏景、种子地图与工具集。
+保留 PCL 的启动、下载与版本管理能力，重做界面与配置项，并加入内置陶瓦联机、存档查看与修改、版本归档压缩、空间与环境体检、多开、界面缩放、全屏待机赏景、种子地图与工具集。
+
+从 2.15.0 起**绿色便携**：设置、账户、缓存、日志、临时文件、自动下载的 Java、离线皮肤、联机模块与它的数据全部收在程序目录的 `YQL` 文件夹内，不写 `%AppData%`。唯一还会写注册表的是「使用高性能显卡」（默认关闭），关于页有单独说明。
 
 ## 功能
 
@@ -35,7 +40,7 @@
 - 主页一屏看清当前实例、Java、内存分配与上次游玩
 - 多个游戏文件夹，可从「添加文件夹」导入已有 `.minecraft`
 - 版本列表显示实际占用大小，支持归档（深度压缩）与一键解压还原
-- 版本设置内含概览、启动参数、Mod 管理与配置导出
+- 版本设置内含概览、启动参数、Mod 管理与配置导出 / 导入
 
 </td><td width="50%" valign="top">
 
@@ -44,9 +49,7 @@
 - 社区资源：Mod、整合包、数据包、资源包、光影包
 - 下载源与版本列表源可选，支持线程数与速度限制
 - 前置 Mod 自动检测：下载 Mod 时检查当前实例缺哪些前置（含前置的前置），可一键一起下载
-- 版本筛选对齐当前实例：正在玩的版本标为「（所选版本）」，并按实例的版本与加载器筛选
-- 官方源与镜像自动切换：CurseForge / Modrinth 在官方源缓慢时改用镜像
-- 搜索结果本地缓存，重复进入页面直接呈现
+- 版本筛选对齐当前实例；官方源缓慢时 CurseForge / Modrinth 自动切镜像
 - 内置下载详情页，实时显示速度、剩余文件与线程占用
 
 </td></tr>
@@ -55,7 +58,7 @@
 **🌐 联机（陶瓦 / Terracotta）**
 - 一键创建房间，把邀请码发给朋友即可加入，无需公网 IP、无需端口映射
 - 加入房间只需粘贴邀请码，回车即连
-- 自动准备与对齐联机模块版本，默认使用内置节点
+- 自动准备与对齐联机模块版本，默认使用内置节点（节点表实时获取，取不到时退回内置）
 - 显示连接耗时与房间成员，网络较差时提示可能走中继
 
 </td><td valign="top">
@@ -106,22 +109,35 @@
 <tr><td valign="top">
 
 **🎨 界面与配置**
-- 15 套内置主题，另有自定义 HSL 调色（色相 / 饱和度 / 亮度 / 渐变）
-- 背景图片：自适应方式、不透明度、模糊、本地或网络图片
+- 14 套预设主题，另有自定义调色（色相 / 饱和度 / 亮度 / 顶栏渐变）
+- 背景图片：本地或网络图片、自适应方式、不透明度、模糊
 - 界面缩放 80% – 150%，支持高 DPI
 - 可隐藏不需要的页面与入口；设置可导出、导入；网页可选择在启动器内或系统浏览器打开
 
 </td><td valign="top">
 
-**🔧 安装与更新**
+**🔧 安装、更新与便携**
 - 发布只有一个安装包，双击即可安装或更新，保留设置与存档
 - 界面内可直接检查更新并下载安装包完成升级
-- 元数据、版本占用、本地 Mod 信息、账户头像与搜索结果使用本地缓存，存放于 `YQL\Cache`
+- 元数据、版本占用、本地 Mod 信息、账户头像与搜索结果使用本地缓存，存放于 `YQL\Cache`（默认 2 天）
 - 无广告、无遥测，不收集个人信息
 - 源码、安装程序与打包脚本全部公开
 
 </td></tr>
 </table>
+
+### 便携目录 `YQL`
+
+| 路径 | 内容 |
+| --- | --- |
+| `YQL\Setup.ini` | 全部设置（2.15.0 起从注册表迁入） |
+| `YQL\Cache` | 网络缓存（默认 2 天）、版本占用、Mod 信息、搜索结果 |
+| `YQL\Runtime` | 自动下载的 Java |
+| `YQL\Terracotta` | 联机模块与其数据、`module.log` |
+| `YQL\Temp` | 临时文件，每次启动清理 |
+| `YQL\CustomSkin.png` | 离线模式的自定义皮肤 |
+
+首次启动会自动迁移：注册表里的历史设置搬进 `YQL\Setup.ini`，`%AppData%\YQL` 里的账户与缓存搬进程序目录，迁移前留一份 `YQL\RegistryBackup.ini` 备份，完成后清掉注册表键。把整个 `YQL` 拷走就等于带走了全部状态。
 
 ## 界面一览
 
@@ -167,6 +183,14 @@
 </tr>
 </table>
 
+## 官网
+
+官网是纯静态页面，托管在 GitHub Pages：**<https://yuanzaic.github.io/YuanQi-Launcher/>**
+
+- 站点源文件在 [`gh-pages`](https://github.com/YuanzaiC/YuanQi-Launcher/tree/gh-pages) 分支（构建产物，不含开发脚本）
+- 本地预览：切到该分支后直接打开 `index.html`，或把它当静态目录丢进任意 Web 服务器
+- 更新方式：把新文件推到 `gh-pages`，几十秒后自动发布
+
 ## 快速开始
 
 **Releases 中只有一个文件：`YuanQi-Setup-<版本号>.exe`**，双击即可完成安装或更新。
@@ -176,7 +200,9 @@
 - 安装程序请求一次管理员权限（UAC），并为安装目录授予当前用户修改权限；之后以普通权限运行
 - **卸载**：开始菜单「缘启」文件夹、系统「应用和功能」中的「缘启 YuanQi Launcher」，或安装目录下的 `Uninstall.bat`
 
-| 命令行参数 | 作用 |
+### 命令行参数
+
+| 参数 | 作用 |
 | --- | --- |
 | `/S` | 静默安装，不显示界面 |
 | `/D=<路径>` | 指定安装目录（与 `/S` 搭配使用） |
@@ -184,7 +210,7 @@
 | `/uninstall` | 卸载（保留用户数据） |
 | `/uninstall /removedata /S` | 卸载并删除 `YQL` 与 `.minecraft` |
 
-运行环境：
+### 运行环境
 
 | 依赖 | 说明 |
 | --- | --- |
@@ -218,7 +244,7 @@ msbuild "YuanQi Launcher.sln" /t:Build /p:Configuration=Release
 powershell -ExecutionPolicy Bypass -File pack-setup.ps1
 ```
 
-可选参数：`-Version 2.14.4.0` 指定版本号，`-Bump` 末位加一。输出 `发布\YuanQi-Setup-<版本>.exe`。
+可选参数：`-Version 2.15.0` 指定版本号，`-Bump` 末位加一。输出 `发布\YuanQi-Setup-<版本>.exe`。
 
 ## 与 PCL 的关系
 
