@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="grass">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>缘启 YuanQi Launcher 2.15.0 · 基于 PCL 二次创作的 Minecraft 启动器</title>
+<meta name="description" content="缘启（YuanQi Launcher）是基于 PCL 2.14.0.0 开源版本二次创作的 Minecraft 启动器，提供重新设计的界面、陶瓦联机、本地渲染种子地图、存档管理与内置工具箱。界面无广告位，不上报数据。">
+<meta name="theme-color" content="#3d8a2d">
+<meta property="og:title" content="缘启 YuanQi Launcher 2.15.0">
+<meta property="og:description" content="重新设计的界面与重写的启动流程。基于 PCL 2.14.0.0 开源版本二次创作的 Minecraft 启动器。">
+<meta property="og:image" content="assets/img/shot-home.jpg">
+<link rel="icon" href="assets/img/logo.png" type="image/png">
+<link rel="apple-touch-icon" href="assets/img/logo.png">
+<link rel="preload" as="image" href="assets/img/shot-home.jpg">
+<link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+
+<div class="progress" id="progress" aria-hidden="true"><span></span></div>
+
+<!-- ============ 顶栏 ============ -->
+<header class="topbar" id="topbar">
+  <div class="topbar__inner">
+    <a class="brand" href="#top" aria-label="缘启 YuanQi Launcher 首页">
+      <img class="brand__logo" src="assets/img/logo.png" alt="" width="34" height="34">
+      <span class="brand__text">
+        <strong>缘启</strong>
+        <em>YuanQi Launcher</em>
+      </span>
+    </a>
+
+    <nav class="nav" id="nav" aria-label="页面导航">
+      <a href="#start">功能</a>
+      <a href="#gallery">界面</a>
+      <a href="#link">联机</a>
+      <a href="#seedmap">种子地图</a>
+      <a href="#tools">工具箱</a>
+      <a href="#install">下载</a>
+    </nav>
+
+    <div class="topbar__right">
+      <span class="version-chip" title="当前正式版">v2.15.0</span>
+      <a class="btn btn--ghost btn--sm" href="https://github.com/YuanzaiC/YuanQi-Launcher" target="_blank" rel="noopener">
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+        源码
+      </a>
+      <button class="menu-btn" id="menuBtn" type="button" aria-expanded="false" aria-controls="mobileMenu" aria-label="打开导航">
+        <span></span><span></span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="mobile-menu" id="mobileMenu" hidden>
+  <nav aria-label="移动导航">
+    <a href="#start"><i>01</i>功能</a>
+    <a href="#gallery"><i>02</i>界面</a>
+    <a href="#link"><i>03</i>联机</a>
+    <a href="#seedmap"><i>04</i>种子地图</a>
+    <a href="#tools"><i>05</i>工具箱</a>
+    <a href="#look"><i>06</i>个性化</a>
+    <a href="#install"><i>07</i>下载</a>
+  </nav>
+  <div class="mobile-menu__foot">
+    <span>v2.15.0 · 正式版</span>
+    <a href="https://github.com/YuanzaiC/YuanQi-Launcher" target="_blank" rel="noopener">GitHub ↗</a>
+  </div>
+</div>
+
+<main id="top">
+
+<!-- ============ 首屏 ============ -->
+<section class="hero">
+  <div class="hero__glow" aria-hidden="true"></div>
+  <div class="container hero__grid">
+    <div class="hero__copy">
+      <p class="eyebrow reveal">
+        <span class="dot"></span>基于 PCL 2.14.0.0 开源版本二次创作
+      </p>
+      <h1 class="hero__title">
+        <span class="line reveal" style="--d:.05s">Windows 上的</span>
+        <span class="line reveal" style="--d:.12s"><em>Minecraft</em> Java 版启动器</span>
+      </h1>
+      <p class="hero__lede reveal" style="--d:.2s">
+        缘启（YuanQi Launcher）基于 PCL 2.14.0.0 开源版本二次创作，免费、无广告、不上报数据。
+        整合包、存档、联机、种子地图与崩溃诊断都在同一个窗口里。已有的 <code>.minecraft</code> 可直接导入，全部文件留在安装目录内。
+      </p>
+      <div class="hero__actions reveal" style="--d:.27s">
+        <a class="btn btn--primary" href="#install">
+          下载 2.15.0
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 2v8m0 0 3-3m-3 3L5 7M3 12.5h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+        <a class="btn btn--quiet" href="#gallery">
+          查看界面
+          <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M3.5 8h9m0 0-3.6-3.6M12.5 8l-3.6 3.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+      </div>
+      <p class="hero__meta reveal" style="--d:.33s">Windows 10 / 11 · 免费 · 绿色便携 · 无广告 · 无数据上报</p>
+    </div>
+
+    <div class="hero__visual reveal" style="--d:.2s">
+      <div class="stage" id="heroStage">
+        <img class="float-block float-block--grass" src="assets/img/blocks/grass.png" alt="" width="64" height="64" data-depth="26">
+        <img class="float-block float-block--diamond" src="assets/img/blocks/diamond.png" alt="" width="300" height="300" data-depth="14">
+        <img class="float-block float-block--gold" src="assets/img/blocks/gold.png" alt="" width="64" height="64" data-depth="34">
+
+        <figure class="frame frame--hero" data-depth="-8">
+          <div class="frame__bar">
+            <i></i><i></i><i></i>
+            <span>缘启</span>
+          </div>
+          <img src="assets/img/shot-home.jpg" alt="缘启启动器首页：当前实例、存档、游玩日历与游玩洞察" width="1400" height="958">
+        </figure>
+
+        <div class="float-card float-card--ver" data-depth="18">
+          <span class="tag tag--green">26.3</span>
+          <span class="tag">Fabric 0.20.1</span>
+          <span class="tag">内存 10 / 31.2 GB</span>
+        </div>
+
+        <div class="float-card float-card--save" data-depth="30">
+          <div class="mini-save">
+            <span class="mini-save__icon"></span>
+            <div>
+              <strong>存档 1 个</strong>
+              <small>26.3 · 生存 · 上次修改 4 天前</small>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ticker" aria-hidden="true">
+    <div class="ticker__track">
+      <span>Forge</span><b>·</b><span>NeoForge</span><b>·</b><span>Fabric</span><b>·</b><span>OptiFine</span><b>·</b><span>LiteLoader</span><b>·</b>
+      <span>Modrinth</span><b>·</b><span>CurseForge</span><b>·</b><span>陶瓦联机 Terracotta</span><b>·</b>
+      <span>微软登录</span><b>·</b><span>外置登录</span><b>·</b><span>离线登录</span><b>·</b>
+      <span>Forge</span><b>·</b><span>NeoForge</span><b>·</b><span>Fabric</span><b>·</b><span>OptiFine</span><b>·</b><span>LiteLoader</span><b>·</b>
+      <span>Modrinth</span><b>·</b><span>CurseForge</span><b>·</b><span>陶瓦联机 Terracotta</span><b>·</b>
+      <span>微软登录</span><b>·</b><span>外置登录</span><b>·</b><span>离线登录</span><b>·</b>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 数字 ============ -->
+<section class="facts">
+  <div class="container facts__grid">
+    <div class="fact reveal">
+      <strong data-count="2.15.0" data-plain="1">2.15.0</strong>
+      <span>当前正式版</span>
+    </div>
+    <div class="fact reveal" style="--d:.06s">
+      <strong><span data-count="5">5</span></strong>
+      <span>支持的加载器：Forge / NeoForge / Fabric / LiteLoader / OptiFine</span>
+    </div>
+    <div class="fact reveal" style="--d:.12s">
+      <strong><span data-count="1">1</span></strong>
+      <span>个安装目录装下程序、数据、Java 与联机模块</span>
+    </div>
+    <div class="fact reveal" style="--d:.18s">
+      <strong><span data-count="0">0</span></strong>
+      <span>个数据上报通道，设置仅存本机</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 01 启动 ============ -->
+<section class="section" id="start">
+  <div class="container">
+    <header class="section__head">
+      <p class="kicker reveal"><i>01</i>内容与实例</p>
+      <h2 class="reveal" style="--d:.05s">整合包、实例、存档、备份，<br class="br-desk">在一个窗口里管完</h2>
+      <p class="section__sub reveal" style="--d:.1s">
+        整合包缺的加载器与依赖一并处理。存档能读也能改，版本可以压缩归档。首页还带游玩日历与时长统计。
+      </p>
+    </header>
+
+    <div class="bento">
+      <!-- A -->
+      <article class="card card--wide reveal">
+        <div class="card__body">
+          <h3>参数都摆在同一张卡上</h3>
+          <p>版本、加载器、Java 与内存分配显示在同一张卡片上，点「启动游戏」开始；版本选择、版本设置、打开目录作为次级操作。</p>
+        </div>
+        <div class="mock mock--launch" aria-hidden="true">
+          <div class="mock__tags"><span>26.3</span><span>Fabric 0.20.1</span><span>Java 自动</span><span>内存 10 / 31.2 GB</span></div>
+          <div class="mock__row">
+            <div class="mock__icon"><img src="assets/img/blocks/grass.png" alt="" width="64" height="64"></div>
+            <div class="mock__title">BingGo<small>正式版 26.3 · Fabric 0.20.1</small></div>
+          </div>
+          <div class="mock__play"><span>▶</span> 启动游戏</div>
+          <div class="mock__actions"><span>版本选择</span><span>版本设置</span><span>打开目录</span></div>
+        </div>
+      </article>
+
+      <!-- B -->
+      <article class="card card--wide reveal" style="--d:.06s">
+        <div class="card__body">
+          <h3>存档能读、能改，也能备份</h3>
+          <p>六个页签覆盖概览、世界、玩家、物品、备份与数据：种子、版本、占用、上次游玩直接读出来。世界规则、坐标与经验可改，写入前自动备份。备份支持创建、恢复、导入与导出，可设保留份数自动清理。</p>
+        </div>
+        <div class="mock mock--save" aria-hidden="true">
+          <div class="mock__savehead"><i></i><div><b>新的世界</b><small>26.3 · 生存 · 上次修改 1 天前</small></div></div>
+          <div class="mock__tabs"><b>概览</b><span>世界</span><span>玩家</span><span>物品</span><span>备份 0</span><span>数据</span></div>
+          <div class="mock__kv">
+            <div><small>世界种子</small><b>-4734547568854480142</b></div>
+            <div><small>游戏版本</small><b>1.20.1</b></div>
+            <div><small>存档大小</small><b>1.6 GB</b></div>
+            <div><small>上次游玩</small><b>2026/10/25 12:14</b></div>
+          </div>
+        </div>
+      </article>
+
+      <!-- C 安装补齐 -->
+      <article class="card reveal">
+        <div class="card__icon">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3.4v8.6m0 0 3.1-3.1M12 12 8.9 8.9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.6 15.2v2.6a2 2 0 0 0 2 2h10.8a2 2 0 0 0 2-2v-2.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        </div>
+        <h3>整合包与下载，前置一并处理</h3>
+        <p>装整合包时按清单处理 Forge、NeoForge、Fabric 与 OptiFine，下载 Mod 前检查前置依赖并可一并下载。原版分正式、预览、远古与愚人节四个通道，社区资源覆盖 Mod、整合包、数据包、资源包与光影。下载源、线程数与速度上限可调，列表按当前实例筛选。</p>
+      </article>
+
+      <!-- D 版本归档 -->
+      <article class="card reveal" style="--d:.06s">
+        <div class="card__icon">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="3.6" y="5.4" width="16.8" height="14" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M3.6 9.8h16.8M9.6 3.2h4.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M9.4 13.2h5.2M9.4 16.4h5.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </div>
+        <h3>版本占用与归档</h3>
+        <p>版本列表显示实际占用。不常玩的版本可压成 <code>_archived.zip</code>，列表里照常显示，点选时提示解压还原。空间体检会列出久未游玩的版本并批量归档。</p>
+      </article>
+
+      <!-- 体检与多开 -->
+      <article class="card reveal" style="--d:.12s">
+        <div class="card__icon">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M2.8 12h4l2-5 3.4 10 2.4-6 1.6 3h4.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <h3>体检与多开</h3>
+        <p>环境体检检查 .NET、WebView2 与 VC++ 运行库。多开时可以同时运行多个启动器，各自的联机模块相互独立。</p>
+      </article>
+
+      <!-- E 绿色便携 -->
+      <article class="card reveal" style="--d:.12s">
+        <div class="card__icon">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3.2 19.4 6v6.1c0 4.3-2.9 7-7.4 8.7-4.5-1.7-7.4-4.4-7.4-8.7V6z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M8.9 12.1 11.3 14.5 15.4 10.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <h3>整个目录拷走，换台机器接着用</h3>
+        <p>程序、数据、缓存与联机模块都在安装目录的 <code>YQL</code> 下，连自动下载的 Java 也在 <code>YQL\Runtime</code>。不写 %AppData%，注册表只在勾选高性能显卡时写一条。旧版本的历史设置与账户会在首次启动时自动迁进 <code>YQL</code>，迁移前留一份备份。</p>
+      </article>
+
+      <!-- D -->
+      <article class="card reveal" style="--d:.06s">
+        <div class="card__icon">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3.6 21 19H3z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M12 9.4v4.2M12 16.3v.1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </div>
+        <h3>崩了，也知道该改哪里</h3>
+        <p>读取崩溃日志，识别 Forge、Fabric、NeoForge、OptiFine 与 Java 版本之间的常见冲突，标出缺失的前置 Mod 或版本不匹配，并给出可执行的处理步骤。</p>
+      </article>
+
+      <!-- 多账户 -->
+      <article class="card reveal">
+        <div class="card__icon">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="8.2" r="3.6" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M4.8 20c.9-3.6 3.7-5.6 7.2-5.6s6.3 2 7.2 5.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        </div>
+        <h3>几个账户，各用各的头像</h3>
+        <p>正版、离线、统一通行证与 Authlib-Injector 在账户池里统一管理。每个账户的头像独立缓存。左下角头像跟随全局账户，右上角胶囊跟随当前实例。</p>
+        <div class="mini-accounts" aria-hidden="true">
+          <span class="mini-accounts__a">Y</span>
+          <span class="mini-accounts__b">S</span>
+          <span class="mini-accounts__c">+</span>
+        </div>
+      </article>
+
+      <!-- F -->
+      <article class="card card--full reveal">
+        <div class="card__body card__body--row">
+          <div>
+            <h3>版本动态与常用站点</h3>
+            <p>首行汇总当天的版本更新，下方列出八个常用站点。版本新闻与社区数据走本地磁盘缓存（默认 2 天）。</p>
+          </div>
+          <ul class="chips" aria-label="社区入口">
+            <li>Minecraft 官网</li><li>中文 Wiki</li><li>苦力怕论坛</li><li>MineBBS</li>
+            <li>MC 百科</li><li>CurseForge</li><li>Modrinth</li><li>MCPEDL</li>
+          </ul>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 02 界面画廊 ============ -->
+<section class="gallery" id="gallery">
+  <div class="gallery__sticky">
+    <div class="gallery__head container">
+      <p class="kicker kicker--light reveal"><i>02</i>界面</p>
+      <h2 class="reveal" style="--d:.05s">七个主页面，一条导航</h2>
+      <p class="reveal" style="--d:.1s">
+        启动、下载、联机、种子、设置、工具箱、关于。左侧导航固定，内容区随之切换，
+        返回任一页面时保留上次的浏览位置。
+      </p>
+      <p class="gallery__hint reveal" style="--d:.15s">
+        <span class="gallery__hint-desk">向下滚动，本区块横向展开</span>
+        <span class="gallery__hint-mobile">左右滑动切换</span>
+      </p>
+    </div>
+
+    <div class="gallery__viewport" id="galleryViewport">
+      <div class="gallery__track" id="galleryTrack">
+        <figure class="shot reveal">
+          <div class="frame"><img src="assets/img/shot-home.jpg" alt="启动页：当前实例、存档、游玩日历、游玩洞察" width="1400" height="958" loading="lazy"></div>
+          <figcaption><b>01 启动</b><span>当前实例、存档、日历与洞察</span></figcaption>
+        </figure>
+        <figure class="shot reveal" style="--d:.04s">
+          <div class="frame"><img src="assets/img/shot-download.jpg" alt="下载页：原版游戏与社区资源" width="1400" height="958" loading="lazy"></div>
+          <figcaption><b>02 下载</b><span>原版游戏与社区资源分区展示</span></figcaption>
+        </figure>
+        <figure class="shot reveal" style="--d:.08s">
+          <div class="frame"><img src="assets/img/shot-link.jpg" alt="联机页：创建房间与加入房间" width="1400" height="958" loading="lazy"></div>
+          <figcaption><b>03 联机</b><span>创建房间与加入房间两个入口</span></figcaption>
+        </figure>
+        <figure class="shot reveal" style="--d:.12s">
+          <div class="frame"><img src="assets/img/shot-seedmap.jpg" alt="种子地图：主世界地形与结构标记" width="1400" height="958" loading="lazy"></div>
+          <figcaption><b>04 种子地图</b><span>本地渲染，结构与地形均可筛选</span></figcaption>
+        </figure>
+        <figure class="shot reveal" style="--d:.16s">
+          <div class="frame"><img src="assets/img/shot-save.jpg" alt="存档概览：种子、版本、大小、玩家" width="1400" height="966" loading="lazy"></div>
+          <figcaption><b>05 存档 · 概览</b><span>种子、体积、玩家与时间</span></figcaption>
+        </figure>
+        <figure class="shot reveal" style="--d:.2s">
+          <div class="frame"><img src="assets/img/shot-save-world.jpg" alt="存档世界页签" width="1400" height="966" loading="lazy"></div>
+          <figcaption><b>06 存档 · 世界</b><span>页签横向排列，切换成本低</span></figcaption>
+        </figure>
+        <figure class="shot reveal" style="--d:.24s">
+          <div class="frame"><img src="assets/img/shot-colortext.jpg" alt="彩色文字生成器：渐变、颜色、实时预览" width="1400" height="958" loading="lazy"></div>
+          <figcaption><b>07 彩色文字</b><span>逐字渐变，三种输出格式</span></figcaption>
+        </figure>
+        <figure class="shot reveal" style="--d:.28s">
+          <div class="frame"><img src="assets/img/shot-command.jpg" alt="指令查询：组件候选与示例" width="1400" height="958" loading="lazy"></div>
+          <figcaption><b>08 指令查询</b><span>候选项直接列在下方</span></figcaption>
+        </figure>
+      </div>
+    </div>
+    <div class="gallery__bar" aria-hidden="true"><span id="galleryBar"></span></div>
+  </div>
+</section>
+
+<!-- ============ 03 联机 ============ -->
+<section class="section" id="link">
+  <div class="container link__grid">
+    <div class="link__copy">
+      <p class="kicker reveal"><i>03</i>联机</p>
+      <h2 class="reveal" style="--d:.05s">粘贴邀请码回车即加入，<br class="br-desk">连接进度按四段显示</h2>
+      <p class="reveal" style="--d:.1s">
+        房主执行「创建房间」并分享邀请码，访客粘贴后回车即可加入。
+        连接分四段显示（准备、模块、房间、就绪），当前阶段与失败原因直接标出，失败时原地提供「重试 / 返回」。
+      </p>
+      <ul class="ticks reveal" style="--d:.15s">
+        <li>跨网络走内置中转，不需要公网 IP，也不必在路由器上映射端口；填写 <code>-</code> 则仅使用直连。</li>
+        <li>联机模块自动对齐官方最新版本，模块日志写入 <code>Terracotta\module.log</code>，异常弹窗附带末尾若干行。</li>
+        <li>连接过程显示耗时与房间成员，网络较差时提示可能经由中继。</li>
+        <li>房主等待阶段仅提示「请打开游戏局域网功能」，其余步骤由访客端完成。</li>
+      </ul>
+      <p class="byline reveal" style="--d:.2s">联机由陶瓦联机（Terracotta）提供，以未修改的二进制形式随启动器分发。</p>
+    </div>
+
+    <div class="link__card reveal" style="--d:.12s">
+      <div class="room room--make">
+        <div class="room__head">
+          <span class="room__icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="3.6" y="3.6" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><rect x="8.4" y="8.4" width="12" height="12" rx="2" fill="currentColor" opacity=".22"/><rect x="8.4" y="8.4" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>
+          </span>
+          <div><b>创建房间</b><small>我是房主</small></div>
+          <span class="room__arrow">›</span>
+        </div>
+      </div>
+
+      <div class="room room--join">
+        <div class="room__head">
+          <span class="room__icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M14 4.6h4.4A1.6 1.6 0 0 1 20 6.2v11.6a1.6 1.6 0 0 1-1.6 1.6H14M10.5 8.2 14.8 12l-4.3 3.8M14.4 12H4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+          <div><b>加入房间</b><small>我是访客</small></div>
+        </div>
+        <div class="room__field">
+          <span>粘贴邀请码，回车即加入</span>
+          <b>加入</b>
+        </div>
+      </div>
+
+      <ol class="steps" aria-label="连接四段">
+        <li class="done">准备</li>
+        <li class="done">模块</li>
+        <li class="now">房间</li>
+        <li>就绪</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 04 种子地图 ============ -->
+<section class="seedmap" id="seedmap">
+  <div class="seedmap__media" aria-hidden="true">
+    <img src="assets/img/seedmap-crop.jpg" alt="" width="1300" height="1107" loading="lazy" id="seedmapImg">
+  </div>
+  <div class="container seedmap__inner">
+    <p class="kicker kicker--light reveal"><i>04</i>种子地图</p>
+    <h2 class="reveal" style="--d:.05s">不进游戏看地形，<br>主世界、下界、末地分维度渲染</h2>
+    <p class="reveal" style="--d:.1s">
+      地形由 cubiomes 在本地计算，数据不离开本机。主世界、下界、末地分维度查看，地形、生物群系与结构都能筛。
+      右键复制坐标支持六种格式（纯坐标、X Z、<code>/tp</code> 两种写法、三点坐标）。
+      已浏览区域会写入缓存，再次打开相同种子时加载更快。
+    </p>
+    <ul class="chips chips--dark reveal" style="--d:.15s">
+      <li>主世界 / 下界 / 末地</li><li>生物群系与结构筛选</li><li>3D 预览</li><li>坐标缓存</li><li>六种复制格式</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ 05 工具箱 ============ -->
+<section class="section" id="tools">
+  <div class="container">
+    <header class="section__head">
+      <p class="kicker reveal"><i>05</i>工具箱</p>
+      <h2 class="reveal" style="--d:.05s">四个工具随安装包一起到位，<br class="br-desk">不必另开浏览器</h2>
+      <p class="section__sub reveal" style="--d:.1s">彩色文字、矿石分布、游戏统计、指令查询，另有内存优化、清理垃圾与打开日志文件夹。全部在本机计算，不联网上传内容。</p>
+    </header>
+
+    <div class="tools">
+      <article class="tool reveal">
+        <span class="tool__no">01</span>
+        <h3>彩色文字</h3>
+        <p>支持逐字渐变与五个预设，输出 &amp; 码、JSON 或 MiniMessage，右侧即时预览聊天栏与 MotD。</p>
+        <div class="tool__demo tool__demo--text" aria-hidden="true"><span class="grad-text"><span style="color:#e0508a">缘</span><span style="color:#c25ba8">启</span><span style="color:#a05ac2">L</span><span style="color:#7f5ed5">a</span><span style="color:#5f7ce0">u</span><span style="color:#4f97df">n</span><span style="color:#3fae9e">c</span><span style="color:#3fb98a">h</span><span style="color:#8fc22f">e</span><span style="color:#c9a227">r</span></span></div>
+      </article>
+
+      <article class="tool reveal" style="--d:.06s">
+        <span class="tool__no">02</span>
+        <h3>矿石分布</h3>
+        <p>按 Java 1.18+ 简化模型计算，拖动 Y 层查看该层命中的生成规则。</p>
+        <div class="tool__demo tool__demo--ore" aria-hidden="true">
+          <div class="ore-bar"><i style="--h:84%"></i><i style="--h:52%"></i><i style="--h:96%"></i><i style="--h:38%"></i><i style="--h:64%"></i><i style="--h:22%"></i></div>
+          <small>Y -64 → 319</small>
+        </div>
+      </article>
+
+      <article class="tool reveal" style="--d:.12s">
+        <span class="tool__no">03</span>
+        <h3>游戏统计</h3>
+        <p>总时长、游玩天数、日均与单日最长，附每日曲线、实例排行与时段分布，最长回溯 120 天。</p>
+        <div class="tool__demo tool__demo--stats" aria-hidden="true">
+          <svg viewBox="0 0 120 46" preserveAspectRatio="none"><path d="M2 38 14 30 26 33 38 22 50 26 62 14 74 19 86 10 98 15 110 6 118 9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 38 14 30 26 33 38 22 50 26 62 14 74 19 86 10 98 15 110 6 118 9V46H2z" fill="currentColor" opacity=".12"/></svg>
+        </div>
+      </article>
+
+      <article class="tool reveal" style="--d:.18s">
+        <span class="tool__no">04</span>
+        <h3>指令查询</h3>
+        <p>按分类检索指令，补全跟随当前实例版本，常用指令附带示例、点击即复制。</p>
+        <div class="tool__demo tool__demo--cmd" aria-hidden="true">
+          <span class="cmd-line">/give @s minecraft:bow<b>[</b></span>
+          <span class="cmd-pick">附魔<em>选完可继续选择等级</em></span>
+          <span class="cmd-pick">自定义名称<em>支持 JSON 文本</em></span>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 06 个性化 ============ -->
+<section class="section section--tint" id="look">
+  <div class="container">
+    <div class="look__grid">
+      <div class="look__copy">
+        <p class="kicker reveal"><i>06</i>个性化</p>
+        <h2 class="reveal" style="--d:.05s">十四种主题色，<br>背景可自行更换</h2>
+        <p class="reveal" style="--d:.1s">
+          主题色提供青草、竹青、薄荷、深海、夜紫、玫红、樱粉、朱砂、晚霞、焦糖、琥珀、鎏金、麦穗、水墨共十四种预设，自定义可单独调色相、饱和度与顶栏渐变。
+          背景可指向本地文件夹或网络图片，支持不透明度与模糊调节。
+        </p>
+        <p class="reveal" style="--d:.15s">界面缩放 80%–150%，支持高 DPI。不需要的页面与入口可以隐藏，设置支持导出与导入。</p>
+
+        <div class="swatches reveal" style="--d:.2s">
+          <p class="swatches__label">选择色板可即时更换本页主题色</p>
+          <div class="swatches__row" id="swatches" role="group" aria-label="主题色">
+            <button type="button" data-theme="grass"  style="--c:#3d8a2d" aria-label="青草" aria-pressed="true"><span>青草</span></button>
+            <button type="button" data-theme="bamboo" style="--c:#4b8f5a" aria-label="竹青" aria-pressed="false"><span>竹青</span></button>
+            <button type="button" data-theme="mint"   style="--c:#33a68a" aria-label="薄荷" aria-pressed="false"><span>薄荷</span></button>
+            <button type="button" data-theme="deep"   style="--c:#2f6f8f" aria-label="深海" aria-pressed="false"><span>深海</span></button>
+            <button type="button" data-theme="purple" style="--c:#6a5ac0" aria-label="夜紫" aria-pressed="false"><span>夜紫</span></button>
+            <button type="button" data-theme="rose"   style="--c:#c04a86" aria-label="玫红" aria-pressed="false"><span>玫红</span></button>
+            <button type="button" data-theme="sakura" style="--c:#d0699a" aria-label="樱粉" aria-pressed="false"><span>樱粉</span></button>
+            <button type="button" data-theme="vermil" style="--c:#c0452f" aria-label="朱砂" aria-pressed="false"><span>朱砂</span></button>
+            <button type="button" data-theme="dusk"   style="--c:#d2693c" aria-label="晚霞" aria-pressed="false"><span>晚霞</span></button>
+            <button type="button" data-theme="caramel" style="--c:#9a6b3f" aria-label="焦糖" aria-pressed="false"><span>焦糖</span></button>
+            <button type="button" data-theme="amber"  style="--c:#c1902c" aria-label="琥珀" aria-pressed="false"><span>琥珀</span></button>
+            <button type="button" data-theme="gold"   style="--c:#b8912f" aria-label="鎏金" aria-pressed="false"><span>鎏金</span></button>
+            <button type="button" data-theme="wheat"  style="--c:#a08a4a" aria-label="麦穗" aria-pressed="false"><span>麦穗</span></button>
+            <button type="button" data-theme="ink"    style="--c:#5d6a70" aria-label="水墨" aria-pressed="false"><span>水墨</span></button>
+          </div>
+        </div>
+      </div>
+
+      <aside class="sleep reveal" style="--d:.1s">
+        <div class="sleep__media">
+          <img src="assets/img/immersive.jpg" alt="休眠观赏页：全屏全景、左下角时间与版本号" width="1280" height="720" loading="lazy">
+          <span class="sleep__esc">ESC 或点击任意处返回</span>
+        </div>
+        <div class="sleep__body">
+          <h3>休眠观赏页</h3>
+          <p>
+            启动器闲置时，点击右上角可切换为无边框全屏：画面取自本机游戏资源中的全景图，
+            左下角仅保留时间、日期与当前版本号。界面不设按钮，点击任意位置返回，长时间运行时的资源占用较低。
+          </p>
+        </div>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 07 下载与安装 ============ -->
+<section class="section" id="install">
+  <div class="container">
+    <header class="section__head section__head--center">
+      <p class="kicker reveal"><i>07</i>下载</p>
+      <h2 class="reveal" style="--d:.05s">三步完成安装</h2>
+      <p class="section__sub reveal" style="--d:.1s">安装包发布于 GitHub Releases，版本号与文件属性中的版本号一致。</p>
+    </header>
+
+    <ol class="install">
+      <li class="install__step reveal">
+        <span class="install__no">1</span>
+        <h3>获取安装包</h3>
+        <p>下载 <code>YuanQi-Setup-2.15.0.exe</code>。如需自行打包，可用 <code>pack-setup.ps1 -Version</code> 指定版本号。</p>
+      </li>
+      <li class="install__step reveal" style="--d:.07s">
+        <span class="install__no">2</span>
+        <h3>选择安装目录</h3>
+        <p>程序、资源与联机模块安装在同一目录。数据写入程序目录下的 <code>YQL</code> 文件夹，不写入注册表。</p>
+      </li>
+      <li class="install__step reveal" style="--d:.14s">
+        <span class="install__no">3</span>
+        <h3>启动游戏</h3>
+        <p>首次启动前自动完成内存与 Java 配置。如需调整可在「游戏」页修改，无需前往官网自行下载。</p>
+      </li>
+    </ol>
+
+    <div class="install__cta reveal" style="--d:.1s">
+      <a class="btn btn--primary btn--lg" href="https://github.com/YuanzaiC/YuanQi-Launcher/releases/latest" target="_blank" rel="noopener">
+        下载 2.15.0
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4.5 11.5 11.5 4.5M6 4.5h5.5V10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
+      <a class="btn btn--quiet btn--lg" href="https://github.com/YuanzaiC/YuanQi-Launcher" target="_blank" rel="noopener">查看源码</a>
+    </div>
+    <p class="install__note reveal" style="--d:.14s">需要 Windows 10 及以上、.NET Framework 4.8、WebView2 运行时与 VC++ 运行库。安装时请求一次管理员权限，之后以普通权限运行。</p>
+    <p class="install__note reveal" style="--d:.16s">升级用同一个安装包，只替换程序文件，<code>YQL</code> 与 <code>.minecraft</code> 保留。卸载会清理程序目录、快捷方式与注册表项，两个数据目录是否保留由用户选择。</p>
+  </div>
+</section>
+
+<!-- ============ FAQ ============ -->
+<section class="section section--faq" id="faq">
+  <div class="container faq">
+    <header class="faq__head">
+      <p class="kicker reveal"><i>08</i>问答</p>
+      <h2 class="reveal" style="--d:.05s">常见问题</h2>
+    </header>
+
+    <div class="faq__list">
+      <details class="reveal" open>
+        <summary>缘启和 PCL 是什么关系？</summary>
+        <p>缘启基于龙腾猫跃（LTCat）开发的 Plain Craft Launcher 2.14.0.0 开源版本二次创作，界面重做、陶瓦联机接入与启动优化均为缘启侧的改动。本项目不是 PCL 官方版本，与 PCL 官方无关；原作者署名与赞助入口见「关于」页。</p>
+      </details>
+      <details class="reveal" style="--d:.04s">
+        <summary>是否需要正版账户？</summary>
+        <p>微软账户登录会经过正版验证；外置登录对接 Authlib-Injector 服务器；离线登录用于单人世界与自建服务器。启动器支持购买正版，并在启动过程中给出相应提示。</p>
+      </details>
+      <details class="reveal" style="--d:.08s">
+        <summary>是否收集用户信息？</summary>
+        <p>不收集、不上传，未内置任何上报通道。登录凭据、设置与缓存均保存在程序目录的 <code>YQL</code> 文件夹内，复制该文件夹即可完整迁移。唯一写入注册表的位置，是主动勾选「使用高性能显卡」时写入的一条显卡首选项。</p>
+      </details>
+      <details class="reveal" style="--d:.12s">
+        <summary>支持哪些加载器和资源站？</summary>
+        <p>支持 Forge、NeoForge、Fabric、LiteLoader、OptiFine（暂不支持安装 Quilt）。资源来自 Modrinth 与 CurseForge，原版下载经由官方源与 BMCLAPI 镜像，安装整合包时会按包内清单补齐 Forge、NeoForge、Fabric 与 OptiFine，下载 Mod 时会检查并提示前置依赖。</p>
+      </details>
+      <details class="reveal" style="--d:.1s">
+        <summary>以前的 .minecraft 能接着用吗？</summary>
+        <p>可以。在启动页选择「添加文件夹」，指向已有的 <code>.minecraft</code> 目录，其中的版本、存档与资源包会直接出现在列表里；整合包压缩包也能直接导入。游戏文件不需要重新下载，只把启动器本身装一次。</p>
+      </details>
+      <details class="reveal" style="--d:.14s">
+        <summary>安装需要什么环境？</summary>
+        <p>系统需 Windows 10 及以上。启动器本身基于 .NET Framework 4.8；内置浏览器与部分动画需要 WebView2 运行时；陶瓦联机模块需要 VC++ 运行库。以上组件在安装包里会检查，缺少时给出提示。</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ============ 页脚 ============ -->
+<footer class="footer">
+  <div class="container footer__top">
+    <div class="footer__brand">
+      <img src="assets/img/logo.png" alt="" width="44" height="44">
+      <div>
+        <b>缘启 <span>YuanQi Launcher</span></b>
+        <small>v2.15.0 · 正式版 · 2026-11-17</small>
+      </div>
+    </div>
+    <nav class="footer__links" aria-label="页脚导航">
+      <a href="https://github.com/YuanzaiC/YuanQi-Launcher" target="_blank" rel="noopener">源码仓库</a>
+      <a href="https://github.com/YuanzaiC/YuanQi-Launcher/releases/latest" target="_blank" rel="noopener">下载与更新日志</a>
+      <a href="https://github.com/YuanzaiC/YuanQi-Launcher/issues" target="_blank" rel="noopener">问题反馈</a>
+      <a href="https://github.com/Meloong-Git/PCL" target="_blank" rel="noopener">PCL 开源仓库</a>
+    </nav>
+  </div>
+
+  <div class="container footer__author">
+    <img src="assets/img/avatar.jpg" alt="" width="40" height="40">
+    <p><b>缘栽</b>　作者与维护者。负责界面重做、陶瓦联机接入与启动优化，问题反馈请提交至 GitHub Issues。</p>
+  </div>
+
+  <div class="container footer__legal">
+    <p>本项目基于 Plain Craft Launcher 2.14.0.0 开源版本（作者 龙腾猫跃）二次创作，原程序著作权归原作者所有，与 PCL 官方无关。缘启不包含 PCL 正式版中的赞助解锁体系。</p>
+    <p>非 MINECRAFT 官方产品。未经 MOJANG 或 MICROSOFT 批准，也不与 MOJANG 或 MICROSOFT 关联。陶瓦联机（Terracotta）版权归其项目作者与贡献者，以未修改的二进制形式分发。</p>
+    <p>种子地图基于 cubiomes。想支持上游工作，可通过爱发电赞助 PCL 原作者。</p>
+    <p class="footer__copy">© 2026 缘启 YuanQi Launcher · 页面素材取自启动器本身</p>
+  </div>
+</footer>
+
+<button class="to-top" id="toTop" type="button" aria-label="回到顶部">
+  <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 13V4m0 0L4 8m4-4 4 4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</button>
+
+<script src="assets/js/site.js" defer></script>
+</body>
+</html>
