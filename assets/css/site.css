@@ -619,9 +619,10 @@ h3{ font-size:clamp(1.02rem,1.3vw,1.16rem); line-height:1.45; letter-spacing:-.0
   background:color-mix(in srgb,var(--accent) 12%, #fff);
 }
 .mock__kv{
-  display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px;
+  display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px;
   margin-top:11px;
 }
+.mock__kv > div:first-child{ grid-column:1 / -1; }
 .mock__kv > div{
   min-width:0;
   padding:8px 10px; border-radius:9px;
