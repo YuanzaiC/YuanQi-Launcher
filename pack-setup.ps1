@@ -91,7 +91,7 @@ Get-ChildItem $LauncherBin -File | Where-Object {
     Copy-Item $_.FullName (Join-Path $Payload $_.Name) -Force
     $Count++; $Bytes += $_.Length
 }
-foreach ($Dir in @('Terracotta', 'Videos')) {
+foreach ($Dir in @('Terracotta', 'Videos', 'Resources')) {
     $Src = Join-Path $LauncherBin $Dir
     if (-not (Test-Path $Src)) { continue }
     Copy-Item $Src (Join-Path $Payload $Dir) -Recurse -Force

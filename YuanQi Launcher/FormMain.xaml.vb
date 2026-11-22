@@ -1,4 +1,4 @@
-Imports System.ComponentModel
+﻿Imports System.ComponentModel
 Imports System.Windows.Interop
 Imports System.Runtime.InteropServices
 
@@ -315,6 +315,7 @@ Public Class FormMain
         ApplyWindowAccelerationMode()
         AddHandler Me.PreviewMouseDown, AddressOf OnSplashPreviewMouseDown
         AddHandler Me.PreviewMouseLeftButtonDown, AddressOf OnEggPreviewMouseDown
+        AddHandler Me.PreviewMouseRightButtonUp, AddressOf OnWebLinkPreviewMouseRightUp
         '硬件加速模式的窗口是不透明的：Show 之后到首帧渲染之间会露出"启动器本体页面"一瞬。
         '透明模式下这段被窗口 Opacity=0 挡住了，这里改用开屏白幕先盖上（Show 之前设置），
         '后面的开屏动画 / 白幕淡出流程会照常把它收掉；异常兜底时 SplashFinishInstant 也会收起它。
@@ -3186,6 +3187,7 @@ Public Class FormMain
         DownloadDataPack = 4
         DownloadResourcePack = 5
         DownloadShader = 6
+        DownloadMap = 7
         SetupLaunch = 0
         SetupLink = 1
         SetupUI = 2
@@ -3199,6 +3201,7 @@ Public Class FormMain
         OtherOreGuide = 3
         OtherGameStats = 4
         OtherCommandQuery = 5
+        OtherDownload = 6
         InstanceOverall = 0
         InstanceSetup = 1
         InstanceModify = 2
@@ -4112,6 +4115,49 @@ Public Class FormMain
             Logger.Warn(ex, "彩蛋随机跳转失败")
         End Try
     End Sub
+
+    ''' <summary>
+    ''' 网页入口的右键：与左键相反。未开启「交换左右键」时用系统浏览器打开，
+    ''' 开启后改用启动器内置浏览器；其他控件的右键行为不受影响。
+    ''' </summary>
+    Private Sub OnWebLinkPreviewMouseRightUp(Sender As Object, E As MouseButtonEventArgs)
+        Try
+            Dim Url As String = Nothing
+            Dim Node As DependencyObject = TryCast(E.OriginalSource, DependencyObject)
+            Dim Depth As Integer = 0
+            Do While Node IsNot Nothing AndAlso Depth < 60
+                Url = GetWebEventUrl(Node)
+                If Url IsNot Nothing Then Exit Do
+                If TypeOf Node Is FrameworkContentElement Then
+                    Node = LogicalTreeHelper.GetParent(Node)
+                Else
+                    Node = VisualTreeHelper.GetParent(Node)
+                End If
+                Depth += 1
+            Loop
+            If String.IsNullOrWhiteSpace(Url) Then Return
+            E.Handled = True
+            OpenWebsiteSecondary(Url)
+        Catch ex As Exception
+            Logger.Warn(ex, "右键打开网页失败")
+        End Try
+    End Sub
+
+    ''' <summary>控件本身绑定的「打开网页」事件地址；没有则返回 Nothing。</summary>
+    Private Function GetWebEventUrl(Control As DependencyObject) As String
+        If Control Is Nothing Then Return Nothing
+        If CustomEventService.GetEventType(Control) = CustomEvent.EventType.打开网页 Then
+            Dim Address As String = CustomEventService.GetEventData(Control)
+            If Not String.IsNullOrWhiteSpace(Address) Then Return Address
+        End If
+        For Each Ev As CustomEvent In CustomEventService.GetEvents(Control)
+            If Ev Is Nothing Then Continue For
+            If DirectCast(Ev.GetValue(CustomEvent.TypeProperty), CustomEvent.EventType) <> CustomEvent.EventType.打开网页 Then Continue For
+            Dim Address As String = TryCast(Ev.GetValue(CustomEvent.DataProperty), String)
+            If Not String.IsNullOrWhiteSpace(Address) Then Return Address
+        Next
+        Return Nothing
+    End Function
 
     ''' <summary>彩蛋开启期间：点按钮就随机跳页（问候语、标题栏按钮、滚动条放行）。</summary>
     Private Sub OnEggPreviewMouseDown(Sender As Object, E As MouseButtonEventArgs)

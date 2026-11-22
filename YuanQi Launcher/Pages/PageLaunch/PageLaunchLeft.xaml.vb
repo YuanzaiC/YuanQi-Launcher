@@ -2760,6 +2760,12 @@ ExitRefresh:
 
     ''' <summary>微软正版：触发 OAuth 登录，成功后自动入池。</summary>
     Private Sub AddMsAccount()
+        '没填客户端 ID 就直接引导去「设置 → 高级」，别甩一条微软原始错误
+        If String.IsNullOrWhiteSpace(OAuthClientId) Then
+            Hint("还没有填写微软登录的客户端 ID，先到「设置 → 高级 → 微软登录」里填一下（旁边有获取教程）", HintType.Blue)
+            FrmMain.PageChange(FormMain.PageType.Setup, FormMain.PageSubType.SetupAdvanced)
+            Return
+        End If
         RunInNewThread(
         Sub()
             Try
@@ -2846,6 +2852,14 @@ ExitRefresh:
     ''' <summary>该账户是否就是当前正在使用的账户（版本选中的，或当前登录着的），它不进下拉列表。</summary>
     Private Function IsCurrentAccount(CurrentRef As AccountRef, Type As McLoginType, Name As String) As Boolean
         If CurrentRef IsNot Nothing AndAlso CurrentRef.Type = Type AndAlso String.Equals(Name, CurrentRef.Name, StringComparison.OrdinalIgnoreCase) Then Return True
+        '只有「当前登录方式就是这个类型」时，才用本次登录的账户名兜底隐藏。
+        '否则换到离线账户后，同名的第三方账户会被误判成当前账户，直接从列表里消失，
+        '看起来就像那个第三方账户自己变成了离线账户。
+        Try
+            If Settings.Get(Of McLoginType)("LoginType") <> Type Then Return False
+        Catch ex As Exception
+            Return False
+        End Try
         Return String.Equals(If(Name, "").Trim(), GetSessionName(Type), StringComparison.OrdinalIgnoreCase)
     End Function
 
@@ -2957,10 +2971,19 @@ ExitRefresh:
         Try
             '离线账户共用本机选择的离线皮肤，但同样存一份副本再显示
             If Type = McLoginType.Legacy AndAlso SkinLegacy IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(SkinLegacy.Output) Then
-                AccountSkinStore.AccountSkinSave(Type, Name, "", "", SkinLegacy.Output)
-                Dim LegacyCopy As String = AccountSkinStore.AccountSkinGetSkin(Type, Name)
-                If Not String.IsNullOrWhiteSpace(LegacyCopy) Then Return LegacyCopy
-                Return SkinLegacy.Output
+                Dim LiveLegacy As String = SkinLegacy.Output
+                '没配离线皮肤名字时（LaunchSkinType = 正版但 ID 为空、或读取失败）这里给出的是内置 Steve / Alex。
+                '那是兜底头像而不是这个账户自己的头像：既不要写进记录，也不要拿它挡住已有的记录，
+                '否则用户之后改了离线皮肤，账户列表里的头像也不会跟着变。
+                If Not AccountSkinStore.IsBuiltinSkin(LiveLegacy) Then
+                    AccountSkinStore.AccountSkinSave(Type, Name, "", "", LiveLegacy)
+                    Dim LegacyCopy As String = AccountSkinStore.AccountSkinGetSkin(Type, Name)
+                    If Not String.IsNullOrWhiteSpace(LegacyCopy) Then Return LegacyCopy
+                    Return LiveLegacy
+                End If
+                Dim LegacyRecorded As String = AccountSkinStore.AccountSkinGetSkin(Type, Name)
+                If Not String.IsNullOrWhiteSpace(LegacyRecorded) Then Return LegacyRecorded
+                Return LiveLegacy
             End If
             '正在登录的那个账户：用刚加载出来的皮肤，并顺手记到它自己名下
             If String.Equals(GetSessionName(Type), If(Name, "").Trim(), StringComparison.OrdinalIgnoreCase) Then
@@ -3799,6 +3822,12 @@ ExitRefresh:
 
     Private Sub BtnAddMs_Click() Handles BtnAddMs.Click
         Try
+            '没填客户端 ID 就直接引导去「设置 → 高级」，别甩一条微软原始错误
+            If String.IsNullOrWhiteSpace(OAuthClientId) Then
+                Hint("还没有填写微软登录的客户端 ID，先到「设置 → 高级 → 微软登录」里填一下", HintType.Blue)
+                FrmMain.PageChange(FormMain.PageType.Setup, FormMain.PageSubType.SetupAdvanced)
+                Return
+            End If
             BtnAddMs.IsEnabled = False
             BtnAddMs.Content = "登录中…"
             RunInNewThread(
@@ -3831,6 +3860,18 @@ ExitRefresh:
             End Sub, "Add Ms Account")
         Catch ex As Exception
             Logger.Error(ex, "添加微软账户失败")
+        End Try
+    End Sub
+
+    Private Sub BtnMsGuide_Click() Handles BtnMsGuide.Click
+        Try
+            If String.IsNullOrWhiteSpace(MsClientIdGuideUrl) Then
+                Hint("教程链接还没配置：改一下 ModSecret.MsClientIdGuideUrl 就行", HintType.Blue)
+                Return
+            End If
+            OpenWebsiteExternal(MsClientIdGuideUrl)
+        Catch ex As Exception
+            Logger.Error(ex, "打开微软登录教程失败")
         End Try
     End Sub
 

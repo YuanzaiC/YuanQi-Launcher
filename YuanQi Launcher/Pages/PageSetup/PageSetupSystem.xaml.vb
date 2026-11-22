@@ -12,10 +12,32 @@ Public Class PageSetupSystem
         IsLoaded = True
 
         AniControlEnabled += 1
+        MigrateDownloadSources()
         Reload()
         SliderLoad()
         AniControlEnabled -= 1
 
+    End Sub
+
+    ''' <summary>
+    ''' 把旧的单一「Mod 文件」下载源（ToolDownloadMod）拆进 CurseForge / Modrinth 两项，
+    ''' 「资源文件」默认跟随「游戏文件」。新设置默认 -1 表示还没迁移，只迁一次。
+    ''' </summary>
+    Private Shared Sub MigrateDownloadSources()
+        Try
+            Dim ModValue As Integer = Settings.Get(Of Integer)("ToolDownloadMod")
+            If ModValue < 0 Then ModValue = 2
+            If Settings.Get(Of Integer)("ToolDownloadCurseForgeSource") < 0 Then Settings.Set("ToolDownloadCurseForgeSource", ModValue)
+            If Settings.Get(Of Integer)("ToolDownloadModrinthSource") < 0 Then Settings.Set("ToolDownloadModrinthSource", ModValue)
+            Dim GameValue As Integer = Settings.Get(Of Integer)("ToolDownloadSource")
+            If GameValue < 0 Then GameValue = 1
+            If Settings.Get(Of Integer)("ToolDownloadAssetSource") < 0 Then Settings.Set("ToolDownloadAssetSource", GameValue)
+            Logger.Info($"下载源已细分：CurseForge={Settings.Get(Of Integer)("ToolDownloadCurseForgeSource")}，" &
+                        $"Modrinth={Settings.Get(Of Integer)("ToolDownloadModrinthSource")}，" &
+                        $"资源文件={Settings.Get(Of Integer)("ToolDownloadAssetSource")}")
+        Catch ex As Exception
+            Logger.Warn(ex, "迁移细分下载源设置失败")
+        End Try
     End Sub
     Public Sub Reload()
         SettingService.RefreshSettings(Me)
@@ -52,8 +74,8 @@ Public Class PageSetupSystem
         If SliderDownloadThread.Value < 100 Then Return
         If Not Settings.Get(Of Boolean)("HintDownloadThread") Then
             Settings.Set("HintDownloadThread", True)
-            MyMsgBox("如果设置过多的下载线程，可能会导致下载时出现非常严重的卡顿。" & vbCrLf &
-                     "一般设置 64 线程即可满足大多数下载需求，除非你知道你在干什么，否则不建议设置更多的线程数！", "警告", "我知道了", IsWarn:=True)
+            MyMsgBox("下载线程数过多时会出现明显卡顿。" & vbCrLf &
+                     "通常 64 线程已满足多数下载需求，更高的线程数并无必要。", "警告", "我知道了", IsWarn:=True)
         End If
     End Sub
 

@@ -1,4 +1,4 @@
-Public Module ModLaunch
+﻿Public Module ModLaunch
 
 #Region "开始"
 
@@ -852,6 +852,13 @@ LoginFinish:
     Private Function MsLoginStep1New(Data As LoaderTask(Of McLoginMs, McLoginResult)) As (OAuthAccessToken As String, OAuthRefreshToken As String)
         '参考：https://learn.microsoft.com/zh-cn/entra/identity-platform/v2-oauth2-device-code
 
+        '开源版没有内置 Client ID（OAuthClientId 默认空），这里先挡住，免得直接被微软回一个看不懂的 AADSTS900144
+        If String.IsNullOrWhiteSpace(OAuthClientId) Then
+            Throw New Exception("这个版本没有内置微软登录的 Client ID，无法使用正版登录。" & vbCrLf &
+                                "要启用的话，需要自己注册一个 Azure 应用（支持个人 Microsoft 账户、允许公共客户端），" & vbCrLf &
+                                "再把它的 client_id 设到环境变量 YQL_MS_CLIENT_ID，然后重启启动器。")
+        End If
+
         '初始请求
 Retry:
         McLaunchLog("开始微软登录步骤 1/6（原始登录）")
@@ -883,6 +890,10 @@ Retry:
     '微软登录步骤 1，刷新登录：从 OAuth Code 或 OAuth RefreshToken 获取 {OAuth AccessToken, OAuth RefreshToken}
     Private Function MsLoginStep1Refresh(Code As String) As (OAuthAccessToken As String, OAuthRefreshToken As String)
         McLaunchLog("开始微软登录步骤 1/6（刷新登录）")
+        If String.IsNullOrWhiteSpace(OAuthClientId) Then
+            Throw New Exception("这个版本没有内置微软登录的 Client ID，无法刷新正版登录。" & vbCrLf &
+                                "把 Azure 应用的 client_id 设到环境变量 YQL_MS_CLIENT_ID 后重启启动器即可。")
+        End If
 
         Dim Result As String
         Try

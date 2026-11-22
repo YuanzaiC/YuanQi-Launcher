@@ -1,0 +1,63 @@
+<local:MyPageRight
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:YuanQi" xmlns:d="http://schemas.microsoft.com/expression/blend/2008" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d" x:Class="PageOtherDownload"
+    PanScroll="PanBack">
+    <local:MyScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" x:Name="PanBack">
+        <StackPanel x:Name="PanMain" Margin="24,22,24,26">
+
+            <StackPanel Orientation="Horizontal" Margin="2,0,0,16">
+                <TextBlock Text="下载" Style="{StaticResource PageTitle}" />
+                <TextBlock Text="粘贴直链，把文件下到本地" Style="{StaticResource PageSub}" />
+            </StackPanel>
+
+            <local:MyCard Margin="0,0,0,15" Title="下载地址">
+                <StackPanel Margin="25,40,25,20">
+                    <local:MyTextBox x:Name="TextUrl" Height="34" HintText="粘贴以 http:// 或 https:// 开头的直链" />
+                    <TextBlock FontSize="11.5" Foreground="{StaticResource BrushText3}" Margin="2,7,0,0" TextWrapping="Wrap"
+                               Text="只支持直链（浏览器打开就自动下载的那种地址）；网盘页面、普通网页地址不行。" />
+                </StackPanel>
+            </local:MyCard>
+
+            <local:MyCard Margin="0,0,0,15" Title="文件名与保存位置">
+                <StackPanel Margin="25,40,25,20">
+                    <local:MyTextBox x:Name="TextFileName" Height="34" HintText="文件名（留空则按地址自动取名）" />
+                    <Grid Margin="0,10,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <local:MyTextBox x:Name="TextFolder" Grid.Column="0" Height="34" HintText="保存目录" />
+                        <Button x:Name="BtnFolder" Grid.Column="1" Style="{StaticResource BtnBase}" Content="选择…"
+                                Height="34" Padding="16,0" MinWidth="88" Margin="10,0,0,0" VerticalAlignment="Center" />
+                    </Grid>
+                </StackPanel>
+            </local:MyCard>
+
+            <local:MyCard Margin="0,0,0,15" Title="下载方式">
+                <StackPanel Margin="25,40,25,20">
+                    <local:MyComboBox x:Name="ComboMode" Height="34" HorizontalAlignment="Stretch">
+                        <local:MyComboBoxItem Content="单线程（兼容性最好）" Tag="1" IsSelected="True" />
+                        <local:MyComboBoxItem Content="多线程加速 · 4 段（服务器支持分段时更快）" Tag="4" />
+                        <local:MyComboBoxItem Content="多线程加速 · 8 段（服务器支持分段时更快）" Tag="8" />
+                    </local:MyComboBox>
+                    <TextBlock FontSize="11.5" Foreground="{StaticResource BrushText3}" Margin="2,7,0,0" TextWrapping="Wrap"
+                               Text="多线程只对支持断点续传（Accept-Ranges）的直链有效；服务器不支持时会自动退回单线程。同时下载多个文件时，还可以在「设置 → 系统 → 下载线程」里提高并发数。" />
+                </StackPanel>
+            </local:MyCard>
+
+            <local:MyCard Margin="0,0,0,15" Title="开始下载">
+                <StackPanel Margin="25,40,25,20">
+                    <StackPanel Orientation="Horizontal">
+                        <local:MyButton x:Name="BtnStart" Text="开始下载" MinWidth="150" Height="34" Padding="20,0" ColorType="Highlight" />
+                        <local:MyButton x:Name="BtnOpenFolder" Text="打开目录" MinWidth="132" Height="34" Padding="20,0" Margin="12,0,0,0" />
+                    </StackPanel>
+                    <TextBlock FontSize="11.5" Foreground="{StaticResource BrushText3}" Margin="2,14,0,0" TextWrapping="Wrap"
+                               Text="下载会加入任务列表，进度和速度看右下角的下载按钮（任务管理页）。" />
+                </StackPanel>
+            </local:MyCard>
+
+        </StackPanel>
+    </local:MyScrollViewer>
+</local:MyPageRight>

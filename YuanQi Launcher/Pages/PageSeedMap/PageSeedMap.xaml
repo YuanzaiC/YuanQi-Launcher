@@ -402,9 +402,39 @@
         <Border x:Name="PanFirstPerson" Panel.ZIndex="60" Visibility="Collapsed" ClipToBounds="True"
                 Background="#FF0E1420" Focusable="True"
                 KeyDown="PanFirstPerson_KeyDown" KeyUp="PanFirstPerson_KeyUp" MouseMove="PanFirstPerson_MouseMove"
+                LostKeyboardFocus="PanFirstPerson_LostFocus"
                 MouseDown="PanFirstPerson_MouseDown">
             <Grid>
-                <Image x:Name="ImgFirstPerson" Stretch="Fill" RenderOptions.BitmapScalingMode="Linear" IsHitTestVisible="False" />
+                <!-- 换掉了原来的逐列软件渲染：天空用渐变铺底，地形是真正的三维网格，由显卡透视投影 -->
+                <Border x:Name="FpsSkyBorder" />
+                <Viewport3D x:Name="ViewFirstPerson" IsHitTestVisible="False">
+                    <Viewport3D.Camera>
+                        <!-- 近平面别设太小：0.05 配 2000 的远平面会让深度精度极差，远处共面的面互相打架 -->
+                        <PerspectiveCamera x:Name="FpsCamera" FieldOfView="70" NearPlaneDistance="0.5" FarPlaneDistance="600" />
+                    </Viewport3D.Camera>
+                    <ModelVisual3D>
+                        <ModelVisual3D.Content>
+                            <AmbientLight Color="White" />
+                        </ModelVisual3D.Content>
+                    </ModelVisual3D>
+                    <ModelVisual3D>
+                        <ModelVisual3D.Content>
+                            <GeometryModel3D x:Name="FpsTerrainModel" />
+                        </ModelVisual3D.Content>
+                    </ModelVisual3D>
+                    <!-- 树：独立网格与纹理，森林群系上撒的方块树 -->
+                    <ModelVisual3D>
+                        <ModelVisual3D.Content>
+                            <GeometryModel3D x:Name="FpsTreeModel" />
+                        </ModelVisual3D.Content>
+                    </ModelVisual3D>
+                    <!-- 云层 -->
+                    <ModelVisual3D>
+                        <ModelVisual3D.Content>
+                            <GeometryModel3D x:Name="FpsCloudModel" />
+                        </ModelVisual3D.Content>
+                    </ModelVisual3D>
+                </Viewport3D>
                 <!-- 加载遮罩 -->
                 <Border x:Name="PanFpsLoading" Background="#E60E1420">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">

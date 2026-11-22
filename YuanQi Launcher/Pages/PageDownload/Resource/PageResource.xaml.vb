@@ -60,6 +60,38 @@ Public Class PageResource
     End Property
     Private _Type As ResourceTypes = -1
 
+    ''' <summary>
+    ''' 是否显示「来源」筛选。只有单一来源的资源类型（例如地图只有 CurseForge）才把它设成 False。
+    ''' 隐藏时来源固定按 CurseForge 搜索，名称输入框会占满整行。
+    ''' </summary>
+    Public Property ShowSource As Boolean
+        Get
+            Return _ShowSource
+        End Get
+        Set(Value As Boolean)
+            _ShowSource = Value
+            ApplySourceVisibility()
+        End Set
+    End Property
+    Private _ShowSource As Boolean = True
+
+    ''' <summary>按 <see cref="ShowSource"/> 调整「来源」标签、下拉框与名称输入框的布局。</summary>
+    Private Sub ApplySourceVisibility()
+        Try
+            If LabSource IsNot Nothing Then
+                LabSource.Visibility = If(_ShowSource, Visibility.Visible, Visibility.Collapsed)
+            End If
+            If ComboSearchSource IsNot Nothing Then
+                ComboSearchSource.Visibility = If(_ShowSource, Visibility.Visible, Visibility.Collapsed)
+            End If
+            If TextSearchName IsNot Nothing Then
+                Grid.SetColumnSpan(TextSearchName, If(_ShowSource, 2, 5))
+            End If
+        Catch ex As Exception
+            Logger.Warn(ex, "调整来源筛选显示失败")
+        End Try
+    End Sub
+
 #End Region
 
 #Region "加载"
@@ -78,6 +110,8 @@ Public Class PageResource
 
     Private Sub PageResource_Loaded(sender As Object, e As EventArgs) Handles Me.Loaded
         Static IsFirstLoaded As Boolean = False
+        'ShowSource 是 XAML 属性，可能在控件还没建出来时就被赋值了，这里补一次
+        ApplySourceVisibility()
         '不知道从 Initialized 改成 Loaded 会不会有问题，但用 Initialized 会导致初始的筛选器修改被覆盖回默认值
         If TargetInstance IsNot Nothing Then
             '设置目标
@@ -170,7 +204,8 @@ Public Class PageResource
             .GameVersion = GameVersion
             .Tag = ComboSearchTag.SelectedItem.Tag
             .ModLoaders = If(PageType = ResourceTypes.Mod, Val(ComboSearchLoader.SelectedItem.Tag), ModLoaders.None)
-            .Sources = CType(Val(ComboSearchSource.SelectedItem.Tag), ResourcePlatforms)
+            '隐藏来源筛选的页面（地图）只有一个来源，直接按 CurseForge 搜
+            .Sources = If(_ShowSource, CType(Val(ComboSearchSource.SelectedItem.Tag), ResourcePlatforms), ResourcePlatforms.CurseForge)
             .IgnoreCache = _IgnoreSearchCacheOnce
         End With
         _IgnoreSearchCacheOnce = False

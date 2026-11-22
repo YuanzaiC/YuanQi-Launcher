@@ -1,4 +1,4 @@
-Public Module ModMinecraft
+﻿Public Module ModMinecraft
 
 #Region "文件夹"
 
@@ -833,7 +833,8 @@ ExitDataLoad:
             Function()
                 Dim NewItem As New MyListItem With {
                     .Info = Info, .Height = 42, .Tag = Me, .SnapsToDevicePixels = True, .Type = MyListItem.CheckType.Clickable,
-                    .ContentHandler = ContentHandler
+                    .ContentHandler = ContentHandler,
+                    .BuildContentOnLoad = ContentHandler IsNot Nothing
                 }
                 '标题
                 NewItem.Inlines.Clear()

@@ -9,24 +9,48 @@
         <StackPanel x:Name="PanMain" Margin="24,22,24,26">
             <StackPanel Orientation="Horizontal" Margin="2,0,0,16">
                 <TextBlock Text="设置" Style="{StaticResource PageTitle}" />
-                <TextBlock Text="排查问题用的开关，平时不用动" Style="{StaticResource PageSub}" />
+                <TextBlock Text="排查问题用的调试开关。" Style="{StaticResource PageSub}" />
             </StackPanel>
 
             <local:MyCard Margin="0,15" Title="调试">
                 <StackPanel Margin="25,40,25,22">
                     <TextBlock FontSize="12" LineHeight="17" Foreground="{StaticResource ColorBrushGray4}" TextWrapping="Wrap" Margin="0,0,0,10"
-                        Text="会明显拖慢启动器，仅在排查问题时打开。" />
+                        Text="开启后启动器运行明显变慢，仅用于排查问题。" />
                     <local:MyCheckBox Text="调试模式" Height="22" x:Name="CheckDebugMode" local:SettingService.Key="SystemDebugMode"
-                                      ToolTip="显示调试信息与更详细的错误" />
+                                      ToolTip="在界面中显示调试信息与详细错误。" />
                     <local:MyCheckBox Text="下载时不复用已有文件" Height="22" Margin="0,6,0,0" x:Name="CheckDebugSkipCopy" local:SettingService.Key="SystemDebugSkipCopy"
-                                      ToolTip="每次都重新下载，不复用本地同名文件，用来测下载速度" />
+                                      ToolTip="每次下载均不复用本地同名文件，用于测试下载速度。" />
                     <local:MyCheckBox Text="添加随机延迟" Height="22" Margin="0,6,0,0" x:Name="CheckDebugDelay" local:SettingService.Key="SystemDebugDelay"
-                                      ToolTip="在各环节加入随机延迟，用于测试弱网表现" />
+                                      ToolTip="在各环节加入随机延迟，用于测试弱网环境下的表现。" />
                     <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                         <TextBlock Text="动画边界" VerticalAlignment="Center" Width="110" />
                         <local:MySlider x:Name="SliderDebugAnim" local:SettingService.Key="SystemDebugAnim" MaxValue="30" Width="300" HorizontalAlignment="Left"
-                                        ToolTip="给动画元素画辅助线，用于排查界面错位" />
+                                        ToolTip="为动画元素绘制辅助线，用于排查界面错位。" />
                     </StackPanel>
+                </StackPanel>
+            </local:MyCard>
+
+            <local:MyCard Margin="0,15">
+                <StackPanel Margin="25,18,25,22">
+                    <TextBlock Text="CurseForge API Key" FontSize="13.5" FontWeight="SemiBold"
+                               Foreground="{StaticResource ColorBrush1}" Margin="0,0,0,10" />
+                    <local:MyTextBox x:Name="TextCurseForgeKey" local:SettingService.Key="ToolCurseForgeApiKey"
+                                     HintText="用官方 CurseForge 源时才需要填写" MaxLength="120"
+                                     ToolTip="在 https://console.curseforge.com/ 免费申请。&#xa;用镜像源（默认）时不填也能用；切到官方 CurseForge 源就必须填，否则会 403。" />
+                </StackPanel>
+            </local:MyCard>
+
+            <local:MyCard Margin="0,15">
+                <StackPanel Margin="25,18,25,22">
+                    <Grid Margin="0,0,0,10">
+                        <TextBlock Text="微软登录 · 应用客户端 ID" FontSize="13.5" FontWeight="SemiBold"
+                                   Foreground="{StaticResource ColorBrush1}" HorizontalAlignment="Left" VerticalAlignment="Center" />
+                        <local:MyTextButton x:Name="BtnMsGuideSetup" Text="获取教程" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                            ToolTip="怎么自己申请一个 Azure 应用，拿到微软登录用的客户端 ID" />
+                    </Grid>
+                    <local:MyTextBox x:Name="TextOAuthClientId" local:SettingService.Key="LaunchOAuthClientId"
+                                     HintText="未填写时无法登录微软账户" MaxLength="80"
+                                     ToolTip="格式形如 xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx。&#xa;只填「应用程序(客户端) ID」，不要填客户端密码。&#xa;应用要支持个人 Microsoft 账户，并允许公共客户端流。" />
                 </StackPanel>
             </local:MyCard>
         </StackPanel>

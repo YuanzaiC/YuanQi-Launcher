@@ -1,4 +1,4 @@
-Public Class MyResourceItem
+﻿Public Class MyResourceItem
 
 #Region "基础属性"
     Public Uuid As Integer = GetUuid()
@@ -104,6 +104,10 @@ Public Class MyResourceItem
                 Case FormMain.PageSubType.DownloadShader
                     TargetType = ResourceTypes.Shader
                     TargetInstance = FrmDownloadShader.Content.Loader.Input.GameVersion
+                Case FormMain.PageSubType.DownloadMap
+                    TargetType = ResourceTypes.Map
+                    'Loader.Input 在第一次搜索前是 Nothing，用 ?. 兜一下，别让点列表项直接崩
+                    TargetInstance = If(FrmDownloadMap?.Content?.Loader?.Input?.GameVersion, Nothing)
             End Select
         Else
             '从详情页进入（查看前置）

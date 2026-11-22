@@ -25,7 +25,7 @@
                     </Grid.RowDefinitions>
                     <TextBlock VerticalAlignment="Center" HorizontalAlignment="Left" Text="名称" Margin="0,0,18,0" />
                     <local:MyTextBox x:Name="TextSearchName" Grid.Column="1" Grid.ColumnSpan="2" />
-                    <TextBlock VerticalAlignment="Center" Grid.Column="4" HorizontalAlignment="Left" Text="来源" Margin="0,0,18,0" />
+                    <TextBlock x:Name="LabSource" VerticalAlignment="Center" Grid.Column="4" HorizontalAlignment="Left" Text="来源" Margin="0,0,18,0" />
                     <local:MyComboBox x:Name="ComboSearchSource" Grid.Column="5">
                         <local:MyComboBoxItem Content="全部" Tag="3" IsSelected="True" />
                         <local:MyComboBoxItem Content="CurseForge" Tag="1" />

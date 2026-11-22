@@ -173,6 +173,8 @@ Public Class ResourceProject
                     Types = ResourceTypes.ResourcePack
                 ElseIf Website.Contains("/shaders/") Then
                     Types = ResourceTypes.Shader
+                ElseIf Website.Contains("/worlds/") Then
+                    Types = ResourceTypes.Map
                 Else
                     Types = ResourceTypes.DataPack
                 End If
@@ -242,6 +244,14 @@ Public Class ResourceProject
                         Case 4480 : Tags.Add("基于地图")
                         Case 4481 : Tags.Add("轻量")
                         Case 4482 : Tags.Add("大型")
+                            '地图（CurseForge 的 Worlds 分类，classId=17）
+                        Case 248 : Tags.Add("冒险")
+                        Case 253 : Tags.Add("生存")
+                        Case 249 : Tags.Add("创造")
+                        Case 251 : Tags.Add("跑酷")
+                        Case 252 : Tags.Add("解谜")
+                        Case 250 : Tags.Add("小游戏地图")
+                        Case 4464 : Tags.Add("模组世界")
                             '资源包
                         Case 403 : Tags.Add("原版风")
                         Case 400 : Tags.Add("写实风")

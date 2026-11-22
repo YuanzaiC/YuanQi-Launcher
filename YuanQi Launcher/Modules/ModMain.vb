@@ -1,4 +1,4 @@
-Imports System.Collections.ObjectModel
+﻿Imports System.Collections.ObjectModel
 Imports System.Windows.Interop
 Imports System.Windows.Threading
 
@@ -492,6 +492,7 @@ EndHint:
     Public FrmDownloadMod As PageDownloadMod
     Public FrmDownloadPack As PageDownloadPack
     Public FrmDownloadDataPack As PageDownloadDataPack
+Public FrmDownloadMap As PageDownloadMap
     Public FrmDownloadShader As PageDownloadShader
     Public FrmDownloadResourcePack As PageDownloadResourcePack
 
@@ -512,6 +513,7 @@ EndHint:
     Public FrmOreGuide As PageOreGuide
     Public FrmGameStats As PageGameStats
     Public FrmCommandQuery As PageCommandQuery
+Public FrmOtherDownload As PageOtherDownload
     Public FrmToolsLeft As PageToolsLeft
 
     '登录页面声明

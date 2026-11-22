@@ -40,4 +40,18 @@ Public Class PageSetupAdvanced
         If AniControlEnabled = 0 Then Hint("部分调试信息将在刷新或启动器重启后切换显示！",, False)
     End Sub
 
+    '获取微软登录用的客户端 ID
+    '用系统浏览器打开：内置 WebView2 走不到系统代理，打开 GitHub 常常是白页
+    Private Sub BtnMsGuideSetup_Click() Handles BtnMsGuideSetup.Click
+        Try
+            If String.IsNullOrWhiteSpace(MsClientIdGuideUrl) Then
+                Hint("教程链接还没配置：改一下 ModSecret.MsClientIdGuideUrl 就行", HintType.Blue)
+                Return
+            End If
+            OpenWebsiteExternal(MsClientIdGuideUrl)
+        Catch ex As Exception
+            Logger.Error(ex, "打开微软登录教程失败")
+        End Try
+    End Sub
+
 End Class

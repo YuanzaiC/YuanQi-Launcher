@@ -87,6 +87,8 @@ Public Class Settings
         New Setting("LaunchFolderSelect", ""),
         New Setting("LaunchFolders", "", Source:=Sources.Registry),
         New Setting("LaunchArgumentTitle", ""),
+        New Setting("LaunchOAuthClientId", ""),
+        New Setting("ToolCurseForgeApiKey", "", Source:=Sources.Registry),
         New Setting("LaunchArgumentInfo", "YQL"),
         New Setting("LaunchArgumentJavaSelect", "", Source:=Sources.Registry),
         New Setting("LaunchArgumentJavaAll", "[]", Source:=Sources.Registry),
@@ -120,6 +122,9 @@ Public Class Settings
         New Setting("ToolDownloadTranslateV2", 1, Source:=Sources.Registry),
         New Setting("ToolDownloadCert", False, Source:=Sources.Registry, OnChanged:=AddressOf ModNet.ShouldValidateSslCertificateOnLogin),
         New Setting("ToolDownloadMod", 2, Source:=Sources.Registry),
+        New Setting("ToolDownloadCurseForgeSource", -1, Source:=Sources.Registry), 'CurseForge 的下载源（0 镜像优先 / 1 官方优先，慢时镜像 / 2 官方优先；-1 = 还没迁移）
+        New Setting("ToolDownloadModrinthSource", -1, Source:=Sources.Registry), 'Modrinth 的下载源，取值同上
+        New Setting("ToolDownloadAssetSource", -1, Source:=Sources.Registry), 'Assets / 依赖库的下载源，-1 跟随游戏文件
         New Setting("ToolDownloadCurseForge", True, Source:=Sources.Registry),
         New Setting("ToolModLocalNameStyle", 0, Source:=Sources.Registry),
         New Setting("ToolUpdateRelease", False, Source:=Sources.Registry),
@@ -155,7 +160,8 @@ Public Class Settings
         New Setting("UiMusicRandom", True),
         New Setting("UiMusicAuto", True),
         New Setting("UiAutoCheckUpdate", False), '启动时自动检查更新（默认关；仓库建立后生效）
-        New Setting("UiOpenWebInLauncher", True), '是否通过启动器内置浏览器打开网页
+        New Setting("UiSwapWebClick", False), '网页入口是否交换鼠标左右键（默认左键在启动器内打开、右键用系统浏览器）
+        New Setting("UiWebClickGesture", -1), '网页打开手势：0 = 左键启动器内/右键浏览器，1 = 相反；-1 表示还没迁移，跟旧的 UiSwapWebClick 走
         New Setting("UiUiScale", 100), '界面缩放百分比
         New Setting("UiGreetingNameMode", 0), '主页问候语显示的名字：0=当前实例账户 1=全局账户 2=自定义
         New Setting("UiGreetingNameCustom", ""), '主页问候语的自定义名字

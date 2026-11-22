@@ -1,32 +1,66 @@
-Public Class PageOtherTest
+﻿Public Class PageOtherTest
 
     Public Shared Sub StartCustomDownload(Url As String, FileName As String, Optional Folder As String = Nothing)
         Hint("该功能已在缘启精简版中移除……")
     End Sub
 
     ''' <summary>
-    ''' 今日人品：随机生成今日运气指数。
+    ''' 今日人品：和原版一致 —— 以「日期 + 启动器标识」为随机种子，
+    ''' 所以同一天无论点多少次都是同一个值，换一天才会变。
     ''' </summary>
     Public Shared Sub Jrrp()
-        Static Rnd As New Random
-        Dim Score As Integer = Rnd.Next(0, 101)
-        Dim Comment As String
-        Select Case Score
-            Case Is >= 90
-                Comment = "大吉！今天做什么都会很顺利！"
-            Case Is >= 70
-                Comment = "吉，运气不错！"
-            Case Is >= 50
-                Comment = "中吉，普普通通的一天。"
-            Case Is >= 30
-                Comment = "小凶，出门记得带伞。"
-            Case Is >= 10
-                Comment = "凶，今天还是少干点大事。"
-            Case Else
-                Comment = "大凶！建议窝在家里打 Minecraft。"
-        End Select
-        MyMsgBox($"你今天的运气指数是 {Score} 分！{vbCrLf}{vbCrLf}{Comment}", "今日人品")
+        Try
+            Dim Score As Integer = New Random(DailyLuckSeed()).Next(0, 101)
+            Dim Rating As String = GetLuckRating(Score)
+            Dim Title As String = "今日人品 - " & Now.ToString("yyyy/M/d")
+            If Score >= 60 Then
+                MyMsgBox($"你今天的人品值是：{Score}！{Rating}", Title)
+            Else
+                MyMsgBox($"你今天的人品值是：{Score}... {Rating}", Title, IsWarn:=Score <= 30)
+            End If
+        Catch ex As Exception
+            Logger.Error(ex, "抽取今日人品失败")
+            Hint("抽取今日人品失败：" & ex.Message, HintType.Red)
+        End Try
     End Sub
+
+    ''' <summary>今日人品的随机种子：日期 + 本机标识，保证当天固定、换一天才变。</summary>
+    Private Shared Function DailyLuckSeed() As Integer
+        Dim Tag As String = ""
+        Try
+            Tag = Settings.Get(Of String)("Identify")
+        Catch
+        End Try
+        If String.IsNullOrEmpty(Tag) Then Tag = "YQL"
+        '和原版一致的 djb2 哈希
+        Dim Hash As Long = 5381L
+        For Each Ch As Char In (Now.ToString("yyyyMMdd") & Tag)
+            Hash = (Hash * 33L + AscW(Ch)) And &HFFFFFFFFL
+        Next
+        Return CInt(Hash And &H7FFFFFFFL)
+    End Function
+
+    ''' <summary>按运气值给出评语（分档与文案和原版一致）。</summary>
+    Private Shared Function GetLuckRating(Luck As Integer) As String
+        Select Case Luck
+            Case 100
+                Return "100！100！" & vbCrLf & "隐藏主题 欧皇…… 不对，这个版本应该没有这玩意……"
+            Case Is >= 95
+                Return "差一点就到100了呢..."
+            Case Is >= 90
+                Return "好评如潮！"
+            Case Is >= 60
+                Return "还行啦，还行啦"
+            Case Is >= 40
+                Return "勉强还行吧..."
+            Case Is >= 30
+                Return "呜..."
+            Case Is >= 10
+                Return "不会吧！"
+            Case Else
+                Return "（是百分制哦）"
+        End Select
+    End Function
 
     ''' <summary>
     ''' 清理垃圾：清除任务临时文件与各类可再生的缓存。

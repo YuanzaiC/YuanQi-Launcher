@@ -1,4 +1,4 @@
-﻿Imports System.Windows.Markup
+Imports System.Windows.Markup
 
 <ContentProperty("Inlines")>
 Public Class MyListItem
@@ -472,6 +472,11 @@ Public Class MyListItem
 
     '菜单与按钮绑定
     Public ContentHandler As Action(Of MyListItem, EventArgs)
+    ''' <summary>
+    ''' 是否在列表项显示出来时就立刻构建内容（默认是等鼠标划过再建，为了省性能）。
+    ''' 需要一开始就看到的东西（比如版本列表的「已归档」标注、解压按钮）要打开这个。
+    ''' </summary>
+    Public BuildContentOnLoad As Boolean = False
 
 #End Region
 
@@ -609,6 +614,16 @@ Public Class MyListItem
     End Sub
 
     Private Sub MyListItem_Loaded(sender As Object, e As RoutedEventArgs) Handles Me.Loaded
+        '需要第一时间显示的内容（已归档标注、解压按钮等）：显示出来就建，不用等鼠标划过去
+        If BuildContentOnLoad AndAlso ContentHandler IsNot Nothing Then
+            Dim Build As Action(Of MyListItem, EventArgs) = ContentHandler
+            ContentHandler = Nothing
+            Try
+                Build(Me, e)
+            Catch ex As Exception
+                Logger.Warn(ex, "构建列表项内容失败")
+            End Try
+        End If
         If Checked Then
             SetResourceReference(ForegroundProperty, If(Height < 40, "ColorBrush3", "ColorBrush2"))
         Else

@@ -321,12 +321,12 @@ Refresh:
         Hint("已刷新主页！", HintType.Green)
     End Sub
     Private Sub BtnCustomTutorial_Click(sender As Object, e As EventArgs) Handles BtnCustomTutorial.Click
-        MyMsgBox("1. 点击 生成教学文件 按钮，这会在 缘启 文件夹下生成 Custom.xaml 布局文件。" & vbCrLf &
-                 "2. 使用记事本等工具打开这个文件并进行修改，修改完记得保存。" & vbCrLf &
-                 "3. 点击 刷新主页 按钮，查看主页现在长啥样了。" & vbCrLf &
+        MyMsgBox("1. 点击「生成教学文件」，在缘启文件夹下生成 Custom.xaml 布局文件。" & vbCrLf &
+                 "2. 用记事本等工具打开该文件并修改，保存后生效。" & vbCrLf &
+                 "3. 点击「刷新主页」查看当前效果。" & vbCrLf &
                  vbCrLf &
-                 "你可以在生成教学文件后直接刷新主页，对照着进行修改，更有助于理解。" & vbCrLf &
-                 "直接将主页文件拖进 缘启 窗口也可以快捷加载。", "主页自定义教程")
+                 "生成教学文件后可直接刷新主页，对照修改。" & vbCrLf &
+                 "将主页文件拖入缘启窗口同样可以加载。", "主页自定义教程")
     End Sub
     Public Shared Sub OnMainPageTypeChanged()
         If FrmSetupUI Is Nothing Then Return
@@ -343,7 +343,7 @@ Refresh:
                 FrmSetupUI.PanCustomNet.Visibility = Visibility.Collapsed
                 FrmSetupUI.HintCustom.Visibility = Visibility.Visible
                 FrmSetupUI.HintCustomWarn.Visibility = If(Settings.Get(Of Boolean)("HintCustomWarn"), Visibility.Collapsed, Visibility.Visible)
-                FrmSetupUI.HintCustom.Text = $"从本地文件读取主页内容（默认：{GetCustomLocalPath()}）。{vbCrLf}你可以手动编辑该文件，向主页添加文本、图片、常用网站、快捷启动等功能。"
+                FrmSetupUI.HintCustom.Text = $"从本地文件读取主页内容（默认：{GetCustomLocalPath()}）。{vbCrLf}该文件可手动编辑，用于向主页添加文本、图片、常用网站与快捷启动等内容。"
                 CustomEventService.SetEventType(FrmSetupUI.HintCustom, CustomEvent.EventType.None)
             Case 2 '联网
                 FrmSetupUI.PanCustomPreset.Visibility = Visibility.Collapsed
@@ -351,7 +351,7 @@ Refresh:
                 FrmSetupUI.PanCustomNet.Visibility = Visibility.Visible
                 FrmSetupUI.HintCustom.Visibility = Visibility.Visible
                 FrmSetupUI.HintCustomWarn.Visibility = If(Settings.Get(Of Boolean)("HintCustomWarn"), Visibility.Collapsed, Visibility.Visible)
-                FrmSetupUI.HintCustom.Text = $"从指定网址联网获取主页内容。服主也可以用于动态更新服务器公告。{vbCrLf}如果你制作了稳定运行的联网主页，可以点击这条提示投稿，若合格即可加入预设！"
+                FrmSetupUI.HintCustom.Text = $"从指定网址联网获取主页内容，也可用于动态更新服务器公告。{vbCrLf}制作并稳定运行的联网主页可点击该提示投稿，通过后加入预设。"
                 CustomEventService.SetEventType(FrmSetupUI.HintCustom, CustomEvent.EventType.打开网页)
                 CustomEventService.SetEventData(FrmSetupUI.HintCustom, "https://github.com/Meloong-Git/PCL/discussions/2528")
             Case 3 '预设
@@ -506,7 +506,7 @@ Refresh:
 
     '警告提示
     Private Sub HiddenHint(sender As Object, user As Boolean) Handles CheckHiddenFunctionHidden.Change, CheckHiddenPageSetup.Change, CheckHiddenSetupUI.Change
-        If AniControlEnabled = 0 AndAlso sender.Checked Then Hint("按 F12 即可暂时关闭功能隐藏设置。千万别忘了，要不然设置就改不回来了……")
+        If AniControlEnabled = 0 AndAlso sender.Checked Then Hint("按 F12 可临时取消功能隐藏，用于恢复被隐藏的入口。")
     End Sub
 
 #End Region

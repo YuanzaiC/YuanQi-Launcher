@@ -85,6 +85,8 @@ Public Class ResourceSearcher
                     Address += "&classId=6552"
                 Case ResourceTypes.ResourcePack
                     Address += "&classId=12"
+                Case ResourceTypes.Map
+                    Address += "&classId=17" 'CurseForge 的 Worlds
             End Select
             If Tag <> "" Then Address += "&categoryId=" & Tag.BeforeFirst("/")
             If ModLoaders <> ModLoaders.None AndAlso Not IgnoreModLoaderFilter Then Address += "&modLoaderType=" & Resource.ToCurseForgeModLoaderType(ModLoaders.Flags.First)
@@ -179,7 +181,8 @@ Public Class ResourceSearcher
     Public Shared Function GetSearchCacheKey(Request As SearchRequest) As String
         Try
             If Request Is Nothing Then Return ""
-            Dim Raw As String = $"{Request.Type}|{Request.SearchText}|{Request.GameVersion}|{Request.Tag}|{Request.ModLoaders}|{Request.Sources}"
+            'v2：分类映射（尤其是地图的 Worlds 分类）修过，旧缓存里的"其他"标签不能再用
+            Dim Raw As String = $"v2|{Request.Type}|{Request.SearchText}|{Request.GameVersion}|{Request.Tag}|{Request.ModLoaders}|{Request.Sources}"
             Return Raw.GetStableHashCode().ToString()
         Catch
             Return ""
@@ -421,7 +424,7 @@ NextPage:
             End If
 
             'Modrinth 搜索
-            If Request.Sources.HasFlagF(ResourcePlatforms.Modrinth) AndAlso
+            If Request.Sources.HasFlagF(ResourcePlatforms.Modrinth) AndAlso Request.Type <> ResourceTypes.Map AndAlso
                Not (Storage.ModrinthTotal > -1 AndAlso Storage.ModrinthTotal <= Storage.ModrinthOffset) AndAlso '剩余的未显示的搜索结果不足
                (Not IsChineseSearch OrElse (IsChineseSearch AndAlso Not String.IsNullOrEmpty(ModrinthAltSearchText))) Then '如果是中文搜索，就只在有对应搜索关键词的时候才继续
                 WorkThreads.Add(RunInNewThread(

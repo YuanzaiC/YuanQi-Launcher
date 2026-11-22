@@ -9,7 +9,7 @@
         <StackPanel x:Name="PanMain" Margin="24,22,24,26">
             <StackPanel Orientation="Horizontal" Margin="2,0,0,16">
                 <TextBlock Text="设置" Style="{StaticResource PageTitle}" />
-                <TextBlock Text="游戏怎么启动，内存怎么分" Style="{StaticResource PageSub}" />
+                <TextBlock Text="启动方式、内存分配与皮肤。" Style="{StaticResource PageSub}" />
             </StackPanel>
 
             <local:MyCard x:Name="CardArgument" Margin="0,0,0,15" Title="游戏窗口">
@@ -36,24 +36,24 @@
                         <TextBlock Grid.Row="0" VerticalAlignment="Center" HorizontalAlignment="Left" Text="默认版本隔离" Margin="0,0,25,0" />
                         <local:MyComboBox local:SettingService.Key="LaunchArgumentIndieV2" x:Name="ComboArgumentIndieV2"
                                           Grid.Row="0" Grid.ColumnSpan="2" Grid.Column="1"
-                                          ToolTip="装新版本时按这里的设置决定它的隔离方式。&#xa;已有版本的隔离要单独改，去它的版本设置里调。">
+                                          ToolTip="安装新版本时按此处的设置决定隔离方式。&#xa;已安装版本的隔离方式需在其版本设置中单独调整。">
                             <local:MyComboBoxItem Content="关闭" 
-                                                  ToolTip="所有版本共用同一份游戏文件，存档、Mod、资源包都互通。&#xa;装了 Mod 的版本多了容易起冲突。" />
+                                                  ToolTip="所有版本共用同一份游戏文件，存档、Mod 与资源包互通。&#xa;安装 Mod 的版本较多时易产生冲突。" />
                             <local:MyComboBoxItem Content="隔离可安装 Mod 的版本" 
-                                                  ToolTip="装了 Mod 的版本（Forge、Fabric 之类）各自独立，避免 Mod 冲突，原版之间不隔离。" />
+                                                  ToolTip="安装 Mod 的版本（Forge、Fabric 等）各自独立存放，避免 Mod 冲突，原版版本之间不隔离。" />
                             <local:MyComboBoxItem Content="隔离非正式版" 
-                                                  ToolTip="快照、预发布版、远古版本、愚人节版本都跟其他版本分开。" />
+                                                  ToolTip="快照、预发布版、远古版本与愚人节版本与其他版本分开存放。" />
                             <local:MyComboBoxItem Content="隔离可安装 Mod 的版本与非正式版"
-                                                  ToolTip="装了 Mod 的版本、快照、预发布版、远古版本、愚人节版本，都跟其他版本分开。" />
+                                                  ToolTip="安装 Mod 的版本，以及快照、预发布版、远古版本与愚人节版本，均与其他版本分开存放。" />
                             <local:MyComboBoxItem Content="隔离所有版本" 
-                                                  ToolTip="版本之间存档、Mod、资源包全部分开。&#xa;连原版之间也传不了存档，一般不建议这么设。" />
+                                                  ToolTip="各版本的存档、Mod 与资源包完全分开。&#xa;原版版本之间同样无法共用存档。" />
                         </local:MyComboBox>
                         <TextBlock Grid.Row="2" VerticalAlignment="Center" HorizontalAlignment="Left" Text="游戏窗口标题" Margin="0,0,25,0" />
                         <local:MyTextBox local:SettingService.Key="LaunchArgumentTitle" 
-                                         Grid.Row="2" Grid.ColumnSpan="2" Grid.Column="1" ToolTip="改游戏窗口的标题，留空就不改。&#xa;可以用替换标记让它随版本变化，用法在 更多 → 帮助 里搜 “替换标记”。" HintText="默认" MaxLength="100" />
+                                         Grid.Row="2" Grid.ColumnSpan="2" Grid.Column="1" ToolTip="修改游戏窗口标题，留空则不修改。&#xa;支持替换标记随版本变化，用法见 更多 → 帮助 中的「替换标记」。" HintText="默认" MaxLength="100" />
                         <TextBlock Grid.Row="4" VerticalAlignment="Center" HorizontalAlignment="Left" Text="自定义信息" Margin="0,0,25,0" />
                         <local:MyTextBox local:SettingService.Key="LaunchArgumentInfo" 
-                                         Grid.Row="4" Grid.ColumnSpan="2" Text="YQL" Grid.Column="1" ToolTip="Mojang 在 Minecraft 26.1 里去掉了这个设置，新版本里填了也不会生效。&#xa;&#xa;内容显示在游戏主界面左下角和 F3 调试页左上角。&#xa;可以用替换标记让它随版本变化，用法在 更多 → 帮助 里搜 “替换标记”。">
+                                         Grid.Row="4" Grid.ColumnSpan="2" Text="YQL" Grid.Column="1" ToolTip="Mojang 已在 Minecraft 26.1 中移除该设置，新版本中填写后不再生效。&#xa;&#xa;内容显示在游戏主界面左下角与 F3 调试页左上角。&#xa;支持替换标记随版本变化，用法见 更多 → 帮助 中的「替换标记」。">
                             <local:MyTextBox.ValidateRules>
                                 <local:ValidateExcept>
                                     <local:ValidateExcept.Excepts>
@@ -91,7 +91,7 @@
                                 <local:MyComboBoxItem Content="全屏" />
                                 <local:MyComboBoxItem Content="默认" />
                                 <local:MyComboBoxItem Content="与启动器尺寸一致" />
-                                <local:MyComboBoxItem Content="自定义尺寸" ToolTip="Forge 1.12.2 这类个别版本有 Bug，设了高度也不生效" />
+                                <local:MyComboBoxItem Content="自定义尺寸" ToolTip="Forge 1.12.2 等个别版本存在 Bug，设置高度后不生效。" />
                                 <local:MyComboBoxItem Content="最大化" />
                             </local:MyComboBox>
                             <local:MyTextBox local:SettingService.Key="LaunchArgumentWindowWidth" x:Name="TextArgumentWindowWidth"
@@ -103,7 +103,7 @@
                             <TextBlock x:Name="LabArgumentWindowMiddle" Visibility="Collapsed" Grid.Column="2" Text=" × " VerticalAlignment="Center" FontSize="18" />
                             <local:MyTextBox local:SettingService.Key="LaunchArgumentWindowHeight" x:Name="TextArgumentWindowHeight"
                                              Padding="0,0,5,0" Visibility="Collapsed" Grid.Column="3" Width="60" HorizontalContentAlignment="Center" Text="480"
-                                             ToolTip="Forge 1.12.2 这类个别版本有 Bug，设了高度也不生效">
+                                             ToolTip="Forge 1.12.2 等个别版本存在 Bug，设置高度后不生效。">
                                 <local:MyTextBox.ValidateRules>
                                     <local:ValidateInteger Min="1" Max="99999" />
                                 </local:MyTextBox.ValidateRules>
@@ -128,13 +128,13 @@
                         </Grid.RowDefinitions>
                         <local:MyRadioBox local:SettingService.Key="LaunchRamType" local:SettingService.Value="0" 
                                           Text="自动配置" Width="110" Checked="True" x:Name="RadioRamType0" Margin="0,0,20,0" 
-                                          ToolTip="按 Mod 装了多少、电脑还剩多少内存，自动给游戏分配" />
+                                          ToolTip="根据 Mod 数量与剩余物理内存自动分配。" />
                         <local:MyRadioBox local:SettingService.Key="LaunchRamType" local:SettingService.Value="1" 
                                           Grid.Row="2" Text="自定义" x:Name="RadioRamType1" Margin="0,0,20,0" />
                         <local:MySlider Grid.Row="2" Grid.Column="1" IsEnabled="False" x:Name="SliderRamCustom" local:SettingService.Key="LaunchRamCustom" MaxValue="49" Value="13" />
                         <local:MyCheckBox local:SettingService.Key="LaunchArgumentRam"
                                           Grid.Row="4" Grid.ColumnSpan="3" Text="启动游戏前进行内存优化" Height="22" x:Name="CheckArgumentRam"
-                                          ToolTip="内存优化能把物理内存占用降下来约 1/3，受益的不只是 Minecraft。&#xa;用机械硬盘的话，可能会卡上一小会儿。&#xa;加 --memory 参数启动缘启，会静默跑完优化。" />
+                                          ToolTip="内存优化可将物理内存占用降低约 1/3，受益的不只是 Minecraft。&#xa;使用机械硬盘时可能出现短暂卡顿。&#xa;以 --memory 参数启动缘启时静默执行优化。" />
                         <!--<local:MyTextBox Grid.Row="2" Grid.Column="3" Width="100" VerticalAlignment="Center" Margin="30,0,0,0" Text="2048 MB" />-->
                     </Grid>
                     <Grid x:Name="PanRamDisplay" Margin="0,11,2,0" SnapsToDevicePixels="True" Grid.Row="1" Grid.ColumnSpan="2" Grid.Column="1">
@@ -170,7 +170,7 @@
             </local:MyCard>
             <local:MyCard x:Name="CardSkin" Margin="0,0,0,15" Title="皮肤" CanSwap="True" IsSwapped="True">
                 <StackPanel Margin="25,40,25,15">
-                    <local:MyHint Text="受技术限制，只有 1.19.2 及更早的版本能用！" Theme="Yellow" Margin="0,0,0,10" />
+                    <local:MyHint Text="受技术限制，仅 1.19.2 及更早版本可用。" Theme="Yellow" Margin="0,0,0,10" />
                     <Grid Margin="-1,0,0,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition />
@@ -181,7 +181,7 @@
                         </Grid.ColumnDefinitions>
                         <local:MyRadioBox local:SettingService.Key="LaunchSkinType" local:SettingService.Value="0" 
                                           x:Name="RadioSkinType0" Height="22" Grid.Column="0" 
-                                          Text="随机" ToolTip="随机选择一个默认皮肤" />
+                                          Text="随机" ToolTip="随机选用一款默认皮肤。" />
                         <local:MyRadioBox local:SettingService.Key="LaunchSkinType" local:SettingService.Value="1" 
                                           x:Name="RadioSkinType1" Height="22" Grid.Column="1"
                                           Text="Steve" />
@@ -190,10 +190,10 @@
                                           Text="Alex" />
                         <local:MyRadioBox local:SettingService.Key="LaunchSkinType" local:SettingService.Value="3" 
                                           x:Name="RadioSkinType3" Height="22" Grid.Column="3" 
-                                          Text="正版皮肤" ToolTip="使用某个正版玩家的皮肤" />
+                                          Text="正版皮肤" ToolTip="使用指定正版玩家的皮肤。" />
                         <local:MyRadioBox local:SettingService.Key="LaunchSkinType" local:SettingService.Value="4" 
                                           x:Name="RadioSkinType4" Height="22" Grid.Column="4" 
-                                          Text="自定义" ToolTip="用资源包加载自定义皮肤。&#xa;这样换的皮肤只有自己看得见，而且会把游戏里所有角色都换掉。" />
+                                          Text="自定义" ToolTip="通过资源包加载自定义皮肤。&#xa;该皮肤仅本地可见，且会替换游戏中所有角色的外观。" />
                     </Grid>
                     <Grid x:Name="PanSkinID" Margin="0,14,0,2" Visibility="Collapsed">
                         <Grid.ColumnDefinitions>
@@ -212,7 +212,7 @@
                                 <ColumnDefinition Width="Auto" SharedSizeGroup="Button" />
                             </Grid.ColumnDefinitions>
                             <local:MyButton Height="35" x:Name="BtnSkinSave" Text="保存皮肤" MinWidth="140" Padding="13,0" Margin="0,0,20,0" Grid.Row="1" />
-                            <local:MyButton Height="35" x:Name="BtnSkinCache" Text="刷新" MinWidth="140" Padding="13,0" Margin="0,0,20,0" ToolTip="重新下载缘启当前显示的皮肤" Grid.Row="1" Grid.Column="1" />
+                            <local:MyButton Height="35" x:Name="BtnSkinCache" Text="刷新" MinWidth="140" Padding="13,0" Margin="0,0,20,0" ToolTip="重新下载缘启当前显示的皮肤。" Grid.Row="1" Grid.Column="1" />
                         </Grid>
                     </Grid>
                     <Grid x:Name="PanSkinChange" Margin="0,14,0,2" Height="35" Visibility="Collapsed">
@@ -251,19 +251,19 @@
                                         ToolTip="还原"                                        Logo="M530 0c287 0 521 229 521 511s-233 511-521 511c-233 0-436-151-500-368a63 63 0 0 1 44-79 65 65 0 0 1 80 43c48 162 200 276 375 276 215 0 390-171 390-383s-174-383-390-383c-103 0-199 39-270 106l21-5a63 63 0 0 1 33 123l-157 42a65 65 0 0 1-90-42l-49-183a65 65 0 1 1 126-33l6 26A524 524 0 0 1 530 0z" LogoScale="0.9" />
                     </StackPanel>
                     <local:MyTextBox local:SettingService.Key="LaunchAdvanceJvm" x:Name="TextAdvanceJvm" Grid.ColumnSpan="2" Grid.Column="1" 
-                                     ToolTip="启动 Minecraft 时附加的 JVM 参数，没把握就别改。&#xa;&#xa;支持 Minecraft 版本 JSON 里的替换标记，例如 ${library_directory}。&#xa;也支持缘启自己的替换标记，用法在 更多 → 帮助 里搜 “替换标记”。" MaxLength="4000"
+                                     ToolTip="启动 Minecraft 时附加的 JVM 参数。&#xa;&#xa;支持 Minecraft 版本 JSON 中的替换标记，例如 ${library_directory}。&#xa;同时支持缘启的替换标记，用法见 更多 → 帮助 中的「替换标记」。" MaxLength="4000"
                                      Height="100" AcceptsReturn="True" TextWrapping="Wrap" VerticalContentAlignment="Top" Padding="0,5" VerticalScrollBarVisibility="Auto" />
                     <TextBlock Grid.Row="2" VerticalAlignment="Center" HorizontalAlignment="Left" Text="游戏参数" Margin="0,0,25,0" />
-                    <local:MyTextBox local:SettingService.Key="LaunchAdvanceGame" x:Name="TextAdvanceGame" Grid.Row="2" Grid.ColumnSpan="2" Grid.Column="1" ToolTip="这里填的内容会原样拼到启动参数末尾。&#xa;比如填 --demo，游戏就以试玩模式启动。&#xa;&#xa;支持 Minecraft 版本 JSON 里的替换标记，例如 ${library_directory}。&#xa;也支持缘启自己的替换标记，用法在 更多 → 帮助 里搜 “替换标记”。" />
+                    <local:MyTextBox local:SettingService.Key="LaunchAdvanceGame" x:Name="TextAdvanceGame" Grid.Row="2" Grid.ColumnSpan="2" Grid.Column="1" ToolTip="此处内容将原样追加到启动参数末尾。&#xa;例如填写 --demo 时以试玩模式启动。&#xa;&#xa;支持 Minecraft 版本 JSON 中的替换标记，例如 ${library_directory}。&#xa;同时支持缘启的替换标记，用法见 更多 → 帮助 中的「替换标记」。" />
                     <TextBlock Grid.Row="4" VerticalAlignment="Center" HorizontalAlignment="Left" Text="启动前执行命令" Margin="0,0,25,0" />
                     <local:MyTextBox local:SettingService.Key="LaunchAdvanceRun" x:Name="TextAdvanceRun" Grid.Row="4" Grid.ColumnSpan="2" Grid.Column="1" HintText=""
-                                     ToolTip="游戏启动前跑一段命令或程序，语法和 Windows 命令提示符一样。&#xa;&#xa;可以用替换标记让它随版本变化，或者拼出相对路径，用法在 更多 → 帮助 里搜 “替换标记”。例如：&#xa; · &quot;{verpath}test.exe&quot; ：运行版本文件夹下的 test.exe 程序&#xa; · &quot;{java}java.exe&quot; -jar &quot;{verpath}test.jar&quot; ：用 Java 运行版本文件夹下的 test.jar&#xa; · notepad &quot;{verindie}options.txt&quot; ：用记事本打开该版本的设置文件&#xa;&#xa;涉及路径的参数最好加上双引号，路径里有空格也能正常跑。&#xa;命令的工作目录是当前的 .minecraft 文件夹。" />
+                                     ToolTip="在游戏启动前执行的命令或程序，语法与 Windows 命令提示符一致。&#xa;&#xa;支持替换标记随版本变化或拼出相对路径，用法见 更多 → 帮助 中的「替换标记」。例如：&#xa; · &quot;{verpath}test.exe&quot; ：运行版本文件夹下的 test.exe 程序&#xa; · &quot;{java}java.exe&quot; -jar &quot;{verpath}test.jar&quot; ：用 Java 运行版本文件夹下的 test.jar&#xa; · notepad &quot;{verindie}options.txt&quot; ：用记事本打开该版本的设置文件&#xa;&#xa;含路径的参数需使用双引号，路径中含空格时可正常执行。&#xa;命令的工作目录为当前 .minecraft 文件夹。" />
                     <local:MyCheckBox local:SettingService.Key="LaunchAdvanceRunWait" x:Name="CheckAdvanceRunWait" Grid.Row="5" Grid.Column="1" Visibility="Collapsed"
                                       Text="等待命令执行完成后再继续启动" Margin="0,8,0,7" />
                     <StackPanel VerticalAlignment="Center" Grid.Row="7" Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,0,25,0">
                         <TextBlock Text="Java 列表" VerticalAlignment="Center" />
                         <local:MyIconButton Height="23" Margin="0,1,0,0" VerticalAlignment="Center" Theme="Black" CanClick="False"
-                            ToolTip="启动时缘启会挑列表里第一个能跑当前 Minecraft 的 Java。&#xa;点选项右侧的箭头可以排序，决定先试哪个。&#xa;想无视兼容性指定某个 Java，去版本设置里改。" Opacity="0.3"
+                            ToolTip="启动时缘启会选用列表中第一个与当前 Minecraft 兼容的 Java。&#xa;调整顺序可决定优先尝试的次序。&#xa;如需忽略兼容性指定 Java，请在版本设置中修改。" Opacity="0.3"
                             Logo="M512 1008C238.7 1008 16 785.2 16 512S238.7 16 512 16 1008 238.7 1008 512 785.2 1008 512 1008z m0-896c-220.8 0-400 179.2-400 400s179.2 400 400 400 400-179.2 400-400S732.8 112 512 112z M514.5 638.7c-26.2 0-48-21.7-48-48 0-52.4 32-100.4 81.9-120.9 26.8-11.5 51.2-39.6 44.8-76.8-5.1-27.5-32-51.8-62.7-56.9-26.2-4.4-51.8 2.5-70.4 18.5-16 13.4-24.3 32-24.3 51.2 0 26.2-21.7 48-48 48s-48-21.7-48-48c0-47.3 21.1-92.8 58.2-124.1a182.4 182.4 0 0 1 147.8-39.6c71.0 11.5 129.2 66.5 142.0 133.7 14.0 76.8-27.5 151.6-101.7 183.0-14.0 5.7-23.0 18.5-23.0 32.6 0 26.2-21.7 48-48 48zM514.5 793.6c-15.3 0-30.0-6.4-40.9-16.6-10.8-10.8-16.6-25.6-16.6-40.9s5.7-30.0 16.6-40.9c2.5-2.5 5.7-5.1 8.9-7.0s6.4-3.8 9.6-5.1a57.7 57.7 0 0 1 80 53.1 57.6 57.6 0 0 1-57.6 57.6z" />
                     </StackPanel>
                     <Grid x:Name="PanAdvanceJava" Grid.ColumnSpan="2" Grid.Row="7" Grid.Column="1" HorizontalAlignment="Stretch">
@@ -280,18 +280,18 @@
                     </Grid>
                     <TextBlock VerticalAlignment="Center" Grid.Row="9" HorizontalAlignment="Left" Text="内存管理" Margin="0,0,25,0" />
                     <local:MyComboBox local:SettingService.Key="LaunchAdvanceGC" Grid.Row="9" Grid.ColumnSpan="2" Grid.Column="1">
-                        <local:MyComboBoxItem Content="尽量使用 ZGC" ToolTip="Java 21+ 用分代 ZGC，15～20 用非分代 ZGC，14 及更早用 G1GC。&#xa;ZGC 占内存比 G1GC 多，但回收时不卡。&#xa;会覆盖 “Java 虚拟机参数” 里跟 GC 相关的参数。" />
-                        <local:MyComboBoxItem Content="尽量使用分代 ZGC" ToolTip="Java 21+ 用分代 ZGC，20 及更早用 G1GC。&#xa;ZGC 占内存比 G1GC 多，但回收时不卡。&#xa;会覆盖 “Java 虚拟机参数” 里跟 GC 相关的参数。" />
-                        <local:MyComboBoxItem Content="标准 G1GC" ToolTip="始终用 G1GC，带 Mojang 官方的优化参数。&#xa;G1GC 占内存比 ZGC 少，但回收时会突然卡一下。&#xa;会覆盖 “Java 虚拟机参数” 里跟 GC 相关的参数。" />
-                        <local:MyComboBoxItem Content="调优 G1GC" local:SettingService.Value="4" ToolTip="始终用 G1GC，带缘启调校过的优化参数。&#xa;G1GC 占内存比 ZGC 少，但回收时会突然卡一下。&#xa;会覆盖 “Java 虚拟机参数” 里跟 GC 相关的参数。" />
-                        <local:MyComboBoxItem Content="不指定（可自定义）" local:SettingService.Value="3" ToolTip="不自动加 GC 参数。&#xa;只有选这项时，才能自己在 “Java 虚拟机参数” 里写 GC 参数。" />
+                        <local:MyComboBoxItem Content="尽量使用 ZGC" ToolTip="Java 21 及以上使用分代 ZGC，15 至 20 使用非分代 ZGC，14 及更早使用 G1GC。&#xa;ZGC 的内存占用高于 G1GC，回收时不会造成卡顿。&#xa;将覆盖「Java 虚拟机参数」中与 GC 相关的参数。" />
+                        <local:MyComboBoxItem Content="尽量使用分代 ZGC" ToolTip="Java 21 及以上使用分代 ZGC，20 及更早使用 G1GC。&#xa;ZGC 的内存占用高于 G1GC，回收时不会造成卡顿。&#xa;将覆盖「Java 虚拟机参数」中与 GC 相关的参数。" />
+                        <local:MyComboBoxItem Content="标准 G1GC" ToolTip="始终使用 G1GC，附带 Mojang 官方优化参数。&#xa;G1GC 的内存占用低于 ZGC，回收时可能出现短暂卡顿。&#xa;将覆盖「Java 虚拟机参数」中与 GC 相关的参数。" />
+                        <local:MyComboBoxItem Content="调优 G1GC" local:SettingService.Value="4" ToolTip="始终使用 G1GC，附带缘启调校的优化参数。&#xa;G1GC 的内存占用低于 ZGC，回收时可能出现短暂卡顿。&#xa;将覆盖「Java 虚拟机参数」中与 GC 相关的参数。" />
+                        <local:MyComboBoxItem Content="不指定（可自定义）" local:SettingService.Value="3" ToolTip="不自动添加 GC 参数。&#xa;仅选择此项时，可在「Java 虚拟机参数」中自行填写 GC 参数。" />
                     </local:MyComboBox>
                     <StackPanel Margin="0,12,0,4" Grid.Row="10" Grid.ColumnSpan="2" HorizontalAlignment="Left">
-                        <local:MyCheckBox Height="28" Text="禁用 Java Launch Wrapper" local:SettingService.Key="LaunchAdvanceDisableJLW" ToolTip="勾上就不用 Java Launch Wrapper。它原本是修 Java 18 及更早版本在中文路径下启动不了的问题。&#xa;详见：https://github.com/00ll00/java_launch_wrapper" />
-                        <local:MyCheckBox Height="28" Text="禁用 LWJGL Unsafe Agent" local:SettingService.Key="LaunchAdvanceDisableLUA" ToolTip="勾上就不用 LWJGL Unsafe Agent。它原本是修 LWJGL 3.4.1 的一个性能问题。&#xa;详见：https://github.com/HMCL-dev/lwjgl-unsafe-agent" />
-                        <local:MyCheckBox Height="28" Text="使用高性能显卡" local:SettingService.Key="LaunchAdvanceGraphicCard" ToolTip="自动在 Windows 设置 → 系统 → 屏幕 → 显示卡 里把缘启和 Java 设成高性能显卡。&#xa;有核显也有独显时，这能保证 Minecraft 走独显渲染，帧率会高不少。&#xa;&#xa;这一项会写系统注册表，便携版默认关闭。" />
+                        <local:MyCheckBox Height="28" Text="禁用 Java Launch Wrapper" local:SettingService.Key="LaunchAdvanceDisableJLW" ToolTip="启用后不使用 Java Launch Wrapper。该组件用于修复 Java 18 及更早版本在中文路径下无法启动的问题。&#xa;详见：https://github.com/00ll00/java_launch_wrapper" />
+                        <local:MyCheckBox Height="28" Text="禁用 LWJGL Unsafe Agent" local:SettingService.Key="LaunchAdvanceDisableLUA" ToolTip="启用后不使用 LWJGL Unsafe Agent。该组件用于修复 LWJGL 3.4.1 的一处性能问题。&#xa;详见：https://github.com/HMCL-dev/lwjgl-unsafe-agent" />
+                        <local:MyCheckBox Height="28" Text="使用高性能显卡" local:SettingService.Key="LaunchAdvanceGraphicCard" ToolTip="在 Windows 设置 → 系统 → 屏幕 → 显示卡 中将缘启与 Java 设为高性能显卡。&#xa;同时存在核显与独显时，可使 Minecraft 使用独显渲染，帧率明显提升。&#xa;&#xa;此项会写入系统注册表，便携版默认关闭。" />
                     </StackPanel>
-                    <local:MyHint Text="更多选项在版本设置里。" Margin="0,5,0,10" Theme="Blue" Grid.Row="11" Grid.ColumnSpan="2"
+                    <local:MyHint Text="更多选项位于版本设置中。" Margin="0,5,0,10" Theme="Blue" Grid.Row="11" Grid.ColumnSpan="2"
                                   CanClose="True" RelativeSetup="HintMoreAdvancedSetup" />
                 </Grid>
             </local:MyCard>

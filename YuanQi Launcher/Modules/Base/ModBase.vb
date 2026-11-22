@@ -6,7 +6,7 @@ Public Module ModBase
 #Region "声明"
 
     '下列版本信息由更新器自动修改
-    Public Const VersionBaseName As String = "2.15.0" '显示用版本名
+    Public Const VersionBaseName As String = "2.15.1.0" '显示用版本名
     Public Const CommitHash As String = "" 'Commit Hash，由 GitHub Workflow 自动替换
 #If RELEASE Then
     Public Const VersionCode As Integer = 411 '正式版
@@ -1024,24 +1024,59 @@ Public Module ModBase
     End Function
 
     ''' <summary>
-    ''' 打开网页。
+    ''' 网页入口是否按「交换」的方式分工（左键系统浏览器、右键启动器内）。
+    ''' 读的是「网页打开手势」下拉：0 = 左键启动器内/右键浏览器，1 = 相反；
+    ''' -1 表示用户还没在新下拉里选过，就沿用旧的「交换左右键」开关。
+    ''' </summary>
+    Public Function WebMouseSwapped() As Boolean
+        Try
+            Dim Gesture As Integer = Settings.Get(Of Integer)("UiWebClickGesture")
+            If Gesture >= 0 Then Return Gesture = 1
+        Catch ex As Exception
+            Logger.Warn(ex, "读取网页打开手势设置失败，按默认方式处理")
+            Return False
+        End Try
+        Try
+            Return Settings.Get(Of Boolean)("UiSwapWebClick")
+        Catch ex As Exception
+            Logger.Warn(ex, "读取左右键交换设置失败，按默认方式处理")
+            Return False
+        End Try
+    End Function
+
+    ''' <summary>
+    ''' 打开网页（左键 / 默认方式）：按「网页打开手势」决定用内置浏览器还是系统浏览器。
     ''' </summary>
     Public Sub OpenWebsite(Url As String)
-        If Not Url.StartsWithF("http", True) AndAlso Not Url.StartsWithF("minecraft://", True) AndAlso Not Url.StartsWithF("minecraft-preview://", True) Then
-            Logger.Warn(Url & " 不是一个有效的网址，它必须以 http 开头！")
-            Return
-        End If
-        '按设置决定使用启动器内置浏览器还是系统默认浏览器
-        Dim UseInner As Boolean = True
-        Try
-            UseInner = Settings.Get(Of Boolean)("UiOpenWebInLauncher")
-        Catch ex As Exception
-            Logger.Warn(ex, "读取网页打开方式设置失败，改用启动器内打开")
-        End Try
-        If Not UseInner Then
+        If Not IsValidWebUrl(Url) Then Return
+        If WebMouseSwapped() Then
             OpenWebsiteExternal(Url)
-            Return
+        Else
+            OpenWebsiteInner(Url)
         End If
+    End Sub
+
+    ''' <summary>
+    ''' 右键方式打开网页：与左键相反，未交换时用系统浏览器，交换后用启动器内置浏览器。
+    ''' </summary>
+    Public Sub OpenWebsiteSecondary(Url As String)
+        If Not IsValidWebUrl(Url) Then Return
+        If WebMouseSwapped() Then
+            OpenWebsiteInner(Url)
+        Else
+            OpenWebsiteExternal(Url)
+        End If
+    End Sub
+
+    ''' <summary>网址是否可用（必须以 http 或 Minecraft 相关协议开头）。</summary>
+    Public Function IsValidWebUrl(Url As String) As Boolean
+        If Url.StartsWithF("http", True) OrElse Url.StartsWithF("minecraft://", True) OrElse Url.StartsWithF("minecraft-preview://", True) Then Return True
+        Logger.Warn(Url & " 不是一个有效的网址，它必须以 http 开头！")
+        Return False
+    End Function
+
+    ''' <summary>用启动器内置浏览器打开网页。</summary>
+    Private Sub OpenWebsiteInner(Url As String)
         Try
             Logger.Info($"在启动器内打开网页：{Url}")
             RunInUi(

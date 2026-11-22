@@ -145,6 +145,8 @@ Public Class ResourceVersion
                 .DownloadUrls = ParseCurseForgeDownloadUrls(Url.Replace(.FileName, StringUtils.UrlEscape(.FileName))) '对脑残 CurseForge 的下载地址进行多种修正
                 .DownloadUrls.Add(DlSourceModGet(Url)) '添加镜像源；注意 MCIM 源不支持 URL 编码后的文件名，必须传入 URL 编码前的文件名
                 .DownloadUrls = .DownloadUrls.Distinct.ToList '最终去重
+                '按 CurseForge 自己的下载源设置决定先试官方还是先试镜像
+                .DownloadUrls = DlSourceModFileOrder(.DownloadUrls, Url)
                 'Dependencies
                 If Data.ContainsKey("dependencies") Then
                     .RawDependencies = Data("dependencies").
@@ -184,7 +186,7 @@ Public Class ResourceVersion
                 If CType(Data("files"), JArray).Any() Then '可能为空
                     Dim File As JToken = Data("files")(0)
                     .FileName = File("filename")
-                    .DownloadUrls = New List(Of String) From {File("url"), DlSourceModGet(File("url"))}.Distinct.ToList '同时添加了镜像源
+                    .DownloadUrls = DlSourceModFileOrder(New List(Of String) From {File("url").ToString, DlSourceModGet(File("url").ToString)}, File("url").ToString) '同时添加镜像源，并按 Modrinth 的下载源设置排序
                     .Size = File("size")
                     .Hash = File("hashes")("sha1")?.ToString.Lower()
                 End If

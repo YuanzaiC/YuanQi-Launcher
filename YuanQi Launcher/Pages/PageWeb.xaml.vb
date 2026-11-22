@@ -140,11 +140,14 @@ Public Class PageWeb
         End Try
     End Sub
 
-    Private Sub ShowState(Text As String)
+    Private Sub ShowState(Text As String, Optional ShowActions As Boolean = False)
         Try
             LabState.Text = Text
             PanState.Opacity = If(String.IsNullOrWhiteSpace(Text), 0, 1)
             PanState.IsHitTestVisible = Not String.IsNullOrWhiteSpace(Text)
+            If PanStateActions IsNot Nothing Then
+                PanStateActions.Visibility = If(ShowActions AndAlso Not String.IsNullOrWhiteSpace(Text), Visibility.Visible, Visibility.Collapsed)
+            End If
         Catch ex As Exception
             Logger.Warn(ex, "更新网页状态失败")
         End Try
@@ -173,11 +176,42 @@ Public Class PageWeb
 
 #Region "内核事件"
 
+    ''' <summary>正在导航的地址（用于失败重试时回到同一个地址）。</summary>
+    Private NavigatingUrl As String = ""
+    ''' <summary>同一个地址已经自动重试过几次。</summary>
+    Private NavRetryCount As Integer = 0
+    ''' <summary>同一个地址最多自动重试几次（对付首次连接的偶发失败，比如正好赶上代理没热起来）。</summary>
+    Private Const MaxNavRetry As Integer = 2
+
     Private Sub Core_NavigationStarting(sender As Object, e As CoreWebView2NavigationStartingEventArgs)
         ShowProgress(True)
+        Dim Url As String = If(e.Uri, "")
+        If Not String.Equals(Url, NavigatingUrl, StringComparison.OrdinalIgnoreCase) Then
+            NavigatingUrl = Url
+            NavRetryCount = 0 '换了地址就重新计数
+        End If
     End Sub
 
-    Private Sub Core_NavigationCompleted(sender As Object, e As CoreWebView2NavigationCompletedEventArgs)
+    ''' <summary>这些错误多半是"再试一次就好"，值得自动重试。</summary>
+    Private Shared Function IsTransientError(Status As CoreWebView2WebErrorStatus) As Boolean
+        Select Case Status
+            Case CoreWebView2WebErrorStatus.ConnectionAborted,
+                 CoreWebView2WebErrorStatus.ConnectionReset,
+                 CoreWebView2WebErrorStatus.Timeout,
+                 CoreWebView2WebErrorStatus.ServerUnreachable,
+                 CoreWebView2WebErrorStatus.ErrorHttpInvalidServerResponse,
+                 CoreWebView2WebErrorStatus.CannotConnect,
+                 CoreWebView2WebErrorStatus.Disconnected,
+                 CoreWebView2WebErrorStatus.HostNameNotResolved,
+                 CoreWebView2WebErrorStatus.UnexpectedError,
+                 CoreWebView2WebErrorStatus.Unknown 'WebView2 有时把首次连接失败报成 Unknown，重试一次通常就好了
+                Return True
+            Case Else
+                Return False
+        End Select
+    End Function
+
+    Private Async Sub Core_NavigationCompleted(sender As Object, e As CoreWebView2NavigationCompletedEventArgs)
         ShowProgress(False)
         If e.IsSuccess Then
             '首次加载完成：此时页面已静止，原生网页块才显示，避免在入场动画中凭空出现
@@ -187,10 +221,104 @@ Public Class PageWeb
             End If
             ShowState("")
             SaveCookiesFrom(Me) '导航完成即保存登录状态（登录跳转完成后会被捕获）
+            'CurseForge 这类站点首次访问可能撞上 Cloudflare 人机验证：盯一下，别让用户对着空白页干等
+            CheckVerification(1)
         Else
-            ShowState("网页加载失败：" & e.WebErrorStatus.ToString() & vbCrLf & "可以点右上角「在浏览器打开」")
+            If e.WebErrorStatus = CoreWebView2WebErrorStatus.OperationCanceled Then Return '用户自己按了停止
+            Dim Url As String = If(NavigatingUrl, If(Browser.Source?.ToString, ""))
+            Logger.Warn($"在启动器内打开网页失败：{Url}（{e.WebErrorStatus}）")
+            If IsTransientError(e.WebErrorStatus) AndAlso NavRetryCount < MaxNavRetry AndAlso Not String.IsNullOrWhiteSpace(Url) Then
+                NavRetryCount += 1
+                ShowState($"网页暂时打不开（{e.WebErrorStatus}），正在重试第 {NavRetryCount} 次…")
+                '原生网页块会挡住提示文字，重试期间先藏起来
+                Try
+                    Browser.Visibility = Visibility.Collapsed
+                    IsBrowserShown = False
+                Catch ex As Exception
+                    Logger.Warn(ex, "隐藏网页失败")
+                End Try
+                Try
+                    Await System.Threading.Tasks.Task.Delay(900)
+                    If IsCoreReady AndAlso IsLoaded Then
+                        ShowProgress(True)
+                        Browser.Source = New Uri(Url)
+                        Return
+                    End If
+                Catch ex As Exception
+                    Logger.Warn(ex, "重试打开网页失败")
+                End Try
+            End If
+            ShowState($"网页加载失败：{e.WebErrorStatus}{vbCrLf}可以点下面的「重试」，或改用系统浏览器打开。", True)
+            'WebView2 是原生窗口，永远盖在 WPF 内容上面，必须把它藏起来提示才看得见、点得到
+            Try
+                Browser.Visibility = Visibility.Collapsed
+                IsBrowserShown = False
+            Catch ex As Exception
+                Logger.Warn(ex, "隐藏加载失败的网页失败")
+            End Try
         End If
     End Sub
+
+    ''' <summary>
+    ''' 检测当前页面是不是 Cloudflare 之类的人机验证页；是的话隔几秒再看一次，
+    ''' 一直过不去就提示用户改用系统浏览器（系统浏览器通常已经带着代理与验证 Cookie）。
+    ''' Round：1 = 刚加载完，2 = 等过一次，3 = 已经在提示了，只看验证有没有自己通过。
+    ''' </summary>
+    Private Async Sub CheckVerification(Round As Integer)
+        Try
+            If Not IsCoreReady OrElse Browser.CoreWebView2 Is Nothing Then Return
+            Dim IsChallenge As Boolean = Await IsChallengePage()
+            If Not IsChallenge Then
+                If Round > 1 Then
+                    Logger.Info("人机验证页面已通过，恢复正常显示")
+                    ShowState("")
+                End If
+                Return
+            End If
+            Dim Url As String = If(NavigatingUrl, "")
+            Select Case Round
+                Case 1
+                    Logger.Warn($"页面疑似人机验证，先等它自动通过：{Url}")
+                    ShowState("正在等待人机验证自动通过…")
+                    Await System.Threading.Tasks.Task.Delay(7000)
+                    CheckVerification(2)
+                Case 2
+                    '不遮挡页面：验证页有时需要用户自己点一下，盖住反而没法过
+                    Logger.Warn($"人机验证没能在内置浏览器里通过，建议改用系统浏览器：{Url}")
+                    ShowState("")
+                    Hint("这个网站的人机验证在内置浏览器里过不去，点右上角「在浏览器打开」用系统浏览器访问", HintType.Blue)
+                    Await System.Threading.Tasks.Task.Delay(12000)
+                    CheckVerification(3)
+                Case Else
+                    '已经在提示了：等用户操作，重新导航会重新走一遍流程
+            End Select
+        Catch ex As Exception
+            Logger.Warn(ex, "人机验证检测流程失败")
+        End Try
+    End Sub
+
+    ''' <summary>当前页面是否是人机验证页（脚本判断失败时按"不是"处理）。</summary>
+    Private Async Function IsChallengePage() As System.Threading.Tasks.Task(Of Boolean)
+        Try
+            Dim Result As String = Await Browser.CoreWebView2.ExecuteScriptAsync(VerificationScript)
+            Return Result?.Trim = "1"
+        Catch ex As Exception
+            Logger.Warn(ex, "检测人机验证页面失败")
+            Return False
+        End Try
+    End Function
+
+    ''' <summary>
+    ''' 判断"是否人机验证页"的脚本：标题命中关键词，或者页面上有 Cloudflare 的验证容器/框架。
+    ''' </summary>
+    Private Const VerificationScript As String =
+        "(function(){try{" &
+        "var t=(document.title||'').toLowerCase();" &
+        "var f=!!document.querySelector('#challenge-form,#cf-challenge-running,#challenge-stage,iframe[src*=\""challenges.cloudflare.com\""]');" &
+        "var k=['just a moment','attention required','checking your browser','verify you are human','请稍候','正在验证','人机验证','安全验证'];" &
+        "var m=false;for(var i=0;i<k.length;i++){if(t.indexOf(k[i])>=0){m=true;break;}}" &
+        "return (m||f)?1:0;" &
+        "}catch(e){return 0;}})()"
 
     Private Sub Core_HistoryChanged(sender As Object, e As EventArgs)
         UpdateNavButtons()
@@ -415,6 +543,44 @@ Public Class PageWeb
         Try
             Dim Url As String = If(PendingUrl, "")
             If String.IsNullOrWhiteSpace(Url) Then Url = If(TxtAddress.Text, "").Trim
+            If String.IsNullOrWhiteSpace(Url) Then Return
+            OpenWebsiteExternal(Url)
+        Catch ex As Exception
+            Logger.Warn(ex, "用系统浏览器打开网页失败")
+        End Try
+    End Sub
+
+    ''' <summary>状态面板上的「重试」：重新打开当前地址，并重置自动重试计数。</summary>
+    Private Sub BtnStateRetry_Click() Handles BtnStateRetry.Click
+        Try
+            Dim Url As String = If(NavigatingUrl, If(PendingUrl, ""))
+            If String.IsNullOrWhiteSpace(Url) Then Url = If(TxtAddress.Text, "").Trim
+            If String.IsNullOrWhiteSpace(Url) Then Return
+            NavRetryCount = 0
+            NavigatingUrl = Url
+            PendingUrl = Url
+            ShowState("正在重新加载…")
+            Try
+                Browser.Visibility = Visibility.Collapsed
+                IsBrowserShown = False
+            Catch ex As Exception
+                Logger.Warn(ex, "隐藏网页失败")
+            End Try
+            If IsCoreReady Then
+                ShowProgress(True)
+                Browser.Source = New Uri(Url)
+            Else
+                InitializeCore()
+            End If
+        Catch ex As Exception
+            Logger.Warn(ex, "重试打开网页失败")
+        End Try
+    End Sub
+
+    ''' <summary>状态面板上的「在浏览器打开」：改用系统默认浏览器访问当前地址。</summary>
+    Private Sub BtnStateExternal_Click() Handles BtnStateExternal.Click
+        Try
+            Dim Url As String = If(NavigatingUrl, If(PendingUrl, If(TxtAddress.Text, "").Trim))
             If String.IsNullOrWhiteSpace(Url) Then Return
             OpenWebsiteExternal(Url)
         Catch ex As Exception

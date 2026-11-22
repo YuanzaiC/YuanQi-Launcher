@@ -13,6 +13,11 @@ Public Module ModTools
     Public Const RepoUrl As String = "https://github.com/YuanzaiC/YuanQi-Launcher"
 
     ''' <summary>
+    ''' 缘启官网地址，关于页的「前往官网」按钮使用它。
+    ''' </summary>
+    Public Const WebsiteUrl As String = "https://yuanzaic.github.io/YuanQi-Launcher/"
+
+    ''' <summary>
     ''' 发布包（单文件安装包）的命名规则，需与 Releases 里的资产名一致。
     ''' </summary>
     Public Function InstallerAssetName(Version As String) As String

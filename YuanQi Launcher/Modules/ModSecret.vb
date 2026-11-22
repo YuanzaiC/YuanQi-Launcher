@@ -6,10 +6,47 @@ Friend Module ModSecret
     Public Const VersionBranchMain As String = "OpenSource"
     '在开源版的注册表与常规版的注册表隔离，以防数据冲突
     Public Const RegFolder As String = "YQL"
-    '用于微软登录的 ClientId
-    Public OAuthClientId As String = If(Environment.GetEnvironmentVariable("YQL_MS_CLIENT_ID"), "")
+    '用于微软登录的 ClientId：优先「设置 → 高级 → 微软登录」里填的值，
+    '其次环境变量 YQL_MS_CLIENT_ID，最后是内置默认值（缘启自己的 Azure 应用）
+    Public Const DefaultOAuthClientId As String = ""
+    ''' <summary>
+    ''' 「怎么获取微软登录的客户端 ID」教程地址（正文见仓库 docs\微软登录-获取ClientID.md）。
+    ''' </summary>
+    Public Const MsClientIdGuideUrl As String = "https://github.com/YuanzaiC/YuanQi-Launcher/blob/main/docs/%E5%BE%AE%E8%BD%AF%E7%99%BB%E5%BD%95-%E8%8E%B7%E5%8F%96ClientID.md"
+    Public ReadOnly Property OAuthClientId As String
+        Get
+            Try
+                Dim FromSetting As String = Settings.Get(Of String)("LaunchOAuthClientId")
+                If Not String.IsNullOrWhiteSpace(FromSetting) Then Return FromSetting.Trim()
+            Catch ex As Exception
+                Logger.Warn(ex, "读取微软登录 ClientId 设置失败")
+            End Try
+            Try
+                Dim FromEnv As String = Environment.GetEnvironmentVariable("YQL_MS_CLIENT_ID")
+                If Not String.IsNullOrWhiteSpace(FromEnv) Then Return FromEnv.Trim()
+            Catch
+            End Try
+            Return DefaultOAuthClientId
+        End Get
+    End Property
     'CurseForge API Key
-    Public CurseForgeAPIKey As String = If(Environment.GetEnvironmentVariable("YQL_CURSEFORGE_API_KEY"), "")
+    ''' <summary>CurseForge 的 API Key：优先设置页里填的，其次环境变量，最后为空（为空时 CurseForge 会 403）。</summary>
+    Public ReadOnly Property CurseForgeAPIKey As String
+        Get
+            Try
+                Dim FromSetting As String = Settings.Get(Of String)("ToolCurseForgeApiKey")
+                If Not String.IsNullOrWhiteSpace(FromSetting) Then Return FromSetting.Trim()
+            Catch ex As Exception
+                Logger.Warn(ex, "读取 CurseForge API Key 设置失败")
+            End Try
+            Try
+                Dim FromEnv As String = Environment.GetEnvironmentVariable("YQL_CURSEFORGE_API_KEY")
+                If Not String.IsNullOrWhiteSpace(FromEnv) Then Return FromEnv.Trim()
+            Catch
+            End Try
+            Return ""
+        End Get
+    End Property
 
 #Region "网络鉴权"
 

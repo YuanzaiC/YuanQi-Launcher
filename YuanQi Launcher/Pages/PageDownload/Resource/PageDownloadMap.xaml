@@ -1,0 +1,20 @@
+<local:MyPageRight
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:YuanQi" xmlns:d="http://schemas.microsoft.com/expression/blend/2008" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+    mc:Ignorable="d" x:Class="PageDownloadMap"
+    PanScroll="Content">
+    <!-- 地图（世界）下载：用 CurseForge 的 Worlds 分类（classId=17）。
+         Modrinth 没有这一大类资源，所以这个页面只搜 CurseForge，来源筛选也一并隐藏。
+         类型下拉的 Tag 就是 CurseForge 的 categoryId。 -->
+    <local:PageResource x:Name="Content" PageType="Map" TypeName="地图" TypeNameSpaced="地图" ShowSource="False">
+        <local:MyComboBoxItem Tag="" Content="全部" IsSelected="True" />
+        <local:MyComboBoxItem Tag="248" Content="冒险" />
+        <local:MyComboBoxItem Tag="253" Content="生存" />
+        <local:MyComboBoxItem Tag="249" Content="创造" />
+        <local:MyComboBoxItem Tag="251" Content="跑酷" />
+        <local:MyComboBoxItem Tag="252" Content="解谜" />
+        <local:MyComboBoxItem Tag="250" Content="小游戏地图" />
+        <local:MyComboBoxItem Tag="4464" Content="模组世界" />
+    </local:PageResource>
+</local:MyPageRight>

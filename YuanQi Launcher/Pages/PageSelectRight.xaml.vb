@@ -49,7 +49,7 @@ Public Class PageSelectRight
                             If Instance.Version.ModLoaders.HasFlagF(ModLoaders.NeoForge) Then IsNeoForgeExists = True
                         Next
                         If If(IsLiteExists, 1, 0) + If(IsForgeExists, 1, 0) + If(IsFabricExists, 1, 0) + If(IsNeoForgeExists, 1, 0) > 1 Then
-                            CardName = "可安装 Mod"
+                            CardName = "可安装版本"
                         ElseIf IsForgeExists Then
                             CardName = "Forge 版本"
                         ElseIf IsNeoForgeExists Then
@@ -140,14 +140,15 @@ Public Class PageSelectRight
         Dim BtnDel As New MyIconButton With {.LogoScale = 1.1, .Logo = Logo.IconButtonDelete}
         BtnDel.ToolTip = "删除"
         AddHandler BtnDel.Click, Sub() DeleteInstance(sender, Instance)
-        '已归档的版本：灰显标注，只能解压还原（不能直接启动或进设置）
+        '已归档的版本：整行做"封存"外观（名字灰、挂琥珀色标、图标压暗、摘要换成琥珀色），
+        '和正常版本一眼就能分开；只能解压还原，不能直接启动或进设置
         If ModArchive.IsArchived(Instance.PathVersion) Then
             Try
-                sender.Info = $"【已归档】{ModArchive.GetSummary(Instance.PathVersion)}{vbCrLf}{sender.Info}"
+                sender.Info = $"{ModArchive.GetSummary(Instance.PathVersion)}{vbCrLf}{sender.Info}"
             Catch ex As Exception
                 Logger.Warn(ex, "显示归档信息失败")
             End Try
-            sender.Opacity = 0.72
+            ApplyArchivedLook(sender)
             Dim BtnExtract As New MyIconButton With {.LogoScale = 1.1, .Logo = Logo.IconButtonOpen}
             BtnExtract.ToolTip = "解压还原该版本"
             AddHandler BtnExtract.Click, Sub() ExtractInstance(Instance)
@@ -272,34 +273,85 @@ Public Class PageSelectRight
         End Try
     End Sub
 
-    ''' <summary>批量归档多个版本（供空间体检的归档候选使用），在任务栏显示整体进度。</summary>
+    ''' <summary>
+    ''' 批量归档多个版本（供空间体检的归档候选使用），在任务栏显示整体进度。
+    ''' 单个版本出错不再中断整批：能归档的继续归档，最后一起报结果；
+    ''' 不管成功失败，已经归档好的版本都要刷掉占用缓存、刷新版本列表，否则列表里还是"未归档"的样子。
+    ''' </summary>
     Public Shared Sub RunArchiveBatch(Paths As List(Of String))
         If Paths Is Nothing OrElse Paths.Count = 0 Then Return
-        Dim Tasks As New List(Of LoaderBase)
-        For Each VersionPath In Paths
-            Dim TargetPath As String = VersionPath
-            Dim ItemName As String = IO.Path.GetFileName(TargetPath.TrimEnd("\"c))
-            Tasks.Add(New LoaderTask(Of Integer, Boolean)(ItemName,
-                Sub(T)
-                    ModArchive.Archive(TargetPath, Sub(P) T.Progress = P)
-                    T.Output = True
-                End Sub) With {.ProgressWeight = 1})
-        Next
-        Dim Combo As New LoaderCombo(Of Integer)("批量归档", Tasks)
+        Dim AllPaths As New List(Of String)(Paths)
+        Dim Done As New List(Of String) '已经归档好的
+        Dim Fails As New List(Of String) '失败的：名字 + 原因
+        Dim DoneLock As New Object
+        Dim FailsLock As New Object
+        Dim Task As New LoaderTask(Of Integer, Boolean)("批量归档",
+            Sub(T)
+                For i As Integer = 0 To AllPaths.Count - 1
+                    Dim P As String = AllPaths(i)
+                    Dim ShortName As String = IO.Path.GetFileName(P.TrimEnd("\"c))
+                    Dim Base As Double = i / CDbl(AllPaths.Count)
+                    Try
+                        If ModArchive.IsArchived(P) Then
+                            '别人正好归档过了：当成完成，不必重复压
+                            SyncLock DoneLock
+                                Done.Add(P)
+                            End SyncLock
+                        Else
+                            ModArchive.Archive(P, Sub(Pr As Double)
+                                                      T.Progress = Base + Math.Max(0.0, Math.Min(1.0, Pr)) / AllPaths.Count
+                                                  End Sub)
+                            SyncLock DoneLock
+                                Done.Add(P)
+                            End SyncLock
+                        End If
+                    Catch ex As Exception
+                        Logger.Warn(ex, $"批量归档失败：{P}")
+                        SyncLock FailsLock
+                            Fails.Add($"{ShortName}：{ex.Message}")
+                        End SyncLock
+                    End Try
+                Next
+                T.Progress = 1
+                If Done.Count = 0 AndAlso Fails.Count > 0 Then
+                    Throw New Exception(String.Join(vbCrLf, Fails)) '全失败才让任务栏标红
+                End If
+                T.Output = True
+            End Sub) With {.ProgressWeight = 1}
+        Dim Combo As New LoaderCombo(Of Integer)("批量归档", {Task})
         LoaderTaskbarAdd(Combo)
         AddHandler Combo.OnStateChangedUi,
             Sub(Loader As LoaderBase, NewState As LoadState, OldState As LoadState)
-                Select Case NewState
-                    Case LoadState.Finished
-                        Hint($"已归档 {Paths.Count} 个版本！", HintType.Green)
-                        For Each Path In Paths
-                            InstanceSizeStore.Remove(Path)
-                        Next
-                        McInstanceListForceRefresh = True
-                        LoaderFolderRun(McInstanceListLoader, McFolderSelected, LoaderFolderRunType.ForceRun, MaxDepth:=1, ExtraPath:="versions\")
-                    Case LoadState.Failed
-                        MyMsgBox(Loader.Error.GetDisplay(True), "归档失败", IsWarn:=True)
-                End Select
+                If NewState <> LoadState.Finished AndAlso NewState <> LoadState.Failed AndAlso
+                   NewState <> LoadState.Canceled Then Return
+                Dim OkList As New List(Of String)
+                SyncLock DoneLock
+                    OkList.AddRange(Done)
+                End SyncLock
+                Dim FailList As New List(Of String)
+                SyncLock FailsLock
+                    FailList.AddRange(Fails)
+                End SyncLock
+                '已经归档好的：刷掉占用缓存并强制刷新版本列表（这一步以前漏了，所以"压完了却不显示已归档"）
+                For Each P In OkList
+                    InstanceSizeStore.Remove(P)
+                Next
+                If OkList.Count > 0 Then
+                    McInstanceListForceRefresh = True
+                    LoaderFolderRun(McInstanceListLoader, McFolderSelected, LoaderFolderRunType.ForceRun, MaxDepth:=1, ExtraPath:="versions\")
+                End If
+                If NewState = LoadState.Canceled Then
+                    If OkList.Count > 0 Then Hint($"已归档 {OkList.Count} 个版本，其余已取消", HintType.Blue)
+                    Return
+                End If
+                If FailList.Count = 0 Then
+                    Hint($"已归档 {OkList.Count} 个版本！", HintType.Green)
+                ElseIf OkList.Count = 0 Then
+                    MyMsgBox("一个都没归档成功：" & vbCrLf & vbCrLf & String.Join(vbCrLf, FailList), "批量归档", IsWarn:=True)
+                Else
+                    MyMsgBox($"已归档 {OkList.Count} 个版本，{FailList.Count} 个没成功（没成功的保持原样，可以再试）：" & vbCrLf & vbCrLf &
+                             String.Join(vbCrLf, FailList), "批量归档", IsWarn:=True)
+                End If
             End Sub
         Combo.Start(0)
     End Sub
@@ -327,6 +379,10 @@ Public Class PageSelectRight
                         McInstanceListForceRefresh = True
                         LoaderFolderRun(McInstanceListLoader, McFolderSelected, LoaderFolderRunType.ForceRun, MaxDepth:=1, ExtraPath:="versions\")
                     Case LoadState.Failed
+                        '出错也要刷一遍：可能已经压掉了一部分文件，列表不能停在旧样子
+                        InstanceSizeStore.Remove(Instance.PathVersion)
+                        McInstanceListForceRefresh = True
+                        LoaderFolderRun(McInstanceListLoader, McFolderSelected, LoaderFolderRunType.ForceRun, MaxDepth:=1, ExtraPath:="versions\")
                         MyMsgBox(Loader.Error.GetDisplay(True), If(IsArchive, "归档失败", "解压失败"), IsWarn:=True)
                 End Select
             End Sub
@@ -337,7 +393,36 @@ Public Class PageSelectRight
 
 #Region "页面事件"
 
-    '点击选项
+    ''' <summary>
+    ''' 已归档版本的外观：名字灰掉、名字后面挂一个琥珀色「已归档」色标、左侧图标压暗、摘要行换成琥珀色。
+    ''' 目的是让人扫一眼就能把"封存着、要用得先解压"的版本和正常版本分开。
+    ''' </summary>
+    Private Shared Sub ApplyArchivedLook(Item As MyListItem)
+        Try
+            '名字整体灰掉
+            For Each Inline In Item.Inlines
+                Dim R As Run = TryCast(Inline, Run)
+                If R IsNot Nothing Then R.Foreground = New MyColor(150, 150, 150)
+            Next
+            '名字后面挂色标
+            Item.Inlines.Add(New Run("  已归档  ") With {
+                .FontSize = 10,
+                .Foreground = New MyColor(255, 255, 255),
+                .Background = New MyColor(184, 121, 46)})
+            '左侧图标压暗
+            If Item.PathLogo IsNot Nothing Then Item.PathLogo.Opacity = 0.28
+            '摘要行（已归档 · 多大 → 多小）用琥珀色，正常版本那行是灰色
+            If Item.LabInfo IsNot Nothing Then
+                Item.LabInfo.Foreground = New MyColor(168, 110, 40)
+                Item.LabInfo.Opacity = 0.95
+                Item.LabInfo.FontWeight = FontWeights.SemiBold
+            End If
+        Catch ex As Exception
+            Logger.Warn(ex, "应用归档外观失败")
+        End Try
+    End Sub
+
+    ''' <summary>单击列表项时的处理。</summary>
     Public Shared Sub Item_Click(sender As MyListItem, e As EventArgs)
         Dim Instance As McInstance = sender.Tag
         '已归档的版本：先询问是否解压
@@ -374,8 +459,13 @@ Public Class PageSelectRight
             Dim IsHintIndie As Boolean = Instance.State <> McInstance.McInstanceState.Error AndAlso Instance.PathIndie <> McFolderSelected
             Dim SavesFolder = DirectoryUtils.GetInfo(Instance.PathIndie & "saves\")
             Dim SaveEntries = If(IsHintIndie AndAlso SavesFolder.Exists, SavesFolder.EnumerateDirectories.OrderByDescending(Function(Save) Save.LastWriteTime).Select(Function(Save) $"{Save.Name}（上次修改：{StringUtils.FormatTimeSpan(Save.LastWriteTime - Date.Now, False)}）").ToList, New List(Of String))
+            '已归档的版本：内容全在 _archived.zip 里，删除等于把唯一的一份备份删掉，单独提醒一句
+            Dim ArchiveWarn As String = If(ModArchive.IsArchived(Instance.PathVersion),
+                vbCrLf & "注意：该版本已归档，全部内容都在 _archived.zip 里，压缩包删掉就再也找不回来了" &
+                If(IsShiftPressed, "（Shift 删除不会进回收站）！", "（会进回收站，但整套版本都在这一个文件里）。"), "")
             Select Case MyMsgBox($"你确定要{If(IsShiftPressed, "永久", "")}删除版本 {Instance.Name} 吗？" &
                         If(IsHintIndie, vbCrLf & "该版本对应的存档、资源包、Mod 等文件也将被一并删除！", "") &
+                        ArchiveWarn &
                         If(SaveEntries.Any, vbCrLf & vbCrLf & "这会删除以下存档：" & vbCrLf & "· " & SaveEntries.Join(vbCrLf & "· "), ""),
                         "版本删除确认", , "取消",, True)
                 Case 1

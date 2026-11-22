@@ -30,10 +30,27 @@ Public Module AccountSkinStore
         Return ReadValue(Type, Name, "Uuid")
     End Function
 
+    ''' <summary>
+    ''' 是不是启动器自带的默认头像（Steve / Alex 等 pack:// 资源）。
+    ''' 这类路径不代表这个账户真的有自己的头像：把它写进记录，账户就会永远停在默认头像上，
+    ''' 之后再改离线皮肤、换皮肤也不会跟着变；第三方账户还会因此跳过「补一次头像」的检查。
+    ''' </summary>
+    Public Function IsBuiltinSkin(Path As String) As Boolean
+        If String.IsNullOrWhiteSpace(Path) Then Return False
+        Try
+            If Path.StartsWithF("pack://", True) Then Return True
+            If Path.StartsWithF(PathImage, True) Then Return True
+        Catch ex As Exception
+        End Try
+        Return False
+    End Function
+
     ''' <summary>旧记录可能指向已被清掉的共享皮肤缓存，这里兜一层：文件没了就试账户自己的副本。
     ''' 全都不在时返回空串，交给上层兜底头像，并让 NeedProbe 重新取一次。</summary>
     Private Function ResolveSkinPath(Type As McLoginType, Name As String, Path As String) As String
         If String.IsNullOrWhiteSpace(Path) Then Return ""
+        '内置默认头像不算记录：当作没记过，交给上层兜底，并允许重新获取
+        If IsBuiltinSkin(Path) Then Return ""
         'pack:// 是启动器内置的默认头像资源，不需要做文件校验
         If Path.StartsWithF("pack://", True) Then Return Path
         If IO.File.Exists(Path) Then Return Path
@@ -118,9 +135,14 @@ Public Module AccountSkinStore
             If Key = "" Then Return
             If Not String.IsNullOrWhiteSpace(SkinPath) Then
                 Dim Copy As String = EnsureAvatarCopy(Type, Key, SkinPath)
-                '只有新路径确实能用、或者旧记录已经废了，才覆盖记录。
-                '否则一次复制失败就会把好记录退化成共享缓存路径，之后一清缓存头像就没了。
-                If IsUsableSkinPath(Copy) OrElse Not IsUsableSkinPath(ReadValue(Type, Key, "Skin")) Then
+                '内置默认头像（Steve / Alex）不是这个账户的头像，不写进记录：
+                '离线账户共用本机离线皮肤，皮肤加载没完成时会先给出内置兜底，
+                '一旦把它当成记录存下来，这个账户就永远停在默认头像上，之后改皮肤也不会变。
+                If IsBuiltinSkin(Copy) Then
+                    Logger.Info($"账户头像为内置默认头像，不写入记录（{Key}）")
+                ElseIf IsUsableSkinPath(Copy) OrElse Not IsUsableSkinPath(ReadValue(Type, Key, "Skin")) Then
+                    '只有新路径确实能用、或者旧记录已经废了，才覆盖记录。
+                    '否则一次复制失败就会把好记录退化成共享缓存路径，之后一清缓存头像就没了。
                     WriteIni(EntryFile("Skin", Type), Key, Copy)
                     WriteIni(EntryFile("Time", Type), Key, GetTimeMs().ToString()) '记录更新时间，过期的会自动重新获取
                 Else

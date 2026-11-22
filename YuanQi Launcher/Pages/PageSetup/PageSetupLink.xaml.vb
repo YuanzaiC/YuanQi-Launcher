@@ -48,7 +48,7 @@ Public Class PageSetupLink
     End Sub
 
     Private Sub BtnSeedCacheClear_Click(sender As Object, e As MouseButtonEventArgs) Handles BtnSeedCacheClear.Click
-        If MyMsgBox("清空全部存档的地图缓存？" & vbCrLf & "只删除地图瓦片缓存，不影响存档和游戏本身。", "清空地图缓存", "清空", "取消", IsWarn:=True) <> 1 Then Return
+        If MyMsgBox("清空全部存档的地图缓存？" & vbCrLf & "仅删除地图瓦片缓存，不影响存档与游戏本身。", "清空地图缓存", "清空", "取消", IsWarn:=True) <> 1 Then Return
         SeedMapCache.Clear()
         RefreshSeedCacheUsage()
         Hint("已清空地图缓存", HintType.Green)

@@ -8,7 +8,7 @@
         ItemColorText.Checked = True
     End Sub
 
-    Private Sub PageCheck(sender As FrameworkElement, e As RouteEventArgs) Handles ItemMore.Check, ItemColorText.Check, ItemOreGuide.Check, ItemGameStats.Check, ItemCommandQuery.Check
+    Private Sub PageCheck(sender As FrameworkElement, e As RouteEventArgs) Handles ItemMore.Check, ItemColorText.Check, ItemOreGuide.Check, ItemGameStats.Check, ItemCommandQuery.Check, ItemDownload.Check
         If sender.Tag IsNot Nothing Then PageChange(Val(sender.Tag))
     End Sub
 
@@ -18,7 +18,7 @@
         Select Case ID
             Case FormMain.PageSubType.OtherTools, FormMain.PageSubType.OtherColorText,
                  FormMain.PageSubType.OtherOreGuide, FormMain.PageSubType.OtherGameStats,
-                 FormMain.PageSubType.OtherCommandQuery
+                 FormMain.PageSubType.OtherCommandQuery, FormMain.PageSubType.OtherDownload
             Case Else
                 Return
         End Select
@@ -35,6 +35,8 @@
                 ItemGameStats.Checked = True
             Case FormMain.PageSubType.OtherCommandQuery
                 ItemCommandQuery.Checked = True
+            Case FormMain.PageSubType.OtherDownload
+                ItemDownload.Checked = True
         End Select
     End Sub
 
@@ -56,6 +58,9 @@
             Case FormMain.PageSubType.OtherCommandQuery
                 If FrmCommandQuery Is Nothing Then FrmCommandQuery = New PageCommandQuery
                 Return FrmCommandQuery
+            Case FormMain.PageSubType.OtherDownload
+                If FrmOtherDownload Is Nothing Then FrmOtherDownload = New PageOtherDownload
+                Return FrmOtherDownload
             Case Else
                 Throw New Exception("未知的工具箱子页面种类：" & ID)
         End Select

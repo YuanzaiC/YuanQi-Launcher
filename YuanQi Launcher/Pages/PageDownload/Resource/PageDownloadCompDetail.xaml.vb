@@ -1,4 +1,4 @@
-Imports System.Collections.ObjectModel
+﻿Imports System.Collections.ObjectModel
 
 Public Class PageDownloadResourceDetail
     Private ResourceItem As MyResourceItem = Nothing
@@ -361,12 +361,63 @@ GroupDone:
         AniControlEnabled -= 1
     End Sub
 
+    ''' <summary>把地图（世界）下载到当前版本的 saves 里并解压好。</summary>
+    Private Sub InstallMap(File As ResourceVersion)
+        Try
+            Dim Instance As McInstance = McInstanceSelected
+            If Instance Is Nothing Then
+                Hint("先在「启动」页选一个版本，再把地图装进它的存档文件夹", HintType.Red)
+                Return
+            End If
+            Dim SaveRoot As String = $"{Instance.PathIndie}saves\"
+            DirectoryUtils.Create(SaveRoot)
+            Dim ZipPath As String = SaveRoot & "_map_download.zip"
+            Dim Loader As New LoaderCombo(Of Integer)("地图下载：" & File.Display, {
+                New LoaderDownload("下载地图", {File.ToNetFile(ZipPath, ResourceVersion.DownloadReason.Standalone, File.GameVersions.FirstOrDefault, File.ModLoaders)}) With {.ProgressWeight = 10},
+                New LoaderTask(Of Integer, Integer)("解压地图",
+                Sub(Task)
+                    Dim Name As String = PathUtils.GetFileNameWithoutExtension(File.FileName)
+                    Dim Target As String = $"{SaveRoot}{Name}\"
+                    If DirectoryUtils.Exists(Target) Then DirectoryUtils.Delete(Target)
+                    DirectoryUtils.Create(Target)
+                    FileUtils.ExtractToDirectory(ZipPath, Target, Task.CreateCancellationToken())
+                    FileUtils.Delete(ZipPath)
+                    '有些地图包里面还套了一层文件夹，把它提到存档根目录，否则游戏认不出这个存档
+                    Dim Di = DirectoryUtils.GetInfo(Target)
+                    Dim SubDirs = Di.GetDirectories()
+                    Dim RootFiles = Di.GetFiles()
+                    If SubDirs.Length = 1 AndAlso RootFiles.Length = 0 AndAlso
+                       FileUtils.Exists(PathUtils.AddSlashSuffix(SubDirs(0).FullName) & "level.dat") Then
+                        Dim Inner As String = PathUtils.AddSlashSuffix(SubDirs(0).FullName)
+                        For Each F In DirectoryUtils.EnumerateFiles(Inner, True)
+                            Dim Rel As String = F.Substring(Inner.Length)
+                            DirectoryUtils.Create(PathUtils.RemoveLastPart(Target & Rel))
+                            FileUtils.Copy(F, Target & Rel)
+                        Next
+                        DirectoryUtils.Delete(SubDirs(0).FullName)
+                    End If
+                    Hint($"地图已装进 {Instance.Name} 的存档文件夹", HintType.Green)
+                End Sub) With {.ProgressWeight = 1}
+            })
+            LoaderTaskbarAdd(Loader)
+            Loader.Start(1)
+        Catch ex As Exception
+            Logger.Error(ex, "安装地图失败")
+            Hint("安装地图失败：" & ex.Message, HintType.Red)
+        End Try
+    End Sub
+
     '整合包安装
     Public Sub Install_Click(sender As MyListItem, e As EventArgs)
         Try
 
             '获取基本信息
             Dim File As ResourceVersion = sender.Tag
+            '地图（世界）不是整合包：直接下载到当前版本的存档文件夹并解压
+            If File.ResourceType = ResourceTypes.Map Then
+                InstallMap(File)
+                Return
+            End If
             Dim LoaderName As String = $"{Project.Platform} 整合包下载：{Project.TranslatedName} "
 
             '获取版本名
@@ -422,6 +473,7 @@ GroupDone:
                     Case ResourceTypes.ResourcePack : Desc = "资源包"
                     Case ResourceTypes.Shader : Desc = "光影包"
                     Case ResourceTypes.DataPack : Desc = "数据包"
+                    Case ResourceTypes.Map : Desc = "地图"
                 End Select
                 '确认默认保存位置
                 Dim DefaultFolder As String = Nothing
@@ -432,6 +484,7 @@ GroupDone:
                         Case ResourceTypes.ResourcePack : SubFolder = "resourcepacks\"
                         Case ResourceTypes.Shader : SubFolder = "shaderpacks\"
                         Case ResourceTypes.DataPack : SubFolder = "" '导航到版本根目录
+                        Case ResourceTypes.Map : SubFolder = "saves\"
                     End Select
                     Dim IsInstanceSuitable As Func(Of McInstance, Boolean) = Nothing
                     '获取资源所需的加载器

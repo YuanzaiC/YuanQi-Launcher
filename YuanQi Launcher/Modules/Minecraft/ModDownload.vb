@@ -1172,6 +1172,8 @@ Public Module ModDownload
     ''' <summary>
     ''' 对可能涉及 Mod 镜像源的请求进行处理，返回 JToken。
     ''' 调用 NetRequest，会进行重试。
+    ''' <para/>CurseForge 与 Modrinth 各自有独立的下载源设置（ToolDownloadCurseForgeSource / ToolDownloadModrinthSource），
+    ''' 没设置过（-1）时回落到旧的 ToolDownloadMod。
     ''' </summary>
     Public Function DlModRequest(Url As String, Optional Method As HttpMethod = Nothing,
                                  Optional Content As String = Nothing, Optional ContentType As String = Nothing) As JToken
@@ -1183,21 +1185,7 @@ Public Module ModDownload
             Urls.Add((McimUrl, 15))
             Urls.Add((McimUrl, 30))
         ElseIf McimUrl <> Url Then
-            Select Case Settings.Get(Of Integer)("ToolDownloadMod")
-                Case 0
-                    Urls.Add((McimUrl, 10))
-                    Urls.Add((McimUrl, 10))
-                    Urls.Add((Url, 30))
-                Case 1
-                    Urls.Add((Url, If(Url.Contains("modrinth"), 20, 10))) '至少 20s，要不然 Modrinth 返回不过来
-                    Urls.Add((McimUrl, 10))
-                    Urls.Add((Url, 30))
-                    Urls.Add((McimUrl, 30))
-                Case Else
-                    Urls.Add((Url, If(Url.Contains("modrinth"), 20, 10)))
-                    Urls.Add((Url, 30))
-                    Urls.Add((McimUrl, 30))
-            End Select
+            DlSourceAddModUrls(Urls, Url, McimUrl, DlSourceModValue(Url))
         Else
             Urls.Add((Url, If(Url.Contains("modrinth"), 20, 10)))
             Urls.Add((Url, 30))
@@ -1213,9 +1201,75 @@ Public Module ModDownload
         Throw New AggregateException(Errors)
     End Function
 
+    ''' <summary>
+    ''' 这个地址该用哪一档下载源：CurseForge 与 Modrinth 各读各的设置，
+    ''' 值是 -1（还没在新选项里选过）时回落到旧的 ToolDownloadMod。
+    ''' </summary>
+    Public Function DlSourceModValue(Url As String) As Integer
+        Try
+            Dim Key As String = ""
+            If Not String.IsNullOrEmpty(Url) Then
+                If Url.Contains("curseforge") OrElse Url.Contains("forgecdn.net") Then
+                    Key = "ToolDownloadCurseForgeSource"
+                ElseIf Url.Contains("modrinth") Then
+                    Key = "ToolDownloadModrinthSource"
+                End If
+            End If
+            Dim Value As Integer = -1
+            If Key <> "" Then Value = Settings.Get(Of Integer)(Key)
+            If Value < 0 Then Value = Settings.Get(Of Integer)("ToolDownloadMod")
+            If Value < 0 Then Value = 2
+            Return Value
+        Catch ex As Exception
+            Logger.Warn(ex, "读取 Mod 下载源设置失败，按官方源优先处理")
+            Return 2
+        End Try
+    End Function
+
+    ''' <summary>按下载源档位把「官方 / 镜像」地址排进请求队列（0 镜像优先，1 官方优先但很快回落镜像，2 官方优先）。</summary>
+    Private Sub DlSourceAddModUrls(Urls As List(Of (Url As String, Timeout As Integer)),
+                                   OfficialUrl As String, MirrorUrl As String, Value As Integer)
+        Dim FirstTimeout As Integer = If(OfficialUrl.Contains("modrinth"), 20, 10) 'Modrinth 至少 20s，要不然返回不过来
+        Select Case Value
+            Case 0
+                Urls.Add((MirrorUrl, 10))
+                Urls.Add((MirrorUrl, 10))
+                Urls.Add((OfficialUrl, 30))
+            Case 1
+                Urls.Add((OfficialUrl, FirstTimeout))
+                Urls.Add((MirrorUrl, 10))
+                Urls.Add((OfficialUrl, 30))
+                Urls.Add((MirrorUrl, 30))
+            Case Else
+                Urls.Add((OfficialUrl, FirstTimeout))
+                Urls.Add((OfficialUrl, 30))
+                Urls.Add((MirrorUrl, 30))
+        End Select
+    End Sub
+
 #End Region
 
 #Region "DlSource | 镜像下载源"
+
+    ''' <summary>
+    ''' 资源文件（CurseForge / Modrinth 的文件本体）该先试官方还是先试镜像。
+    ''' 0 = 先镜像；1、2 = 先官方（1 的"慢时再镜像"已经在 API 请求那一层体现）。
+    ''' </summary>
+    Public Function DlSourceModFileOrder(Urls As IEnumerable(Of String), SampleUrl As String) As List(Of String)
+        Try
+            If Urls Is Nothing Then Return New List(Of String)
+            Dim All As List(Of String) = Urls.Where(Function(u) Not String.IsNullOrWhiteSpace(u)).Distinct.ToList
+            If All.Count <= 1 Then Return All
+            Dim Value As Integer = DlSourceModValue(SampleUrl)
+            Dim MirrorUrls As List(Of String) = All.Where(Function(u) u.Contains("mcimirror.top")).ToList
+            Dim OfficialUrls As List(Of String) = All.Where(Function(u) Not u.Contains("mcimirror.top")).ToList
+            If Value = 0 Then Return MirrorUrls.Concat(OfficialUrls).ToList
+            Return OfficialUrls.Concat(MirrorUrls).ToList
+        Catch ex As Exception
+            Logger.Warn(ex, "重排资源下载地址失败")
+            Return Urls.ToList()
+        End Try
+    End Function
 
     Private DlPreferMojang As Boolean = False
     ''' <summary>
@@ -1249,11 +1303,23 @@ Public Module ModDownload
 
 
     ''' <summary>
+    ''' 下载 Assets / 依赖库这类游戏资源时，该不该优先官方源。
+    ''' 读的是「资源文件」这一档（ToolDownloadAssetSource），没单独设置过就跟随「游戏文件」。
+    ''' </summary>
+    Public ReadOnly Property DlSourceAssetPreferMojang As Boolean
+        Get
+            Dim Value As Integer = Settings.Get(Of Integer)("ToolDownloadAssetSource")
+            If Value < 0 Then Value = Settings.Get(Of Integer)("ToolDownloadSource")
+            Return Value = 2 OrElse (Value = 1 AndAlso DlPreferMojang)
+        End Get
+    End Property
+
+    ''' <summary>
     ''' 下载 Assets 文件。
     ''' </summary>
     Public Function DlSourceAssetsGet(Original As String) As IEnumerable(Of String)
         Original = Original.Replace("http://resources.download.minecraft.net", "https://resources.download.minecraft.net")
-        Return DlSourceOrder(
+        Return DlSourceOrderForAsset(
             {Original},
             {Original.
                 Replace("https://piston-data.mojang.com", "https://bmclapi2.bangbang93.com/assets").
@@ -1261,9 +1327,7 @@ Public Module ModDownload
                 Replace("https://resources.download.minecraft.net", "https://bmclapi2.bangbang93.com/assets")
             })
     End Function
-    ''' <summary>
-    ''' 下载 Libraries 文件。
-    ''' </summary>
+    ''' <summary>下载 Libraries 文件。</summary>
     Public Function DlSourceLibraryGet(Original As String) As IEnumerable(Of String)
         If {"minecraftforge", "fabricmc", "neoforged"}.Any(Function(k) Original.Contains(k)) Then '不添加原版源
             Return {
@@ -1277,7 +1341,7 @@ Public Module ModDownload
                     Replace("https://libraries.minecraft.net", "https://bmclapi2.bangbang93.com/libraries")
             }
         Else
-            Return DlSourceOrder(
+            Return DlSourceOrderForAsset(
                 {Original},
                 {Original.
                     Replace("https://piston-data.mojang.com", "https://bmclapi2.bangbang93.com/maven").
@@ -1289,6 +1353,11 @@ Public Module ModDownload
                     Replace("https://libraries.minecraft.net", "https://bmclapi2.bangbang93.com/libraries")
                 })
         End If
+    End Function
+
+    ''' <summary>按「资源文件」这一档的偏好排列官方 / 镜像地址。</summary>
+    Private Function DlSourceOrderForAsset(OfficialUrls As IEnumerable(Of String), MirrorUrls As IEnumerable(Of String)) As IEnumerable(Of String)
+        Return If(DlSourceAssetPreferMojang, OfficialUrls.Union(MirrorUrls), MirrorUrls.Union(OfficialUrls))
     End Function
     ''' <summary>
     ''' 下载 Launcher 或 Meta 文件。

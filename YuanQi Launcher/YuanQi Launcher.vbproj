@@ -1,4 +1,4 @@
-<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+﻿<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
@@ -328,6 +328,9 @@
     <Compile Include="Pages\PageDownload\Resource\PageDownloadDataPack.xaml.vb">
       <DependentUpon>PageDownloadDataPack.xaml</DependentUpon>
     </Compile>
+    <Compile Include="Pages\PageDownload\Resource\PageDownloadMap.xaml.vb">
+      <DependentUpon>PageDownloadMap.xaml</DependentUpon>
+    </Compile>
     <Compile Include="Pages\PageDownload\Resource\PageDownloadPack.xaml.vb">
       <DependentUpon>PageDownloadPack.xaml</DependentUpon>
     </Compile>
@@ -442,6 +445,9 @@
     </Compile>
     <Compile Include="Pages\PageOther\PageCommandQuery.xaml.vb">
       <DependentUpon>PageCommandQuery.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Pages\PageOther\PageOtherDownload.xaml.vb">
+      <DependentUpon>PageOtherDownload.xaml</DependentUpon>
     </Compile>
     <Compile Include="Pages\PageOther\PageOtherAbout.xaml.vb">
       <DependentUpon>PageOtherAbout.xaml</DependentUpon>
@@ -632,6 +638,10 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
+    <Page Include="Pages\PageDownload\Resource\PageDownloadMap.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
     <Page Include="Pages\PageDownload\Resource\PageDownloadPack.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
@@ -741,6 +751,10 @@
       <SubType>Designer</SubType>
     </Page>
     <Page Include="Pages\PageOther\PageCommandQuery.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Pages\PageOther\PageOtherDownload.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>

@@ -378,7 +378,7 @@ PreFin:
                     .FontSize = 13, .Height = 24, .IsScaleAnimationEnabled = False, .Type = MyListItem.CheckType.Clickable,
                     .Tag = JavaEntry, .Title = JavaEntry.ToString}
                 AddHandler JavaItem.MouseLeftButtonUp, Sub(sender As Object, e As MouseButtonEventArgs) e.Handled = True
-                AddHandler JavaItem.Click, Sub() Hint("点击选项右侧的箭头可以进行排序，以控制 缘启 优先选择哪个 Java！")
+                AddHandler JavaItem.Click, Sub() Hint("点击选项右侧的箭头可调整顺序，决定缘启优先选用哪个 Java。")
                 ComboAdvanceJava.Items.Add(JavaItem)
                 Dim Buttons As New List(Of MyIconButton)
                 '向上移动按钮
@@ -452,8 +452,8 @@ PreFin:
     Private Sub ComboArgumentVisibie_SizeChanged(sender As Object, e As SelectionChangedEventArgs) Handles ComboArgumentVisibie.SelectionChanged
         If AniControlEnabled <> 0 Then Return
         If ComboArgumentVisibie.SelectedIndex = 0 Then
-            If MyMsgBox("若在游戏启动后立即关闭启动器，崩溃检测、更改游戏标题等功能将失效。" & vbCrLf &
-                        "如果想保留这些功能，可以选择让启动器在游戏启动后隐藏，游戏退出后自动关闭。", "提醒", "继续", "取消") = 2 Then
+            If MyMsgBox("游戏启动后立即关闭启动器时，崩溃检测与更改游戏标题等功能将失效。" & vbCrLf &
+                        "如需保留这些功能，可选择「游戏启动后隐藏，游戏退出后自动关闭」。", "提醒", "继续", "取消") = 2 Then
                 If e.RemovedItems.Count > 0 Then ComboArgumentVisibie.SelectedItem = e.RemovedItems(0)
             End If
         End If
@@ -463,9 +463,9 @@ PreFin:
     Private Sub CheckArgumentRam_Change() Handles CheckArgumentRam.Change
         If AniControlEnabled <> 0 Then Return
         If Not CheckArgumentRam.Checked Then Return
-        If MyMsgBox("内存优化会显著延长启动耗时，建议仅在内存不足时开启。" & vbCrLf &
-                    "如果你在使用机械硬盘，这还可能导致一小段时间的严重卡顿。" &
-                    If(WindowsUtils.HasAdminRole(), "", $"{vbCrLf}{vbCrLf}每次启动游戏，缘启 都需要申请管理员权限以进行内存优化。{vbCrLf}若想自动授予权限，可以右键 缘启，打开 属性 → 兼容性 → 以管理员身份运行此程序。"),
+        If MyMsgBox("内存优化会显著延长启动耗时，仅在内存不足时开启。" & vbCrLf &
+                    "使用机械硬盘时还可能出现短时间的严重卡顿。" &
+                    If(WindowsUtils.HasAdminRole(), "", $"{vbCrLf}{vbCrLf}每次启动游戏时，缘启需申请管理员权限以执行内存优化。{vbCrLf}如需自动授予权限，可右键缘启，打开 属性 → 兼容性 → 以管理员身份运行此程序。"),
                     "提醒", "确定", "取消") = 2 Then
             CheckArgumentRam.Checked = False
         End If
@@ -474,7 +474,7 @@ PreFin:
     '版本隔离提示
     Private Sub ComboArgumentIndie_SelectionChanged(sender As Object, e As SelectionChangedEventArgs) Handles ComboArgumentIndieV2.SelectionChanged
         If AniControlEnabled <> 0 Then Return
-        MyMsgBox("本设置仅会对之后新安装的版本生效。" & vbCrLf & "如果要修改已安装的版本的隔离方式，请在它的版本独立设置中调整。")
+        MyMsgBox("该设置仅对之后新安装的版本生效。" & vbCrLf & "已安装版本的隔离方式需在其版本独立设置中调整。")
     End Sub
 
 #End Region

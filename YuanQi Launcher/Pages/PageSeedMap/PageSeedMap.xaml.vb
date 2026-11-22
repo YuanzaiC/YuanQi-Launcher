@@ -6,6 +6,7 @@ Imports System.Windows.Media
 Imports System.Windows.Media.Effects
 Imports System.Windows.Media.Imaging
 Imports System.Windows.Shapes
+Imports System.Windows.Media.Media3D
 
 ''' <summary>
 ''' 种子地图：模仿 seedatlas.net 的世界种子地图浏览页。
@@ -2241,7 +2242,7 @@ Public Class PageSeedMap
                 End If
             End If
             RegenerateAll(True)
-            Hint($"已载入存档种子：{SeedText}", HintType.Blue)
+            Hint("已载入存档种子", HintType.Blue)
             Return True
         Catch ex As Exception
             Logger.Warn(ex, "应用存档种子失败")
@@ -2308,7 +2309,7 @@ Public Class PageSeedMap
                         VersionText = "，版本 " & ModuleSeedMap.VersionNames(VI)
                     End If
                     RegenerateAll(False)
-                    Hint($"已载入存档「{SaveName}」的种子：{SeedText}{VersionText}", HintType.Blue)
+                    Hint($"已载入存档「{McColorText.StripColorCodes(SaveName)}」的种子{VersionText}", HintType.Blue)
                 End Sub)
             End Sub, "SeedMap Default Seed")
         Catch ex As Exception
@@ -3593,61 +3594,95 @@ Public Class PageSeedMap
         e.Handled = True
     End Sub
 
-
-
     '===============================
-    '  第一人称模式（点地图落点 → 覆盖页面加载 → WASD/空格/Shift 走动 → Esc 退出）
+    '  第一人称模式：点地图落点走进去 · WASD 移动 · 空格跳 / 双击空格飞 · 鼠标转视角 · Esc 退出
+    '
+    '  地形是一整片按世界坐标算出来的高度场（顶点共享、没有接缝），每格直接铺一整张 16×16 原版方块贴图；
+    '  雾是单独一层贴着地形的半透明网格，按相机位置刷 —— 所以贴图能一直保持原版分辨率，雾也不会跳。
     '===============================
 
     ''' <summary>是否处于第一人称的「选点」状态。</summary>
     Private FpsSelecting As Boolean = False
     ''' <summary>是否已经进入第一人称。</summary>
     Private FpsActive As Boolean = False
-
-    '地形采样缓存（以 FpsCenter 为中心的 N×N 网格，FpsStep 方块/格）
-    'cubiomes 的群系/高程最小尺度是 4 方块，所以格距取 4（比原来的 8 细一倍，近处地形不再像断崖）
-    Private Const FpsN As Integer = 128
-    Private Const FpsStep As Integer = 4
-    ''' <summary>视线高度（方块）：Minecraft 玩家身高 1.8、眼睛在 1.62，与游戏内比例一致。</summary>
-    Private Const FpsEyeBlock As Double = 1.62
-    Private FpsHeights As Single()
-    Private FpsIds As Integer()
-    Private FpsColR As Integer(), FpsColG As Integer(), FpsColB As Integer()
-    Private FpsOriginX As Double = 0, FpsOriginZ As Double = 0
-    Private FpsReloading As Boolean = False
-    ''' <summary>第一人称会话代数：进入时 +1，退出时 +1；旧会话的后台采样完成后发现代数变了就丢弃。</summary>
+    ''' <summary>后台正在换地形。</summary>
+    Private FpsBuilding As Boolean = False
+    ''' <summary>会话代数：退出或重新进入时 +1，旧会话的后台结果直接丢弃。</summary>
     Private FpsGen As Integer = 0
+    ''' <summary>网格间距（方块）：一格就是 1 个方块（这样一格正好铺一整张 16×16 贴图）。</summary>
+    ''' <summary>网格间距（方块）：一格 2 方块。</summary>
+    Private Const FpsCell As Integer = 2
+    ''' <summary>格数：100 格 × 2 方块 = 200 方块见方（半径 100）。</summary>
+    Private Const FpsCells As Integer = 100
+    ''' <summary>每个方块 4×4 个纹素（原版 16×16 按 1/4 缩着铺）。</summary>
+    Private Const FpsTexelsPerBlock As Integer = 4
+    ''' <summary>每格纹素数。</summary>
+    Private Const FpsTexelsPerCell As Integer = FpsCell * FpsTexelsPerBlock
+    ''' <summary>视线高度（方块）：与 Minecraft 一致（身高 1.8，眼睛 1.62）。</summary>
+    Private Const FpsEyeBlock As Double = 1.62
 
-    '玩家状态
+    '雾：颜色就是天空地平线色，远处地形化进去以后和天完全接上
+    Private Const FpsFogR As Integer = 150
+    Private Const FpsFogG As Integer = 182
+    Private Const FpsFogB As Integer = 220
+    ''' <summary>雾从这么远开始起（方块）。</summary>
+    Private Const FpsFogNear As Double = 36
+    ''' <summary>到这个距离雾吃满（方块）。</summary>
+    Private Const FpsFogFar As Double = 80
+    ''' <summary>离地形中心超过这么远就在后台整片换一块新的（方块）。</summary>
+    Private Const FpsRebuildDist As Double = 14
+    ''' <summary>雾区间两侧各多刷这么多格，免得刚离开区间就停在旧值。</summary>
+    Private Const FpsFogMargin As Double = 8
+
+    ''' <summary>一整片地形（后台算好、Freeze 过，可以整块甩给 UI 线程）。</summary>
+    Private Class FpsPatch
+        Public OriginX As Integer, OriginZ As Integer
+        Public N As Integer
+        ''' <summary>(N+1)² 个顶点高度。</summary>
+        Public Nodes As Single()
+        ''' <summary>N² 每格是否水面。</summary>
+        Public Water As Boolean()
+        ''' <summary>N² 每格几何高度（站位用）。</summary>
+        Public GeoH As Double()
+        ''' <summary>没有雾的底色：TexW×TexW×4，Bgra32。</summary>
+        Public Base As Byte()
+        Public TexW As Integer
+        ''' <summary>已 Freeze 的地形网格。</summary>
+        Public Mesh As MeshGeometry3D
+    End Class
+
+    '---- 当前地形 ----
+    Private FpsPatchData As FpsPatch = Nothing
+    Private FpsTex As WriteableBitmap = Nothing
+    Private FpsBrush As ImageBrush = Nothing
+    Private FpsMat As DiffuseMaterial = Nothing
+    ''' <summary>纹理工作副本（底色叠上雾），上传给显卡的就是它。</summary>
+    Private FpsWork As Byte() = Nothing
+    Private FpsGeoH As Double() = Nothing
+    Private FpsOriginX As Integer, FpsOriginZ As Integer
+    Private FpsFogX As Double = Double.NaN, FpsFogZ As Double = Double.NaN
+    Private FpsFogTick As Long = 0
+
+    '---- 玩家状态 ----
     Private FpsX As Double = 0, FpsZ As Double = 0
     Private FpsEyeY As Double = 70
     Private FpsVelY As Double = 0
     Private FpsOnGround As Boolean = True
     ''' <summary>飞行模式（双击空格切换）。</summary>
     Private FpsFlying As Boolean = False
-    ''' <summary>上一次按下空格的时间，用于双击判定。</summary>
     Private FpsLastSpaceTick As Long = 0
     Private FpsYaw As Double = 0
-    ''' <summary>俯仰角（弧度，正值抬头）。Voxel 渲染里俯仰表现为地平线整体上下移动。</summary>
     Private FpsPitch As Double = 0
     Private ReadOnly FpsKeys As New HashSet(Of Key)
     Private FpsLastTick As Long = 0
-    Private FpsRenderTick As Long = 0
-
-    '渲染缓冲
-    Private Const FpsW As Integer = 640
-    Private Const FpsH As Integer = 400
-    ''' <summary>上一屏幕列在每个深度步所落的格子编号（0=无效），用于判断竖直方块描边。</summary>
-    Private FpsEdgePrevKey(255) As Integer
-    Private FpsPx As Byte()
-    Private FpsBmp As WriteableBitmap = Nothing
+    ''' <summary>指针已钉到屏幕中心：在此之前收到的鼠标位移一律丢弃。</summary>
+    Private FpsPointerLocked As Boolean = False
 
     Private Sub BtnToolFPS_Click(sender As Object, e As RoutedEventArgs) Handles BtnToolFPS.Click
         FpsSelecting = Not FpsSelecting
         If FpsSelecting Then
             BtnToolFPS.Background = TryCast(FindResource("BrushAccentSoft"), Brush)
             BtnToolFPS.Foreground = TryCast(FindResource("ColorBrush3"), Brush)
-            PanMapViewport.Cursor = Cursors.Cross
             Hint("第一人称：在地图上点击一个位置进入", HintType.Blue)
         Else
             ResetFpsButton()
@@ -3658,10 +3693,9 @@ Public Class PageSeedMap
         FpsSelecting = False
         BtnToolFPS.Background = Brushes.Transparent
         BtnToolFPS.Foreground = TryCast(FindResource("BrushText2"), Brush)
-        PanMapViewport.Cursor = If(Select3DMode, Cursors.Cross, Cursors.ScrollAll)
     End Sub
 
-    ''' <summary>进入第一人称：覆盖页面（有动画）→ 后台采样 → 渲染循环。</summary>
+    ''' <summary>进入第一人称：覆盖页面（有动画）→ 后台采一整片地形 → 渲染循环。</summary>
     Private Sub EnterFirstPerson(Center As Point)
         Try
             If Not ModuleSeedMap.IsNativeAvailable Then
@@ -3685,8 +3719,16 @@ Public Class PageSeedMap
             FpsVelY = 0
             FpsOnGround = True
             FpsFlying = False
+            SetFpsFlying(False)
             FpsLastSpaceTick = 0
             FpsKeys.Clear()
+            FpsBuilding = False
+            FpsPatchData = Nothing
+            FpsFogX = Double.NaN
+            FpsFogZ = Double.NaN
+            UpdateFpsPosLabel()
+            If FpsTerrainModel IsNot Nothing Then FpsTerrainModel.Geometry = Nothing
+            If FpsTreeModel IsNot Nothing Then FpsTreeModel.Geometry = Nothing
             '盖上去（淡入 + 轻微放大）
             PanFirstPerson.Visibility = Visibility.Visible
             PanFirstPerson.Cursor = Cursors.None '指针锁定式视角：隐藏光标
@@ -3696,140 +3738,663 @@ Public Class PageSeedMap
             PanFpsLoading.Visibility = Visibility.Visible
             PanFpsLoading.Opacity = 1
             RectFpsProgress.Width = 0
-            LabFpsStatus.Text = "采样地形高程…"
+            LabFpsStatus.Text = "采样地形…"
             AniStart({
                 AaOpacity(PanFirstPerson, 1, 260, , New AniEaseOutFluent(AniEasePower.Middle)),
                 AaScaleTransform(PanFirstPerson, -0.03, 300, , New AniEaseOutFluent(AniEasePower.Middle))
             }, "SeedMap FPS", True)
             PanFirstPerson.Focus()
-            '后台采样
+            FpsPointerLocked = False
+            LockFpsPointer()
+            InitFpsSky()
+            UpdateFpsCamera()
+            '后台采一整片地形
             Dim Ver As Integer = ModuleSeedMap.VersionIds(VersionIndex)
-            Dim Seed = SeedValue
-            Dim Half As Integer = FpsN * FpsStep \ 2
-            '原点对齐到 FpsStep 的整数倍：格子晶格固定在世界网格上，重采样时地形不会整体平移（否则贴图会"游动"）
-            Dim OriginX As Integer = CInt(Math.Floor((Center.X - Half) / FpsStep)) * FpsStep
-            Dim OriginZ As Integer = CInt(Math.Floor((Center.Y - Half) / FpsStep)) * FpsStep
-            FpsReloading = False
+            Dim ThisSeed As Long = SeedValue
+            Dim Px As Double = FpsX, Pz As Double = FpsZ
             RunInThread(
                 Sub()
                     Try
-                        '加载进度：高程 0–55% → 群系 55–95% → 着色 95–100%
-                        Dim Hs = ModuleSeedMap.SampleHeightsBanded(Ver, Seed, OriginX \ 4, OriginZ \ 4, FpsN, FpsStep \ 4, 8,
-                            Sub(P)
-                                RunInUi(Sub()
-                                            If Gen <> FpsGen Then Return
-                                            RectFpsProgress.Width = 220 * (P * 0.55)
-                                            LabFpsStatus.Text = $"采样地形高程… {CInt(P * 100)}%"
-                                        End Sub)
-                            End Sub)
-                        Dim Ids = ModuleSeedMap.SampleBiomeGridBanded(Seed, Ver, OriginX, OriginZ, FpsN, FpsStep, 8,
-                            Sub(P)
-                                RunInUi(Sub()
-                                            If Gen <> FpsGen Then Return
-                                            RectFpsProgress.Width = 220 * (0.55 + P * 0.4)
-                                            LabFpsStatus.Text = $"采样生物群系… {CInt(P * 100)}%"
-                                        End Sub)
-                            End Sub)
-                        RunInUi(Sub()
-                                    If Gen <> FpsGen Then Return
-                                    RectFpsProgress.Width = 220 * 0.97
-                                    LabFpsStatus.Text = "着色地形…"
-                                End Sub)
+                        Dim P = BuildFpsPatch(Ver, ThisSeed, Px, Pz, Gen, True)
+                        If P Is Nothing Then Return
                         RunInUi(
                             Sub()
-                                If Gen <> FpsGen Then Return '加载期间已退出（或开始了新一次进入），丢弃本次结果
-                                FpsHeights = Hs
-                                FpsIds = Ids
-                                FpsOriginX = OriginX
-                                FpsOriginZ = OriginZ
-                                PrepareFpsColors()
-                                '出生高度：落点地表 + 眼高
-                                Dim Si = ClampI(FpsX - FpsOriginX, 0, FpsN - 1) \ FpsStep
-                                Dim Sj = ClampI(FpsZ - FpsOriginZ, 0, FpsN - 1) \ FpsStep
-                                Dim Ground As Double = FpsHeights(Math.Min(FpsN * FpsN - 1, Sj * FpsN + Si))
-                                FpsEyeY = Math.Max(Ground, 62) + FpsEyeBlock
-                                RectFpsProgress.Width = 220
-                                PanFpsLoading.Opacity = 1
-                                AniStart({
-                                    AaOpacity(PanFpsLoading, -1, 240, , New AniEaseOutFluent(AniEasePower.Middle)),
-                                    AaCode(Sub() PanFpsLoading.Visibility = Visibility.Collapsed, 250, True)
-                                }, "SeedMap FPS Load", True)
-                                FpsActive = True
-                                FpsLastTick = CLng(Environment.TickCount)
-                                PanFirstPerson.Focus() '加载完再补一次键盘焦点，确保 WASD 一定生效
-                                Try
-                                    '进入即把光标置于覆盖层中心，避免开启瞬间的视角跳变
-                                    Dim C0 As Point = PanFirstPerson.PointToScreen(New Point(PanFirstPerson.ActualWidth / 2, PanFirstPerson.ActualHeight / 2))
-                                    SetCursorPos(CInt(C0.X), CInt(C0.Y))
-                                Catch
-                                End Try
-                                AddHandler CompositionTarget.Rendering, AddressOf FpsFrame
-                                FpsFrame(Nothing, Nothing)
+                                If Gen <> FpsGen Then Return
+                                ApplyFpsPatch(P)
+                                FpsEyeY = FpsGroundAtBlock(FpsX, FpsZ) + FpsEyeBlock
+                                UpdateFpsCamera()
+                                FinishFpsEnter()
                             End Sub)
                     Catch ex As Exception
                         Logger.Warn(ex, "第一人称地形采样失败")
-                        RunInUi(
-                            Sub()
-                                Hint("生成第一人称地形失败：" & ex.Message, HintType.Red)
-                                ExitFirstPerson(False)
-                            End Sub)
+                        If Not ex.IsCanceled Then
+                            RunInUi(
+                                Sub()
+                                    Hint("生成第一人称地形失败：" & ex.Message, HintType.Red)
+                                    ExitFirstPerson(False)
+                                End Sub)
+                        End If
                     End Try
                 End Sub)
         Catch ex As Exception
             Logger.Warn(ex, "进入第一人称失败")
+            RemoveHandler CompositionTarget.Rendering, AddressOf FpsFrame
+            FpsActive = False
+            PanFirstPerson.Visibility = Visibility.Collapsed
             Hint("进入第一人称失败", HintType.Red)
         End Try
     End Sub
 
-    Private Shared Function ClampI(V As Integer, Min As Integer, Max As Integer) As Integer
-        If V < Min Then Return Min
-        If V > Max Then Return Max
-        Return V
+    ''' <summary>
+    ''' 采样一整片地形并把它算成网格与底色（纯数据 + Freeze 过的网格，后台线程跑）。
+    ''' 高度从 cubiomes 的 4 方块网格双线性插值到顶点网格，保留小数不取整：缓坡就是缓坡。
+    ''' 底色按世界坐标从原版方块贴图里取，雾在 PaintFpsFog 里另外刷。
+    ''' </summary>
+    Private Function BuildFpsPatch(Ver As Integer, ThisSeed As Long, CenterX As Double, CenterZ As Double,
+                                   Gen As Integer, ShowProgress As Boolean) As FpsPatch
+        Dim N As Integer = FpsCells
+        Dim NN As Integer = N + 1
+        Dim S As Integer = FpsTexelsPerCell
+        Dim Area As Integer = N * FpsCell
+        Dim Half As Integer = Area \ 2
+        '原点对齐到 4 方块：同一块世界永远算出同一份高度
+        Dim Ox As Integer = CInt(Math.Floor((CenterX - Half) / 4.0)) * 4
+        Dim Oz As Integer = CInt(Math.Floor((CenterZ - Half) / 4.0)) * 4
+        Dim N4 As Integer = Area \ 4 + 3
+
+        Dim Hs4 As Single(), Ids4 As Integer()
+        If ShowProgress Then
+            Hs4 = ModuleSeedMap.SampleHeightsBanded(Ver, ThisSeed, Ox \ 4, Oz \ 4, N4, 1, 8,
+                Sub(Pt As Double)
+                    If Gen <> FpsGen Then Throw New OperationCanceledException("第一人称采样已取消")
+                    RunInUi(Sub()
+                                RectFpsProgress.Width = 220 * (Pt * 0.5)
+                                LabFpsStatus.Text = $"采样地形高程… {CInt(Pt * 100)}%"
+                            End Sub)
+                End Sub)
+            Ids4 = ModuleSeedMap.SampleBiomeGridBanded(ThisSeed, Ver, Ox, Oz, N4, 4, 8,
+                Sub(Pt As Double)
+                    If Gen <> FpsGen Then Throw New OperationCanceledException("第一人称采样已取消")
+                    RunInUi(Sub()
+                                RectFpsProgress.Width = 220 * (0.5 + Pt * 0.35)
+                                LabFpsStatus.Text = $"采样生物群系… {CInt(Pt * 100)}%"
+                            End Sub)
+                End Sub)
+            If Gen <> FpsGen Then Return Nothing
+            RunInUi(Sub()
+                        RectFpsProgress.Width = 220 * 0.9
+                        LabFpsStatus.Text = "生成三维地形…"
+                    End Sub)
+        Else
+            Hs4 = ModuleSeedMap.SampleHeights(Ver, ThisSeed, Ox \ 4, Oz \ 4, N4, 1)
+            Ids4 = ModuleSeedMap.SampleBiomeGrid(ThisSeed, Ver, 0, Ox, Oz, N4, 4)
+        End If
+        If Hs4 Is Nothing Then Return Nothing
+
+        '---- 顶点高度：(N+1)×(N+1) ----
+        Dim RawN(NN * NN - 1) As Single
+        For j As Integer = 0 To N
+            Dim Gj As Double = j * FpsCell / 4.0
+            Dim J0 As Integer = CInt(Math.Floor(Gj))
+            If J0 > N4 - 2 Then J0 = N4 - 2
+            If J0 < 0 Then J0 = 0
+            Dim J1 As Integer = J0 + 1
+            Dim Tj As Double = Gj - J0
+            For i As Integer = 0 To N
+                Dim Gi As Double = i * FpsCell / 4.0
+                Dim I0 As Integer = CInt(Math.Floor(Gi))
+                If I0 > N4 - 2 Then I0 = N4 - 2
+                If I0 < 0 Then I0 = 0
+                Dim I1 As Integer = I0 + 1
+                Dim Ti As Double = Gi - I0
+                Dim H00 As Single = Hs4(J0 * N4 + I0)
+                Dim H10 As Single = Hs4(J0 * N4 + I1)
+                Dim H01 As Single = Hs4(J1 * N4 + I0)
+                Dim H11 As Single = Hs4(J1 * N4 + I1)
+                RawN(j * NN + i) = CSng(H00 * (1 - Ti) * (1 - Tj) + H10 * Ti * (1 - Tj) + H01 * (1 - Ti) * Tj + H11 * Ti * Tj)
+            Next
+        Next
+
+        '---- 每格群系 ----
+        Dim Ids(N * N - 1) As Integer
+        For j As Integer = 0 To N - 1
+            Dim Gj As Integer = Math.Min(N4 - 1, (j * FpsCell + FpsCell \ 2 + 2) \ 4)
+            For i As Integer = 0 To N - 1
+                Dim Gi As Integer = Math.Min(N4 - 1, (i * FpsCell + FpsCell \ 2 + 2) \ 4)
+                Ids(j * N + i) = If(Ids4 Is Nothing, 127, Ids4(Gj * N4 + Gi))
+            Next
+        Next
+
+        '---- 水陆 ----
+        Dim Water(N * N - 1) As Boolean
+        For j As Integer = 0 To N - 1
+            For i As Integer = 0 To N - 1
+                Dim K As Integer = j * N + i
+                Dim Ctr As Double = (RawN(j * NN + i) + RawN(j * NN + i + 1) + RawN((j + 1) * NN + i) + RawN((j + 1) * NN + i + 1)) / 4.0
+                Water(K) = IsWaterBiome(Ids(K)) OrElse Ctr < 62.5
+            Next
+        Next
+
+        '---- 顶点高度：挨着水面的压到海平面 ----
+        Dim Nodes(NN * NN - 1) As Single
+        For j As Integer = 0 To N
+            For i As Integer = 0 To N
+                Dim NearWater As Boolean = False
+                For dj As Integer = -1 To 0
+                    Dim cj As Integer = j + dj
+                    If cj < 0 OrElse cj >= N Then Continue For
+                    For di As Integer = -1 To 0
+                        Dim ci As Integer = i + di
+                        If ci < 0 OrElse ci >= N Then Continue For
+                        If Water(cj * N + ci) Then NearWater = True
+                    Next
+                Next
+                Dim Raw As Double = RawN(j * NN + i)
+                Nodes(j * NN + i) = CSng(If(NearWater, Math.Max(Raw, 63.0), Raw))
+            Next
+        Next
+
+        '---- 每格几何高度（站位用）----
+        Dim GeoH(N * N - 1) As Double
+        For j As Integer = 0 To N - 1
+            For i As Integer = 0 To N - 1
+                Dim K As Integer = j * N + i
+                GeoH(K) = (Nodes(j * NN + i) + Nodes(j * NN + i + 1) + Nodes((j + 1) * NN + i) + Nodes((j + 1) * NN + i + 1)) / 4.0
+            Next
+        Next
+
+        '---- 底色：把游戏里的方块贴图按世界坐标铺到每个方块上 ----
+        Dim TexW As Integer = N * S
+        Dim Base(TexW * TexW * 4 - 1) As Byte
+        Dim Tiles As FpsTileSet = GetFpsTiles()
+        Dim HasTiles As Boolean = Tiles IsNot Nothing AndAlso Tiles.Ok
+        Const Lx As Double = 0.42, Ly As Double = 0.87, Lz As Double = 0.26 '光从南偏东的上方照下来
+        Dim DD As Double = 2.0 * FpsCell
+        For j As Integer = 0 To N - 1
+            For i As Integer = 0 To N - 1
+                Dim K As Integer = j * N + i
+                Dim Id As Integer = Ids(K)
+                If Id < 0 OrElse Id > 255 Then Id = 127
+                Dim C As Color = ModuleSeedMap.BiomeColors(Id)
+                Dim TR As Integer = C.R, TG As Integer = C.G, TB As Integer = C.B
+                Dim H00 As Double = Nodes(j * NN + i)
+                Dim H10 As Double = Nodes(j * NN + i + 1)
+                Dim H01 As Double = Nodes((j + 1) * NN + i)
+                Dim H11 As Double = Nodes((j + 1) * NN + i + 1)
+                Dim Hc As Double = (H00 + H10 + H01 + H11) / 4.0
+                Dim Gx As Double = ((H10 + H11) - (H00 + H01)) / DD
+                Dim Gz As Double = ((H01 + H11) - (H00 + H10)) / DD
+                Dim IsW As Boolean = Water(K)
+                '这一格该用哪张方块贴图
+                Dim TBytes As Byte() = Nothing
+                Dim TintIt As Boolean = False
+                If HasTiles Then
+                    Dim TileIdx As Integer = If(IsW, T_WATER, FpsTileForBiome(Id))
+                    TBytes = Tiles.Tiles(TileIdx)
+                    TintIt = Tiles.Tint(TileIdx)
+                End If
+                If IsW Then
+                    '水面：压平 + 往水色偏
+                    Gx = 0 : Gz = 0
+                    TR = CInt(TR * 0.55 + 40 * 0.45)
+                    TG = CInt(TG * 0.55 + 78 * 0.45)
+                    TB = CInt(TB * 0.55 + 150 * 0.45)
+                End If
+                '坡度打光
+                Dim Nx As Double = -Gx, Nz As Double = -Gz
+                Dim Nl As Double = Math.Sqrt(Nx * Nx + 1.0 + Nz * Nz)
+                Dim Lamp As Double = (Nx * Lx + Ly + Nz * Lz) / Nl
+                If Lamp < 0 Then Lamp = 0
+                Dim Hi As Double = Math.Max(0.0, Math.Min(0.16, (Hc - 60.0) / 220.0))
+                Dim Bright As Double = 0.72 + 0.34 * Lamp + Hi
+                '按世界坐标取贴图里的像素
+                Dim Wx0 As Integer = Ox + i * FpsCell
+                Dim Wz0 As Integer = Oz + j * FpsCell
+                For ty As Integer = 0 To S - 1
+                    Dim RowByte As Integer = ((j * S + ty) * TexW + i * S) * 4
+                    Dim TZ As Integer = (Wz0 * FpsTexelsPerBlock + ty) And 15
+                    For tx As Integer = 0 To S - 1
+                        Dim O As Integer = RowByte + tx * 4
+                        Dim BR As Integer, BG As Integer, BB As Integer
+                        If TBytes IsNot Nothing Then
+                            Dim TexSX As Integer = (Wx0 * FpsTexelsPerBlock + tx) And 15
+                            Dim Ti As Integer = (TZ * 16 + TexSX) * 4
+                            BR = TBytes(Ti + 2) : BG = TBytes(Ti + 1) : BB = TBytes(Ti)
+                            If TintIt Then
+                                If IsW Then
+                                    BR = CInt(Math.Min(255.0, BR * (TR / 255.0) * 1.9))
+                                    BG = CInt(Math.Min(255.0, BG * (TG / 255.0) * 1.9))
+                                    BB = CInt(Math.Min(255.0, BB * (TB / 255.0) * 1.9))
+                                Else
+                                    BR = CInt(Math.Min(255.0, BR * (0.22 + 0.78 * TR / 255.0)))
+                                    BG = CInt(Math.Min(255.0, BG * (0.22 + 0.78 * TG / 255.0)))
+                                    BB = CInt(Math.Min(255.0, BB * (0.22 + 0.78 * TB / 255.0)))
+                                End If
+                            End If
+                        Else
+                            BR = TR : BG = TG : BB = TB
+                        End If
+                        Base(O) = CByte(Math.Min(255, CInt(BB * Bright)))
+                        Base(O + 1) = CByte(Math.Min(255, CInt(BG * Bright)))
+                        Base(O + 2) = CByte(Math.Min(255, CInt(BR * Bright)))
+                        Base(O + 3) = 255
+                    Next
+                Next
+            Next
+        Next
+
+        '---- 网格：顶点共享，相邻格共用顶点 → 地面是连续的一整片 ----
+        Dim Pos As New Point3DCollection(NN * NN)
+        Dim Uvs As New PointCollection(NN * NN)
+        For j As Integer = 0 To N
+            Dim V As Double = Math.Min(j * S, TexW - 1) / TexW
+            For i As Integer = 0 To N
+                Dim U As Double = Math.Min(i * S, TexW - 1) / TexW
+                Pos.Add(New Point3D(Ox + i * FpsCell, Nodes(j * NN + i), Oz + j * FpsCell))
+                Uvs.Add(New Point(U, V))
+            Next
+        Next
+        Dim Tris As New Int32Collection(N * N * 6)
+        For j As Integer = 0 To N - 1
+            For i As Integer = 0 To N - 1
+                Dim A As Integer = j * NN + i
+                Dim B As Integer = (j + 1) * NN + i
+                Dim Cc As Integer = (j + 1) * NN + i + 1
+                Dim D As Integer = j * NN + i + 1
+                Tris.Add(A) : Tris.Add(B) : Tris.Add(Cc)
+                Tris.Add(A) : Tris.Add(Cc) : Tris.Add(D)
+            Next
+        Next
+        Dim Mesh As New MeshGeometry3D With {
+            .Positions = Pos,
+            .TextureCoordinates = Uvs,
+            .TriangleIndices = Tris}
+        'Freeze 之后就能把这个网格从后台线程直接交给 UI 线程
+        Mesh.Freeze()
+
+        Return New FpsPatch With {
+            .OriginX = Ox, .OriginZ = Oz, .N = N,
+            .Nodes = Nodes, .Water = Water, .GeoH = GeoH,
+            .Base = Base, .TexW = TexW, .Mesh = Mesh}
     End Function
 
-    ''' <summary>按群系/高度给每格着色（与 2D 地图同一套配色）。</summary>
-    Private Sub PrepareFpsColors()
-        If FpsIds Is Nothing Then Return
-        Dim Total As Integer = FpsN * FpsN
-        If FpsColR Is Nothing OrElse FpsColR.Length <> Total Then
-            FpsColR = New Integer(Total - 1) {}
-            FpsColG = New Integer(Total - 1) {}
-            FpsColB = New Integer(Total - 1) {}
-        End If
-        For k As Integer = 0 To Total - 1
-            Dim Id = FpsIds(k)
-            If Id < 0 OrElse Id > 255 Then Id = 127
-            Dim C As Color = ModuleSeedMap.BiomeColors(Id)
-            Dim R As Integer = C.R, G As Integer = C.G, B As Integer = C.B
-            If FpsHeights(k) < 63 Then
-                R = 58 : G = 104 : B = 196
-            Else
-                Dim Brt As Double = 0.82 + Math.Min(0.3, (FpsHeights(k) - 40) / 120 * 0.3)
-                R = CInt(Math.Min(255, R * Brt)) : G = CInt(Math.Min(255, G * Brt)) : B = CInt(Math.Min(255, B * Brt))
+    ''' <summary>把后台算好的地形挂上去（UI 线程）：一次纹理上传 + 换网格。</summary>
+    Private Sub ApplyFpsPatch(P As FpsPatch)
+        Try
+            If P Is Nothing OrElse FpsTerrainModel Is Nothing Then Return
+            FpsPatchData = P
+            FpsOriginX = P.OriginX
+            FpsOriginZ = P.OriginZ
+            FpsGeoH = P.GeoH
+            Dim TW As Integer = P.TexW
+            FpsWork = CType(P.Base.Clone(), Byte())
+            If FpsTex Is Nothing OrElse FpsTex.PixelWidth <> TW OrElse FpsTex.PixelHeight <> TW Then
+                FpsTex = New WriteableBitmap(TW, TW, 96, 96, PixelFormats.Bgra32, Nothing)
+                FpsBrush = New ImageBrush(FpsTex) With {.Stretch = Stretch.Fill}
+                RenderOptions.SetBitmapScalingMode(FpsBrush, BitmapScalingMode.HighQuality)
+                FpsMat = New DiffuseMaterial(FpsBrush)
             End If
-            FpsColR(k) = R : FpsColG(k) = G : FpsColB(k) = B
+            PaintFpsFog(True)
+            FpsTerrainModel.Geometry = P.Mesh
+            FpsTerrainModel.Material = FpsMat
+            FpsTerrainModel.BackMaterial = Nothing
+            If FpsTreeModel IsNot Nothing Then FpsTreeModel.Geometry = Nothing
+            If FpsCloudModel IsNot Nothing Then FpsCloudModel.Geometry = Nothing
+            FpsFogX = FpsX
+            FpsFogZ = FpsZ
+            FpsFogTick = CLng(Environment.TickCount)
+        Catch ex As Exception
+            Logger.Warn(ex, "应用第一人称地形失败")
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' 按【当前相机位置】把雾刷进地形贴图。
+    ''' Full=True 刷整片；否则只刷"雾区间两侧各多留 FpsFogMargin 格"那一圈：
+    ''' 圈内近处雾恒为 0、圈外远处雾恒为满，都是常量，不用跟着人重刷。
+    ''' </summary>
+    Private Sub PaintFpsFog(Full As Boolean)
+        If FpsPatchData Is Nothing OrElse FpsWork Is Nothing OrElse FpsTex Is Nothing Then Return
+        Dim P As FpsPatch = FpsPatchData
+        Dim N As Integer = P.N
+        Dim S As Integer = Math.Max(1, P.TexW \ N)
+        Dim TW As Integer = P.TexW
+        Dim Base() As Byte = P.Base
+        Dim Work() As Byte = FpsWork
+        Dim CI As Integer = CInt(Math.Floor((FpsX - P.OriginX) / FpsCell))
+        Dim CJ As Integer = CInt(Math.Floor((FpsZ - P.OriginZ) / FpsCell))
+        Dim IMin As Integer, IMax As Integer, JMin As Integer, JMax As Integer
+        Dim RMin As Double, RMax As Double
+        If Full Then
+            IMin = 0 : IMax = N - 1 : JMin = 0 : JMax = N - 1
+            RMin = -1.0 : RMax = Double.MaxValue
+        Else
+            RMin = FpsFogNear - FpsFogMargin
+            RMax = FpsFogFar + FpsFogMargin
+            Dim RR As Integer = CInt(Math.Ceiling(RMax / FpsCell)) + 1
+            IMin = Math.Max(0, CI - RR) : IMax = Math.Min(N - 1, CI + RR)
+            JMin = Math.Max(0, CJ - RR) : JMax = Math.Min(N - 1, CJ + RR)
+        End If
+        Dim Span As Double = Math.Max(1.0, FpsFogFar - FpsFogNear)
+        For j As Integer = JMin To JMax
+            Dim Wz As Double = P.OriginZ + j * FpsCell + FpsCell / 2.0
+            Dim Dz As Double = Wz - FpsZ
+            For i As Integer = IMin To IMax
+                Dim Wx As Double = P.OriginX + i * FpsCell + FpsCell / 2.0
+                Dim Dx As Double = Wx - FpsX
+                Dim Dist As Double = Math.Sqrt(Dx * Dx + Dz * Dz)
+                If Dist < RMin OrElse Dist > RMax Then Continue For
+                Dim T As Double = (Dist - FpsFogNear) / Span
+                If T < 0 Then T = 0
+                If T > 1 Then T = 1
+                '三次曲线：近处几乎不糊，越远越急
+                Dim Fog As Double = T * T * T
+                Dim Keep As Double = 1.0 - Fog
+                Dim FogB As Double = FpsFogB * Fog
+                Dim FogG As Double = FpsFogG * Fog
+                Dim FogR As Double = FpsFogR * Fog
+                For ty As Integer = 0 To S - 1
+                    Dim RowByte As Integer = ((j * S + ty) * TW + i * S) * 4
+                    For tx As Integer = 0 To S - 1
+                        Dim O As Integer = RowByte + tx * 4
+                        Work(O) = CByte(Math.Min(255.0, Base(O) * Keep + FogB))
+                        Work(O + 1) = CByte(Math.Min(255.0, Base(O + 1) * Keep + FogG))
+                        Work(O + 2) = CByte(Math.Min(255.0, Base(O + 2) * Keep + FogR))
+                        Work(O + 3) = 255
+                    Next
+                Next
+            Next
         Next
+        FpsTex.WritePixels(New Int32Rect(0, 0, TW, TW), Work, TW * 4, 0)
+    End Sub
+
+
+
+    '===============================
+    '  方块贴图：直接从游戏版本目录里的客户端 jar 读原版贴图
+    '  （assets/minecraft/textures/block/*.png；旧版本自动兼容 textures/blocks/ 和旧贴图名）
+    '  只用到"地表那一层"的顶面贴图；读不到就退回纯群系色，功能不受影响。
+    '===============================
+
+    Private Const T_GRASS As Integer = 0
+    Private Const T_SAND As Integer = 1
+    Private Const T_REDSAND As Integer = 2
+    Private Const T_GRAVEL As Integer = 3
+    Private Const T_STONE As Integer = 4
+    Private Const T_DIRT As Integer = 5
+    Private Const T_SNOW As Integer = 6
+    Private Const T_ICE As Integer = 7
+    Private Const T_PACKEDICE As Integer = 8
+    Private Const T_TERRACOTTA As Integer = 9
+    Private Const T_CLAY As Integer = 10
+    Private Const T_MUD As Integer = 11
+    Private Const T_MYCELIUM As Integer = 12
+    Private Const T_PODZOL As Integer = 13
+    Private Const T_MOSS As Integer = 14
+    Private Const T_CALCITE As Integer = 15
+    Private Const T_WATER As Integer = 16
+    Private Const T_NETHERRACK As Integer = 17
+    Private Const T_SOULSAND As Integer = 18
+    Private Const T_ENDSTONE As Integer = 19
+    Private Const T_PURPUR As Integer = 20
+    Private Const T_BASALT As Integer = 21
+    Private Const T_DEEPSLATE As Integer = 22
+    Private Const T_COUNT As Integer = 23
+
+    ''' <summary>一套 16×16 的方块顶面贴图（Bgra32）+ 是否需要用群系色染色。</summary>
+    Private Class FpsTileSet
+        Public Ok As Boolean = False
+        Public Source As String = ""
+        Public Tiles As New List(Of Byte())
+        Public Tint As New List(Of Boolean)
+    End Class
+
+    Private Shared _FpsTiles As FpsTileSet = Nothing
+
+    ''' <summary>每种地表方块的贴图名（第一个能读到的就用）。</summary>
+    Private ReadOnly FpsTileNames As String()() = {
+        New String() {"grass_block_top", "grass_top"},
+        New String() {"sand"},
+        New String() {"red_sand"},
+        New String() {"gravel"},
+        New String() {"stone"},
+        New String() {"dirt"},
+        New String() {"snow"},
+        New String() {"ice"},
+        New String() {"packed_ice", "ice_packed"},
+        New String() {"terracotta", "hardened_clay"},
+        New String() {"clay"},
+        New String() {"mud"},
+        New String() {"mycelium_top"},
+        New String() {"podzol_top"},
+        New String() {"moss_block"},
+        New String() {"calcite"},
+        New String() {"water_still"},
+        New String() {"netherrack"},
+        New String() {"soul_sand"},
+        New String() {"end_stone"},
+        New String() {"purpur_block"},
+        New String() {"basalt_top", "basalt_side"},
+        New String() {"deepslate", "deepslate_top"}}
+
+    ''' <summary>灰度贴图（草、水）要乘上群系色，其它直接用原色。</summary>
+    Private ReadOnly FpsTileTint As Boolean() = {
+        True, False, False, False, False, False, False, False, False, False, False, False,
+        False, False, False, False, True, False, False, False, False, False, False}
+
+    ''' <summary>读原版方块贴图（只读一次；失败也记下来，不再反复重试）。</summary>
+    Private Function GetFpsTiles() As FpsTileSet
+        If _FpsTiles IsNot Nothing Then Return _FpsTiles
+        Dim TS As New FpsTileSet
+        _FpsTiles = TS
+        Try
+            Dim Root As String = McFolderSelected
+            If String.IsNullOrEmpty(Root) Then Return TS
+            Dim VerDir As String = Root & "versions"
+            If Not IO.Directory.Exists(VerDir) Then Return TS
+            '候选 jar：优先当前预览的版本，其余按名字从新到旧
+            Dim Want As String = ""
+            Try
+                Want = ModuleSeedMap.VersionNames(VersionIndex)
+            Catch
+            End Try
+            Dim Pref As New List(Of String)
+            Dim Rest As New List(Of String)
+            For Each D As String In IO.Directory.GetDirectories(VerDir)
+                Dim Jars As String() = IO.Directory.GetFiles(D, "*.jar")
+                If Jars.Length = 0 Then Continue For
+                Dim Jar As String = Jars(0)
+                Dim Nm As String = IO.Path.GetFileNameWithoutExtension(Jar)
+                If Want <> "" AndAlso Nm.StartsWith(Want, StringComparison.OrdinalIgnoreCase) Then
+                    Pref.Add(Jar)
+                Else
+                    Rest.Add(Jar)
+                End If
+            Next
+            Rest.Sort(Function(A, B) String.CompareOrdinal(IO.Path.GetFileName(B), IO.Path.GetFileName(A)))
+            Pref.AddRange(Rest)
+            Dim Best As FpsTileSet = Nothing
+            Dim BestLoaded As Integer = 0
+            For Each Jar As String In Pref
+                Dim Loaded As Integer = 0
+                Dim One As New FpsTileSet With {.Source = IO.Path.GetFileName(Jar)}
+                Try
+                    Using Z As ZipArchive = ZipFile.OpenRead(Jar)
+                        For t As Integer = 0 To T_COUNT - 1
+                            Dim Bts As Byte() = Nothing
+                            For Each Nm As String In FpsTileNames(t)
+                                Bts = ReadMcJarTexture(Z, Nm)
+                                If Bts IsNot Nothing Then Exit For
+                            Next
+                            One.Tiles.Add(Bts)
+                            One.Tint.Add(FpsTileTint(t))
+                            If Bts IsNot Nothing Then Loaded += 1
+                        Next
+                    End Using
+                Catch
+                    Continue For
+                End Try
+                If Loaded > BestLoaded Then
+                    Best = One
+                    BestLoaded = Loaded
+                End If
+                If Loaded * 2 >= T_COUNT Then Exit For '够用了就不再翻别的 jar
+            Next
+            If Best Is Nothing Then
+                Logger.Warn("第一人称：游戏目录里没找到带方块贴图的 jar，退回群系色")
+                Return TS
+            End If
+            TS.Tiles = Best.Tiles
+            TS.Tint = Best.Tint
+            TS.Source = Best.Source
+            TS.Ok = BestLoaded * 2 >= T_COUNT
+            Logger.Info($"第一人称：方块贴图取自 {TS.Source}，读到 {BestLoaded}/{T_COUNT} 张")
+        Catch ex As Exception
+            Logger.Warn(ex, "从游戏 jar 里读方块贴图失败，第一人称退回群系色")
+        End Try
+        Return TS
+    End Function
+
+    ''' <summary>从 jar 里读一张方块贴图，统一缩成 16×16 Bgra32（水是竖条动画图，只取第一帧）。</summary>
+    Private Function ReadMcJarTexture(Z As ZipArchive, Name As String) As Byte()
+        Try
+            Dim E As ZipArchiveEntry = Z.GetEntry("assets/minecraft/textures/block/" & Name & ".png")
+            If E Is Nothing Then E = Z.GetEntry("assets/minecraft/textures/blocks/" & Name & ".png")
+            If E Is Nothing Then Return Nothing
+            Using S As IO.Stream = E.Open()
+                Dim Dec As New PngBitmapDecoder(S, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad)
+                If Dec.Frames.Count = 0 Then Return Nothing
+                Dim Conv As New FormatConvertedBitmap(Dec.Frames(0), PixelFormats.Bgra32, Nothing, 0)
+                Dim W As Integer = Conv.PixelWidth
+                Dim H As Integer = Conv.PixelHeight
+                If W < 1 OrElse H < 1 Then Return Nothing
+                Dim Stride As Integer = W * 4
+                Dim Buf(W * H * 4 - 1) As Byte
+                Conv.CopyPixels(Buf, Stride, 0)
+                '半透明贴图（水、树叶）里的透明像素本身是些脏色，先用整体平均色兜住，免得铺出一片黑点
+                Dim AR As Long = 0, AG As Long = 0, AB As Long = 0, AN As Long = 0
+                For t As Integer = 0 To W * H - 1
+                    Dim A As Integer = Buf(t * 4 + 3)
+                    If A < 24 Then Continue For
+                    AB += Buf(t * 4) * A
+                    AG += Buf(t * 4 + 1) * A
+                    AR += Buf(t * 4 + 2) * A
+                    AN += A
+                Next
+                Dim AvgB As Integer = 128, AvgG As Integer = 128, AvgR As Integer = 128
+                If AN > 0 Then
+                    AvgB = CInt(AB \ AN) : AvgG = CInt(AG \ AN) : AvgR = CInt(AR \ AN)
+                End If
+                Dim Out(16 * 16 * 4 - 1) As Byte
+                For y As Integer = 0 To 15
+                    Dim Sy As Integer = Math.Min(H - 1, y * W \ 16)
+                    For x As Integer = 0 To 15
+                        Dim Sx As Integer = Math.Min(W - 1, x * W \ 16)
+                        Dim Si As Integer = Sy * Stride + Sx * 4
+                        Dim Di As Integer = (y * 16 + x) * 4
+                        If Buf(Si + 3) < 32 Then
+                            Out(Di) = CByte(AvgB)
+                            Out(Di + 1) = CByte(AvgG)
+                            Out(Di + 2) = CByte(AvgR)
+                        Else
+                            Out(Di) = Buf(Si)
+                            Out(Di + 1) = Buf(Si + 1)
+                            Out(Di + 2) = Buf(Si + 2)
+                        End If
+                        Out(Di + 3) = 255
+                    Next
+                Next
+                Return Out
+            End Using
+        Catch ex As Exception
+            Return Nothing
+        End Try
+    End Function
+
+    ''' <summary>群系 → 地表贴图（按中文群系名判断，认不出来就当草地）。</summary>
+    Private Function FpsTileForBiome(Id As Integer) As Integer
+        Dim Nm As String = ModuleSeedMap.BiomeName(Id)
+        If String.IsNullOrWhiteSpace(Nm) Then Return T_GRASS
+        If Nm.Contains("冻洋") OrElse Nm.Contains("冻河") Then Return T_ICE
+        If Nm.Contains("海洋") OrElse Nm.Contains("深海") OrElse Nm.Contains("河流") OrElse
+           Nm.Contains("Ocean") OrElse Nm.Contains("River") Then Return T_WATER
+        If Nm.Contains("沙滩") Then Return T_SAND
+        If Nm.Contains("沙漠") Then Return T_SAND
+        If Nm.Contains("恶地") Then Return T_REDSAND
+        If Nm.Contains("冰刺") OrElse Nm.Contains("积雪") OrElse Nm.Contains("雪原") OrElse
+           Nm.Contains("雪山") OrElse Nm.Contains("霜冻") OrElse Nm.Contains("雪林") Then Return T_SNOW
+        If Nm.Contains("石岸") OrElse Nm.Contains("尖峭") OrElse Nm.Contains("裸岩") OrElse
+           Nm.Contains("风袭") OrElse Nm.Contains("山地边缘") OrElse Nm.Contains("砂砾山地") Then Return T_STONE
+        If Nm.Contains("蘑菇") Then Return T_MYCELIUM
+        If Nm.Contains("原始松木") OrElse Nm.Contains("原始云杉") Then Return T_PODZOL
+        If Nm.Contains("末地") Then Return T_ENDSTONE
+        If Nm.Contains("灵魂沙") Then Return T_SOULSAND
+        If Nm.Contains("玄武岩") Then Return T_BASALT
+        If Nm.Contains("下界荒地") OrElse Nm.Contains("绯红") OrElse Nm.Contains("诡异") Then Return T_NETHERRACK
+        If Nm.Contains("深暗") Then Return T_DEEPSLATE
+        Return T_GRASS
+    End Function
+
+    ''' <summary>水域群系（和二维地图的上色口径一致：看群系名，不看高度）。</summary>
+    Private FpsWaterIds As HashSet(Of Integer) = Nothing
+    Private Function IsWaterBiome(Id As Integer) As Boolean
+        If FpsWaterIds Is Nothing Then
+            FpsWaterIds = New HashSet(Of Integer)
+            For k As Integer = 0 To 254
+                Dim Nm As String = ModuleSeedMap.BiomeName(k)
+                If String.IsNullOrWhiteSpace(Nm) Then Continue For
+                If Nm.Contains("海洋") OrElse Nm.Contains("深海") OrElse Nm.Contains("河流") OrElse
+                   Nm.Contains("Ocean") OrElse Nm.Contains("River") OrElse Nm.Contains("Water") Then
+                    FpsWaterIds.Add(k)
+                End If
+            Next
+        End If
+        Return FpsWaterIds.Contains(Id)
+    End Function
+
+' <summary>脚下这块建好后收掉加载遮罩并开始更新。</summary>
+    Private Sub FinishFpsEnter()
+        Try
+            RectFpsProgress.Width = 220
+            PanFpsLoading.Opacity = 1
+            AniStart({
+                AaOpacity(PanFpsLoading, -1, 240, , New AniEaseOutFluent(AniEasePower.Middle)),
+                AaCode(Sub() PanFpsLoading.Visibility = Visibility.Collapsed, 250, True)
+            }, "SeedMap FPS Load", True)
+            FpsActive = True
+            FpsLastTick = CLng(Environment.TickCount)
+            RemoveHandler CompositionTarget.Rendering, AddressOf FpsFrame
+            AddHandler CompositionTarget.Rendering, AddressOf FpsFrame
+            FpsFrame(Nothing, Nothing)
+            PanFirstPerson.Focus()
+            LockFpsPointer()
+        Catch ex As Exception
+            Logger.Warn(ex, "第一人称加载收尾失败")
+        End Try
     End Sub
 
     ''' <summary>退出第一人称（带淡出动画）。</summary>
     Private Sub ExitFirstPerson(Animate As Boolean)
-        FpsGen += 1 '使仍在后台采样的回调失效
-        Try
-            RemoveHandler CompositionTarget.Rendering, AddressOf FpsFrame
-        Catch
-        End Try
+        FpsGen += 1 '使仍在后台的采样失效
+        RemoveHandler CompositionTarget.Rendering, AddressOf FpsFrame
         FpsActive = False
+        FpsBuilding = False
         FpsFlying = False
         FpsLastSpaceTick = 0
         FpsKeys.Clear()
+        FpsPointerLocked = False
         PanFirstPerson.Cursor = Cursors.Arrow '恢复光标
         If Not Animate Then
+            If FpsTerrainModel IsNot Nothing Then FpsTerrainModel.Geometry = Nothing
             PanFirstPerson.Visibility = Visibility.Collapsed
+            PanFirstPerson.Opacity = 1
+            PanFirstPerson.RenderTransform = Nothing
             Return
         End If
         AniStart({
             AaOpacity(PanFirstPerson, -PanFirstPerson.Opacity, 200, , New AniEaseInFluent),
             AaCode(Sub()
+                       If FpsTerrainModel IsNot Nothing Then FpsTerrainModel.Geometry = Nothing
                        PanFirstPerson.Visibility = Visibility.Collapsed
                        PanFirstPerson.Opacity = 1
                        PanFirstPerson.RenderTransform = Nothing
@@ -3837,18 +4402,27 @@ Public Class PageSeedMap
         }, "SeedMap FPS", True)
     End Sub
 
-    '---- 渲染循环：移动 + Voxel-space 风格的地形绘制 ----
+    ''' <summary>渲染循环：移动 + 相机 + 雾跟着人重刷。地形本身永远不动。</summary>
     Private Sub FpsFrame(sender As Object, e As EventArgs)
-        If Not FpsActive OrElse FpsHeights Is Nothing Then Return
+        If Not FpsActive Then Return
         Try
             Dim Now As Long = CLng(Environment.TickCount)
             Dim DtMs As Double = Math.Max(1, Now - FpsLastTick)
             If DtMs > 200 Then DtMs = 200
             FpsLastTick = Now
             TickFpsMovement(DtMs / 1000.0)
-            If Now - FpsRenderTick < 30 Then Return
-            FpsRenderTick = Now
-            RenderFps()
+            UpdateFpsPosLabel()
+            UpdateFpsCamera()
+            '雾围着人走：走过 3 格、且距上次刷雾超过 90ms 就补刷一圈
+            If FpsPatchData IsNot Nothing Then
+                Dim Moved As Double = Math.Sqrt((FpsX - FpsFogX) ^ 2 + (FpsZ - FpsFogZ) ^ 2)
+                If Double.IsNaN(FpsFogX) OrElse (Moved >= 5.0 AndAlso Now - FpsFogTick >= 180) Then
+                    FpsFogX = FpsX
+                    FpsFogZ = FpsZ
+                    FpsFogTick = Now
+                    PaintFpsFog(False)
+                End If
+            End If
         Catch ex As Exception
             Logger.Warn(ex, "第一人称帧更新失败")
             RemoveHandler CompositionTarget.Rendering, AddressOf FpsFrame
@@ -3856,7 +4430,7 @@ Public Class PageSeedMap
         End Try
     End Sub
 
-    ''' <summary>按键 → 位移与跳跃；走出缓存边缘时后台重采样周围地形。</summary>
+    ''' <summary>按键 → 位移与跳跃；走到地形中心 24 格外时后台整片换一块。</summary>
     Private Sub TickFpsMovement(Dt As Double)
         Dim Fwd As Double = 0, Side As Double = 0
         If FpsKeys.Contains(Key.W) Then Fwd += 1
@@ -3864,45 +4438,35 @@ Public Class PageSeedMap
         If FpsKeys.Contains(Key.A) Then Side -= 1
         If FpsKeys.Contains(Key.D) Then Side += 1
         If Fwd <> 0 OrElse Side <> 0 Then
-            '飞行时不能用 Shift 加速（Shift 在飞行中是下降），改用更快的飞行速度
+            Dim Len As Double = Math.Sqrt(Fwd * Fwd + Side * Side)
+            Fwd /= Len : Side /= Len
             Dim Speed As Double
             If FpsFlying Then
-                Speed = 12.0
+                Speed = 55.0
             Else
-                Speed = If(FpsKeys.Contains(Key.LeftShift), 9.0, 4.6) '接近 Minecraft：步行 4.3 格/秒、疾跑 5.6，这里略快一点
+                Speed = If(FpsKeys.Contains(Key.LeftShift), 20.0, 8.5)
             End If
             Dim SinY As Double = Math.Sin(FpsYaw), CosY As Double = Math.Cos(FpsYaw)
-            Dim DX As Double = (Fwd * SinY + Side * CosY) * Speed * Dt
-            Dim DZ As Double = (-Fwd * CosY + Side * SinY) * Speed * Dt
-            FpsX += DX
-            FpsZ += DZ
-            LabFpsPos.Text = $"X {CInt(FpsX)} · Z {CInt(FpsZ)}"
-            '离缓存中心太远就重采样
-            Dim Half As Double = FpsN * FpsStep / 2
-            Dim Cx As Double = FpsOriginX + Half, Cz As Double = FpsOriginZ + Half
-            If Not FpsReloading AndAlso (Math.Abs(FpsX - Cx) > Half * 0.35 OrElse Math.Abs(FpsZ - Cz) > Half * 0.35) Then
-                ReloadFpsTerrain()
-            End If
+            FpsX += (SinY * Fwd + CosY * Side) * Speed * Dt
+            FpsZ += (-CosY * Fwd + SinY * Side) * Speed * Dt
         End If
-        '重力与跳跃 / 飞行
-        Dim Ground As Double = FpsGroundAt(FpsX, FpsZ)
-        Dim Floor As Double = Math.Max(Ground, 62) + FpsEyeBlock
+        '脚下地面 / 重力
+        Dim Floor As Double = FpsGroundAtBlock(FpsX, FpsZ) + FpsEyeBlock
         If FpsFlying Then
-            '双击空格进入的飞行：空格上升、Shift 下降，不受重力影响
             Dim Up As Double = 0
             If FpsKeys.Contains(Key.Space) Then Up += 1
             If FpsKeys.Contains(Key.LeftShift) Then Up -= 1
             FpsVelY = 0
             FpsOnGround = False
-            FpsEyeY += Up * 11.0 * Dt
-            If FpsEyeY < Floor Then FpsEyeY = Floor           '别钻到地里
-            If FpsEyeY > Floor + 220 Then FpsEyeY = Floor + 220 '别飞太高丢了地形缓存
+            FpsEyeY += Up * 16.0 * Dt
+            If FpsEyeY < Floor Then FpsEyeY = Floor
+            If FpsEyeY > Floor + 260 Then FpsEyeY = Floor + 260
         Else
             If FpsKeys.Contains(Key.Space) AndAlso FpsOnGround Then
                 FpsVelY = 8.0 '跳跃初速：与 24 的重力配合约 1.33 格，接近游戏内 1.25 格
                 FpsOnGround = False
             End If
-            FpsVelY -= 24.0 * (Dt / 1.0)
+            FpsVelY -= 24.0 * Dt
             FpsEyeY += FpsVelY * Dt
             If FpsEyeY <= Floor Then
                 FpsEyeY = Floor
@@ -3910,238 +4474,143 @@ Public Class PageSeedMap
                 FpsOnGround = True
             End If
         End If
+        '走出中心 24 格就整片换：旧的先挂着，新的建好一次性换上去，画面不中断也不跳
+        If Not FpsBuilding AndAlso FpsPatchData IsNot Nothing Then
+            Dim Cx As Double = FpsOriginX + FpsPatchData.N * FpsCell / 2.0
+            Dim Cz As Double = FpsOriginZ + FpsPatchData.N * FpsCell / 2.0
+            If Math.Abs(FpsX - Cx) > FpsRebuildDist OrElse Math.Abs(FpsZ - Cz) > FpsRebuildDist Then
+                StartFpsRebuild()
+            End If
+        End If
     End Sub
 
-    ''' <summary>切换飞行状态并更新提示文字。</summary>
+    ''' <summary>后台采一整片新地形，建好后整块替换（不显示加载遮罩）。</summary>
+    Private Sub StartFpsRebuild()
+        If FpsBuilding Then Return
+        FpsBuilding = True
+        Dim Gen As Integer = FpsGen
+        Dim Ver As Integer = ModuleSeedMap.VersionIds(VersionIndex)
+        Dim ThisSeed As Long = SeedValue
+        Dim Px As Double = FpsX, Pz As Double = FpsZ
+        RunInThread(
+            Sub()
+                Try
+                    Dim P = BuildFpsPatch(Ver, ThisSeed, Px, Pz, Gen, False)
+                    If P Is Nothing Then Return
+                    RunInUi(
+                        Sub()
+                            Try
+                                If Gen <> FpsGen OrElse Not FpsActive Then Return
+                                ApplyFpsPatch(P)
+                            Finally
+                                FpsBuilding = False
+                            End Try
+                        End Sub)
+                Catch ex As Exception
+                    Logger.Warn(ex, "第一人称地形重建失败")
+                    RunInUi(Sub() FpsBuilding = False)
+                End Try
+            End Sub)
+    End Sub
+
+    ''' <summary>切换飞行状态并更新顶部提示文字。</summary>
     Private Sub SetFpsFlying(Value As Boolean)
         FpsFlying = Value
         FpsVelY = 0
         If LabFpsInfo IsNot Nothing Then
             LabFpsInfo.Text = If(Value,
                 "第一人称（飞行）· WASD 移动 · 空格上升 / Shift 下降 · 双击空格取消 · Esc 退出",
-                "第一人称 · WASD 移动 · 空格跳跃 · 双击空格飞行 · Shift 加速 · Esc 退出")
+                "第一人称 · WASD 移动 · 空格跳跃 · 双击空格飞行 · Shift 加速 · 鼠标转视角 · Esc 退出")
         End If
-        Hint(If(Value, "已进入飞行模式（空格上升 / Shift 下降，双击空格取消）", "已退出飞行模式"), HintType.Blue)
     End Sub
 
-    ''' <summary>所在格子（FpsStep 方块/格）的整数地表高度——不插值，保持方块台阶感。</summary>
+    ''' <summary>刷新右下角的坐标显示。</summary>
+    Private Sub UpdateFpsPosLabel()
+        If LabFpsPos Is Nothing Then Return
+        LabFpsPos.Text = $"X {CInt(FpsX)} · Z {CInt(FpsZ)}"
+    End Sub
+
+    ''' <summary>脚下地面的高度（顶点双线性插值，水面按海平面算；超出这块地形按海平面兜底）。</summary>
     Private Function FpsGroundAtBlock(X As Double, Z As Double) As Double
-        If FpsHeights Is Nothing Then Return 63
-        Dim I0 As Integer = ClampI(CInt(Math.Floor((X - FpsOriginX) / FpsStep)), 0, FpsN - 1)
-        Dim J0 As Integer = ClampI(CInt(Math.Floor((Z - FpsOriginZ) / FpsStep)), 0, FpsN - 1)
-        Return Math.Round(FpsHeights(J0 * FpsN + I0))
+        If FpsPatchData Is Nothing Then Return 63
+        Dim P As FpsPatch = FpsPatchData
+        Dim Gx As Double = (X - P.OriginX) / FpsCell
+        Dim Gz As Double = (Z - P.OriginZ) / FpsCell
+        Dim N As Integer = P.N
+        If Gx < 0 OrElse Gz < 0 OrElse Gx > N OrElse Gz > N Then Return 63
+        Dim I As Integer = CInt(Math.Floor(Gx))
+        Dim J As Integer = CInt(Math.Floor(Gz))
+        If I >= N Then I = N - 1
+        If J >= N Then J = N - 1
+        Dim Tx As Double = Gx - I, Tz As Double = Gz - J
+        Dim NN As Integer = N + 1
+        Dim H0 As Double = P.Nodes(J * NN + I)
+        Dim H1 As Double = P.Nodes(J * NN + I + 1)
+        Dim H2 As Double = P.Nodes((J + 1) * NN + I)
+        Dim H3 As Double = P.Nodes((J + 1) * NN + I + 1)
+        Dim H As Double = (H0 * (1 - Tx) + H1 * Tx) * (1 - Tz) + (H2 * (1 - Tx) + H3 * Tx) * Tz
+        '水面之上：人站在水面这一层，不会沉到海底
+        Return Math.Max(63.0, H)
     End Function
 
-    ''' <summary>行走时的地面高度：同样按方块格取值，人站在格子顶面上。</summary>
     Private Function FpsGroundAt(X As Double, Z As Double) As Double
         Return FpsGroundAtBlock(X, Z)
     End Function
 
-    ''' <summary>后台重采样以玩家为中心的地形（移动越远范围越大时才触发）。</summary>
-    Private Sub ReloadFpsTerrain()
-        FpsReloading = True
-        Dim Gen As Integer = FpsGen
-        Dim Ver As Integer = ModuleSeedMap.VersionIds(VersionIndex)
-        Dim Seed = SeedValue
-        Dim Px As Double = FpsX, Pz As Double = FpsZ
-        Dim Half As Integer = FpsN * FpsStep \ 2
-        '同样对齐到 FpsStep 整数倍，避免重采样后晶格错位导致地形"游动"
-        Dim OriginX As Integer = CInt(Math.Floor((Px - Half) / FpsStep)) * FpsStep
-        Dim OriginZ As Integer = CInt(Math.Floor((Pz - Half) / FpsStep)) * FpsStep
-        LabFpsStatus.Text = "加载周围地形…"
-        RunInThread(
-            Sub()
-                Try
-                    Dim Hs = ModuleSeedMap.SampleHeights(Ver, Seed, OriginX \ 4, OriginZ \ 4, FpsN, FpsStep \ 4)
-                    Dim Ids = ModuleSeedMap.SampleBiomeGrid(Seed, Ver, 0, OriginX, OriginZ, FpsN, FpsStep)
-                    RunInUi(
-                        Sub()
-                            If Gen <> FpsGen Then Return '期间已退出，丢弃
-                            FpsHeights = Hs
-                            FpsIds = Ids
-                            FpsOriginX = OriginX
-                            FpsOriginZ = OriginZ
-                            PrepareFpsColors()
-                            PanFpsLoading.Visibility = Visibility.Collapsed
-                            FpsReloading = False
-                            FpsLastTick = CLng(Environment.TickCount)
-                        End Sub)
-                Catch ex As Exception
-                    Logger.Warn(ex, "第一人称重采样失败")
-                    RunInUi(Sub() FpsReloading = False)
-                End Try
-            End Sub)
+    '---- 渲染：WPF 3D ----
+
+    Private FpsSkyBrush As LinearGradientBrush = Nothing
+
+    ''' <summary>天空渐变：地平线位置随俯仰变化，地平线以下铺雾色（会被地形挡住，看不到）。</summary>
+    Private Sub InitFpsSky()
+        If FpsSkyBorder Is Nothing Then Return
+        FpsSkyBrush = New LinearGradientBrush With {
+            .StartPoint = New Point(0.5, 0),
+            .EndPoint = New Point(0.5, 1)}
+        FpsSkyBrush.GradientStops.Add(New GradientStop(Color.FromRgb(120, 162, 214), 0))
+        FpsSkyBrush.GradientStops.Add(New GradientStop(Color.FromRgb(FpsFogR, FpsFogG, FpsFogB), 0.5))
+        FpsSkyBrush.GradientStops.Add(New GradientStop(Color.FromRgb(FpsFogR, FpsFogG, FpsFogB), 1))
+        FpsSkyBorder.Background = FpsSkyBrush
     End Sub
 
-    ''' <summary>按世界坐标双线性采样地形颜色（与 FpsGroundAt 同权重）。
-    ''' 之前取最近采样格的阶跃色，移动时单元边界会在地形上连续"爬动"。</summary>
-    Private Sub SampleFpsColor(Wx As Double, Wz As Double, ByRef R As Integer, ByRef G As Integer, ByRef B As Integer)
-        If FpsColR Is Nothing OrElse FpsColR.Length = 0 Then
-            R = 127 : G = 127 : B = 127
-            Return
-        End If
-        Dim Fi As Double = (Wx - FpsOriginX) / FpsStep
-        Dim Fj As Double = (Wz - FpsOriginZ) / FpsStep
-        Dim I0 As Integer = ClampI(CInt(Math.Floor(Fi)), 0, FpsN - 2)
-        Dim J0 As Integer = ClampI(CInt(Math.Floor(Fj)), 0, FpsN - 2)
-        Dim Tx As Double = Math.Max(0.0, Math.Min(1.0, Fi - I0))
-        Dim Tz As Double = Math.Max(0.0, Math.Min(1.0, Fj - J0))
-        Dim K00 As Integer = J0 * FpsN + I0
-        Dim K10 As Integer = K00 + 1
-        Dim K01 As Integer = K00 + FpsN
-        Dim K11 As Integer = K01 + 1
-        Dim W00 As Double = (1 - Tx) * (1 - Tz), W10 As Double = Tx * (1 - Tz), W01 As Double = (1 - Tx) * Tz, W11 As Double = Tx * Tz
-        R = CInt(FpsColR(K00) * W00 + FpsColR(K10) * W10 + FpsColR(K01) * W01 + FpsColR(K11) * W11)
-        G = CInt(FpsColG(K00) * W00 + FpsColG(K10) * W10 + FpsColG(K01) * W01 + FpsColG(K11) * W11)
-        B = CInt(FpsColB(K00) * W00 + FpsColB(K10) * W10 + FpsColB(K01) * W01 + FpsColB(K11) * W11)
-    End Sub
-
-    ''' <summary>Voxel-space 渲染：每屏幕列沿视线步进高度图，从近到远画竖线。
-    ''' 注意不能把列顶钳到地平线：比眼睛高的山必须画到地平线以上，否则远处全是平的。</summary>
-    ''' <summary>
-    ''' 针孔相机渲染（Voxel-space）：每屏幕列用真实透视——水平方向取焦平面正切 t，
-    ''' 沿视线前进深度 S 采样地形，屏幕 y = 地平线 − 焦距 × (地形高 − 眼高) / S。
-    ''' 焦距按竖直 FOV 70°（Minecraft 默认）推算，眼高 1.62，所以 1 方块在画面上的
-    ''' 张角、2 格高的人物比例都与游戏内一致，不再出现"地图比例太高"的观感。
-    ''' </summary>
-    Private Sub RenderFps()
-        If FpsPx Is Nothing OrElse FpsBmp Is Nothing Then
-            FpsPx = New Byte(FpsW * FpsH * 4 - 1) {}
-            FpsBmp = New WriteableBitmap(FpsW, FpsH, 96, 96, PixelFormats.Bgra32, Nothing)
-            ImgFirstPerson.Source = FpsBmp
-        End If
+    ''' <summary>每帧更新相机；透视、近大远小、遮挡全由显卡负责。</summary>
+    Private Sub UpdateFpsCamera()
+        If FpsCamera Is Nothing Then Return
         Dim SinY As Double = Math.Sin(FpsYaw), CosY As Double = Math.Cos(FpsYaw)
         Dim SinP As Double = Math.Sin(FpsPitch), CosP As Double = Math.Cos(FpsPitch)
-        '竖直 FOV 70°（游戏默认），水平 FOV 由画面宽高比自然推出
-        Const VFovDeg As Double = 70.0
-        Dim TanVHalf As Double = Math.Tan(VFovDeg * Math.PI / 360.0)
-        Dim Focal As Double = (FpsH / 2.0) / TanVHalf
-        Dim Cy As Double = FpsH / 2.0
-        Dim Horizon As Double = Cy + Focal * Math.Tan(FpsPitch)
-        Dim HorizonI As Integer = ClampI(CInt(Math.Round(Horizon)), 0, FpsH)
-
-        '天空（地平线以上，渐变到天际雾色）
-        For y As Integer = 0 To Math.Min(HorizonI, FpsH) - 1
-            Dim T As Double = Math.Max(0.0, Math.Min(1.0, y / Math.Max(1.0, Horizon - 1)))
-            Dim R As Integer = CInt(120 + 62 * T), G As Integer = CInt(160 + 50 * T), B As Integer = CInt(210 + 30 * T)
-            Dim O As Integer = y * FpsW * 4
-            For x As Integer = 0 To FpsW - 1
-                FpsPx(O) = CByte(B) : FpsPx(O + 1) = CByte(G) : FpsPx(O + 2) = CByte(R) : FpsPx(O + 3) = 255
-                O += 4
-            Next
-        Next
-        '地平线以下：先整体铺一层灰绿地面雾（整行拷贝，比逐像素快），近处地表随后会盖掉它
-        If HorizonI < FpsH Then
-            Dim RowBuf(FpsW * 4 - 1) As Byte
-            For x As Integer = 0 To FpsW - 1
-                RowBuf(x * 4) = 170 : RowBuf(x * 4 + 1) = 142 : RowBuf(x * 4 + 2) = 124 : RowBuf(x * 4 + 3) = 255
-            Next
-            For y As Integer = Math.Max(0, HorizonI) To FpsH - 1
-                Buffer.BlockCopy(RowBuf, 0, FpsPx, y * FpsW * 4, FpsW * 4)
-            Next
-        End If
-
-        Dim CamH As Double = FpsEyeY
-        'yaw = 0 时朝 -Z 看（与 Minecraft 一致）；右侧为 +X
-        Dim FwdX As Double = SinY, FwdZ As Double = -CosY
-        Dim RgtX As Double = CosY, RgtZ As Double = SinY
-        Const MaxDepth As Double = 520.0
-        Const WallShade As Double = 0.74      '侧面比顶面暗（纯色块之间的面差）
-        Const EdgeShade As Double = 0.62      '方块描边色（压暗 38%）
-        Dim Heights = FpsHeights
-        For x As Integer = 0 To FpsW - 1
-            Dim Tn As Double = (x + 0.5 - FpsW / 2.0) / Focal
-            Dim DirX As Double = FwdX + RgtX * Tn
-            Dim DirZ As Double = FwdZ + RgtZ * Tn
-            '朝镜头方向的相邻格（世界固定）——用它判断"这一块是不是露出侧面"，
-            '不依赖采样顺序，所以走动/转身时侧边阴影不会跟着闪
-            Dim SgnX As Integer = If(DirX >= 0, 1, -1)
-            Dim SgnZ As Integer = If(DirZ >= 0, 1, -1)
-            '本列每个深度步所落在的格子，供下一列比较（用来画"竖直描边"）：
-            '同一深度步在相邻两列落在不同格子 => 这一像素正好压在方块边界上
-            Array.Clear(FpsEdgePrevKey, 0, FpsEdgePrevKey.Length)
-            Dim PrevStepKey As Integer = 0
-            Dim StepIdx As Integer = 0
-            Dim yBuffer As Double = FpsH
-            Dim FirstBand As Boolean = True
-            Dim S As Double = 1.2
-            Do While S < MaxDepth AndAlso yBuffer > 0
-                Dim Wx As Double = FpsX + DirX * S
-                Dim Wz As Double = FpsZ + DirZ * S
-                Dim I0 As Integer = ClampI(CInt(Math.Floor((Wx - FpsOriginX) / FpsStep)), 0, FpsN - 1)
-                Dim J0 As Integer = ClampI(CInt(Math.Floor((Wz - FpsOriginZ) / FpsStep)), 0, FpsN - 1)
-                Dim K As Integer = J0 * FpsN + I0
-                '格子编号（0 表示无效）
-                Dim CellKey As Integer = I0 * 512 + J0 + 1
-                Dim VertEdge As Boolean = False
-                If StepIdx < FpsEdgePrevKey.Length Then
-                    Dim PrevCol As Integer = FpsEdgePrevKey(StepIdx)
-                    VertEdge = (PrevCol <> 0 AndAlso PrevCol <> CellKey)
-                    FpsEdgePrevKey(StepIdx) = CellKey
-                End If
-                Dim HorizEdge As Boolean = (PrevStepKey <> 0 AndAlso PrevStepKey <> CellKey)
-                PrevStepKey = CellKey
-                StepIdx += 1
-
-                Dim Hcell As Double = Heights(K)
-                Dim H As Double = Math.Round(Hcell)
-                If H < 62 AndAlso S > 26 Then H = 62
-                Dim Dh As Double = H - CamH
-                Dim Den As Double = S * CosP + Dh * SinP
-                If Den < 0.35 Then Den = 0.35
-                Dim ScreenY As Double = Cy - Focal * (Dh * CosP - S * SinP) / Den
-                Dim YTop As Integer = ClampI(CInt(Math.Round(ScreenY)), 0, FpsH)
-                If YTop < yBuffer Then
-                    Dim TR As Integer = FpsColR(K), TG As Integer = FpsColG(K), TB As Integer = FpsColB(K)
-                    '侧面判定：比"更靠近镜头"的邻居高 => 这一段是朝镜头的外墙
-                    Dim Hnear As Double = Hcell
-                    Dim I1 As Integer = I0 - SgnX, J1 As Integer = J0 - SgnZ
-                    If I1 >= 0 AndAlso I1 < FpsN Then
-                        Dim V1 As Double = Heights(J0 * FpsN + I1)
-                        If V1 > Hnear Then Hnear = V1
-                    End If
-                    If J1 >= 0 AndAlso J1 < FpsN Then
-                        Dim V2 As Double = Heights(J1 * FpsN + I0)
-                        If V2 > Hnear Then Hnear = V2
-                    End If
-                    '纯色方块 + 描边：面上是纯色，只有压在方块边界的那一像素才画深色描边
-                    Dim Shade As Double = If(Hcell > Hnear + 0.4, WallShade, 1.0)
-                    If VertEdge Then Shade *= EdgeShade
-                    Dim Fog As Double = Math.Max(0, Math.Min(1, (S - 80) / (MaxDepth - 80))) * 0.95
-                    Dim R As Integer = CInt(TR * Shade * (1 - Fog) + 182 * Fog)
-                    Dim G As Integer = CInt(TG * Shade * (1 - Fog) + 211 * Fog)
-                    Dim B As Integer = CInt(TB * Shade * (1 - Fog) + 240 * Fog)
-                    '描边色（上沿那一行）：直接作为这一带的首行一起填，
-                    '不能像以前那样画在 YTop-1 —— 更远的那一带会把上一行盖掉，导致几乎看不到横线
-                    Dim DR As Integer = CInt(R * EdgeShade)
-                    Dim DG As Integer = CInt(G * EdgeShade)
-                    Dim DB As Integer = CInt(B * EdgeShade)
-                    '最近的一段铺到屏幕底部：低头时脚下不会露出底色
-                    Dim YEnd As Integer = If(FirstBand, FpsH - 1, CInt(yBuffer) - 1)
-                    If YTop <= YEnd Then
-                        Dim O0 As Integer = (YTop * FpsW + x) * 4
-                        If HorizEdge Then
-                            FpsPx(O0) = CByte(Math.Min(255, DB)) : FpsPx(O0 + 1) = CByte(Math.Min(255, DG)) : FpsPx(O0 + 2) = CByte(Math.Min(255, DR)) : FpsPx(O0 + 3) = 255
-                        Else
-                            FpsPx(O0) = CByte(Math.Min(255, B)) : FpsPx(O0 + 1) = CByte(Math.Min(255, G)) : FpsPx(O0 + 2) = CByte(Math.Min(255, R)) : FpsPx(O0 + 3) = 255
-                        End If
-                        For y As Integer = YTop + 1 To YEnd
-                            Dim O As Integer = (y * FpsW + x) * 4
-                            FpsPx(O) = CByte(Math.Min(255, B)) : FpsPx(O + 1) = CByte(Math.Min(255, G)) : FpsPx(O + 2) = CByte(Math.Min(255, R)) : FpsPx(O + 3) = 255
-                        Next
-                    End If
-                    yBuffer = YTop
-                    FirstBand = False
-                End If
-                S *= 1.035
-            Loop
-        Next
-        FpsBmp.WritePixels(New Int32Rect(0, 0, FpsW, FpsH), FpsPx, FpsW * 4, 0)
+        FpsCamera.Position = New Point3D(FpsX, FpsEyeY, FpsZ)
+        FpsCamera.LookDirection = New Vector3D(SinY * CosP, SinP, -CosY * CosP)
+        FpsCamera.UpDirection = New Vector3D(0, 1, 0)
+        Dim W As Double = Math.Max(1.0, ViewFirstPerson.ActualWidth)
+        Dim H As Double = Math.Max(1.0, ViewFirstPerson.ActualHeight)
+        'WPF 相机的 FieldOfView 是水平视场：按竖直 70° 换算
+        FpsCamera.FieldOfView = 2 * Math.Atan(Math.Tan(35.0 * Math.PI / 180) * (W / H)) * 180 / Math.PI
+        UpdateFpsSky(H)
     End Sub
 
+    ''' <summary>天空渐变跟着俯仰走：地平线的位置变了，渐变分界线也要跟着移动。</summary>
+    Private Sub UpdateFpsSky(H As Double)
+        If FpsSkyBrush Is Nothing Then Return
+        Dim Focal As Double = (H / 2.0) / Math.Tan(35.0 * Math.PI / 180)
+        Dim Horizon As Double = (H / 2.0 + Focal * Math.Tan(FpsPitch)) / H
+        Horizon = Math.Max(0.0, Math.Min(1.0, Horizon))
+        Dim Stops = FpsSkyBrush.GradientStops
+        If Stops.Count = 3 Then
+            Stops(1).Offset = Horizon
+            Stops(2).Offset = Math.Min(1.0, Horizon + 0.0001)
+        End If
+    End Sub
+
+    ''' <summary>夹取整数到区间。</summary>
+    Private Shared Function ClampI(V As Integer, Min As Integer, Max As Integer) As Integer
+        If V < Min Then Return Min
+        If V > Max Then Return Max
+        Return V
+    End Function
+
     '---- 输入 ----
-    ''' <summary>页面级键盘兜底：第一人称激活时无论焦点在哪（比如还停在种子输入框），
-    ''' WASD/空格/Shift/Esc 都由这里接管，不会再漏到别的控件里。</summary>
+
+    ''' <summary>页面级键盘兜底：第一人称激活时无论焦点在哪，WASD/空格/Shift/Esc 都由这里接管。</summary>
     Private Sub PageSeedMap_FpsPreviewKeys(sender As Object, e As KeyEventArgs) Handles Me.PreviewKeyDown
         If Not FpsActive AndAlso PanFirstPerson.Visibility <> Visibility.Visible Then Return
         If e.Key = Key.Escape Then
@@ -4187,13 +4656,37 @@ Public Class PageSeedMap
         If FpsActive Then PanFirstPerson.Focus()
     End Sub
 
+    ''' <summary>焦点走了（Alt+Tab、点别的窗口）就清空按键表，否则回来会一直往前飘。</summary>
+    Private Sub PanFirstPerson_LostFocus(sender As Object, e As KeyboardFocusChangedEventArgs)
+        If Not FpsActive Then Return
+        FpsKeys.Clear()
+        FpsPointerLocked = False
+    End Sub
+
     Private Declare Function SetCursorPos Lib "user32.dll" (X As Integer, Y As Integer) As Boolean
 
-    ''' <summary>指针锁定式鼠标视角：移动即转视角（水平偏航 + 垂直俯仰），
-    ''' 每次移动后把光标拉回覆盖层中心，避免移出窗口后视角卡死。</summary>
+    ''' <summary>把光标钉到覆盖层中心（用屏幕物理像素换算，高 DPI 下也不会偏）。</summary>
+    Private Sub LockFpsPointer()
+        Try
+            If PanFirstPerson.Visibility <> Visibility.Visible Then Return
+            If PanFirstPerson.ActualWidth < 4 OrElse PanFirstPerson.ActualHeight < 4 Then Return
+            Dim C As Point = PanFirstPerson.PointToScreen(New Point(PanFirstPerson.ActualWidth / 2, PanFirstPerson.ActualHeight / 2))
+            SetCursorPos(CInt(C.X), CInt(C.Y))
+            FpsPointerLocked = True
+        Catch
+        End Try
+    End Sub
+
+    ''' <summary>指针锁定式鼠标视角：移动即转视角，每次移动后把光标拉回中心。</summary>
     Private Sub PanFirstPerson_MouseMove(sender As Object, e As MouseEventArgs)
         If Not FpsActive Then Return
         Try
+            '还没把指针钉到中心时收到的位移必须丢掉：那时指针还停在地图上点选的落点，
+            '把它到中心的距离当位移用，视角会直接被甩飞
+            If Not FpsPointerLocked Then
+                LockFpsPointer()
+                Return
+            End If
             Dim P = e.GetPosition(PanFirstPerson)
             Dim Cx As Double = PanFirstPerson.ActualWidth / 2
             Dim Cy As Double = PanFirstPerson.ActualHeight / 2
@@ -4201,7 +4694,7 @@ Public Class PageSeedMap
             If Math.Abs(Dx) < 0.5 AndAlso Math.Abs(Dy) < 0.5 Then Return
             '鼠标右移 → 视角右转（偏航增大）；鼠标上移 → 抬头（俯仰增大）
             FpsYaw += Dx * 0.0035
-            FpsPitch = ClampD(FpsPitch - Dy * 0.0032, -1.05, 1.05)
+            FpsPitch = ClampD(FpsPitch - Dy * 0.0032, -1.35, 1.35)
             '把光标钉回中心：必须整体用 PointToScreen 换算成屏幕物理像素，
             '不能拿 DIP 中心直接加（高 DPI 屏会偏出中心，形成"回中→又位移"的死循环）
             Dim CenterScreen As Point = PanFirstPerson.PointToScreen(New Point(Cx, Cy))

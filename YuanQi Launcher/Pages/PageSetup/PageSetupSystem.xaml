@@ -8,43 +8,61 @@
         <StackPanel x:Name="PanMain" Margin="24,22,24,26">
             <StackPanel Orientation="Horizontal" Margin="2,0,0,16">
                 <TextBlock Text="设置" Style="{StaticResource PageTitle}" />
-                <TextBlock Text="下载要快，Mod 名字要好认" Style="{StaticResource PageSub}" />
+                <TextBlock Text="下载来源、速度与 Mod 名称显示。" Style="{StaticResource PageSub}" />
             </StackPanel>
 
             <local:MyCard Margin="0,15" Title="下载来源">
                 <StackPanel Margin="25,40,25,20">
                     <TextBlock FontSize="12" LineHeight="17" Foreground="{StaticResource ColorBrushGray4}" TextWrapping="Wrap" Margin="0,0,0,12"
-                        Text="官方源稳但慢，镜像源快但可能缺新版本。拿不准就保持默认。" />
+                        Text="官方源较稳定但可能出现网络问题，镜像源较快但版本更新速度慢。" />
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                         <TextBlock Text="游戏文件" VerticalAlignment="Center" Width="110" />
                         <local:MyComboBox Height="32" x:Name="ComboDownloadSource" local:SettingService.Key="ToolDownloadSource" Width="300" HorizontalAlignment="Left"
-                                          ToolTip="下载游戏本体时优先用哪个源">
-                            <local:MyComboBoxItem Content="尽量使用镜像源" />
-                            <local:MyComboBoxItem Content="优先官方源，加载慢时换镜像源" IsSelected="True" />
-                            <local:MyComboBoxItem Content="尽量使用官方源" />
+                                          ToolTip="下载游戏本体时优先使用的源。">
+                            <local:MyComboBoxItem Content="优先使用镜像源" />
+                            <local:MyComboBoxItem Content="优先官方源，加载缓慢时切换镜像源" IsSelected="True" />
+                            <local:MyComboBoxItem Content="优先使用官方源" />
                         </local:MyComboBox>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                         <TextBlock Text="版本列表" VerticalAlignment="Center" Width="110" />
                         <local:MyComboBox Height="32" x:Name="ComboDownloadVersion" local:SettingService.Key="ToolDownloadVersion" Width="300" HorizontalAlignment="Left"
-                                          ToolTip="获取版本号列表时优先用哪个源">
-                            <local:MyComboBoxItem Content="尽量使用镜像源（可能缺少刚更新的版本）" />
-                            <local:MyComboBoxItem Content="优先官方源，加载慢时换镜像源" IsSelected="True" />
-                            <local:MyComboBoxItem Content="尽量使用官方源" />
+                                          ToolTip="获取版本列表时优先使用的源。">
+                            <local:MyComboBoxItem Content="优先使用镜像源（可能缺少刚发布的版本）" />
+                            <local:MyComboBoxItem Content="优先官方源，加载缓慢时切换镜像源" IsSelected="True" />
+                            <local:MyComboBoxItem Content="优先使用官方源" />
                         </local:MyComboBox>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                        <TextBlock Text="Mod 文件" VerticalAlignment="Center" Width="110" />
-                        <local:MyComboBox Height="32" x:Name="ComboDownloadMod" local:SettingService.Key="ToolDownloadMod" Width="300" HorizontalAlignment="Left"
-                                          ToolTip="下载 Mod 时优先用哪个源">
-                            <local:MyComboBoxItem Content="尽量使用镜像源（可能缺少刚更新的版本）" />
-                            <local:MyComboBoxItem Content="仅在官方源加载缓慢时改用镜像源" />
-                            <local:MyComboBoxItem Content="尽量使用官方源" IsSelected="True" />
+                        <TextBlock Text="资源文件" VerticalAlignment="Center" Width="110" ToolTip="Assets 与依赖库这类游戏资源文件。" />
+                        <local:MyComboBox Height="32" x:Name="ComboDownloadAsset" local:SettingService.Key="ToolDownloadAssetSource" Width="300" HorizontalAlignment="Left"
+                                          ToolTip="下载 Assets 与依赖库时优先使用的源。">
+                            <local:MyComboBoxItem Content="优先使用镜像源" />
+                            <local:MyComboBoxItem Content="优先官方源，加载缓慢时切换镜像源" IsSelected="True" />
+                            <local:MyComboBoxItem Content="优先使用官方源" />
+                        </local:MyComboBox>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                        <TextBlock Text="CurseForge" VerticalAlignment="Center" Width="110" />
+                        <local:MyComboBox Height="32" x:Name="ComboDownloadCurseForgeSource" local:SettingService.Key="ToolDownloadCurseForgeSource" Width="300" HorizontalAlignment="Left"
+                                          ToolTip="通过 CurseForge 搜索、查文件与下载文件时优先使用的源。">
+                            <local:MyComboBoxItem Content="优先使用镜像源（可能缺少刚发布的版本）" />
+                            <local:MyComboBoxItem Content="仅在官方源加载缓慢时使用镜像源" />
+                            <local:MyComboBoxItem Content="优先使用官方源" IsSelected="True" />
+                        </local:MyComboBox>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                        <TextBlock Text="Modrinth" VerticalAlignment="Center" Width="110" />
+                        <local:MyComboBox Height="32" x:Name="ComboDownloadModrinthSource" local:SettingService.Key="ToolDownloadModrinthSource" Width="300" HorizontalAlignment="Left"
+                                          ToolTip="通过 Modrinth 搜索、查文件与下载文件时优先使用的源。">
+                            <local:MyComboBoxItem Content="优先使用镜像源（可能缺少刚发布的版本）" />
+                            <local:MyComboBoxItem Content="仅在官方源加载缓慢时使用镜像源" />
+                            <local:MyComboBoxItem Content="优先使用官方源" IsSelected="True" />
                         </local:MyComboBox>
                     </StackPanel>
                     <local:MyCheckBox Height="24" Text="连接 CurseForge" x:Name="CheckDownloadCurseForge" local:SettingService.Key="ToolDownloadCurseForge"
-                                      ToolTip="关闭后搜索资源时会跳过 CurseForge" />
-                    <local:MyCheckBox Height="28" Text="正版登录时验证 SSL 证书" local:SettingService.Key="ToolDownloadCert" ToolTip="开启后校验登录连接的证书，更安全。个别网络下会让正版登录失败，如果提示 “未能为 SSL/TLS 安全通道建立信任关系”，把这项关掉就好。" />
+                                      ToolTip="关闭后搜索资源将跳过 CurseForge。" />
+                    <local:MyCheckBox Height="28" Text="正版登录时验证 SSL 证书" local:SettingService.Key="ToolDownloadCert" ToolTip="开启后校验登录连接的证书。部分网络环境下会导致正版登录失败，若提示「未能为 SSL/TLS 安全通道建立信任关系」，可关闭此项。" />
                 </StackPanel>
             </local:MyCard>
 
@@ -53,12 +71,12 @@
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                         <TextBlock Text="并发线程" VerticalAlignment="Center" Width="110" />
                         <local:MySlider x:Name="SliderDownloadThread" local:SettingService.Key="ToolDownloadThread" MaxValue="255" Value="63" Width="300" HorizontalAlignment="Left"
-                                        ToolTip="线程越多同时下的文件越多，但太高会明显卡顿" />
+                                        ToolTip="线程越多同时下载的文件越多，过高会造成明显卡顿。" />
                     </StackPanel>
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="速度上限" VerticalAlignment="Center" Width="110" />
                         <local:MySlider x:Name="SliderDownloadSpeed" local:SettingService.Key="ToolDownloadSpeed" MaxValue="42" Value="42" Width="300" HorizontalAlignment="Left"
-                                        ToolTip="限制下载占用的带宽，避免边玩边下时卡" />
+                                        ToolTip="限制下载占用的带宽，减少边玩边下时的卡顿。" />
                     </StackPanel>
                 </StackPanel>
             </local:MyCard>
@@ -66,11 +84,11 @@
             <local:MyCard Margin="0,0,0,15" Title="游戏版本提醒">
                 <StackPanel Margin="25,40,25,20">
                     <TextBlock FontSize="12" LineHeight="17" Foreground="{StaticResource ColorBrushGray4}" TextWrapping="Wrap" Margin="0,0,0,10"
-                        Text="官网发布新版本时在左下角提示。" />
+                        Text="官方发布新版本时在左下角提示。" />
                     <local:MyCheckBox Text="有新的正式版时提示" Height="24" x:Name="CheckUpdateRelease" local:SettingService.Key="ToolUpdateRelease"
-                                      ToolTip="官方发布新的正式版（Release）时提示" />
+                                      ToolTip="官方发布新正式版（Release）时提示。" />
                     <local:MyCheckBox Text="有新的快照版时提示" Height="24" Margin="0,6,0,0" x:Name="CheckUpdateSnapshot" local:SettingService.Key="ToolUpdateSnapshot"
-                                      ToolTip="官方发布新的快照（Snapshot）时提示" />
+                                      ToolTip="官方发布新快照（Snapshot）时提示。" />
                 </StackPanel>
             </local:MyCard>
 
@@ -79,7 +97,7 @@
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                         <TextBlock Text="翻译样式" VerticalAlignment="Center" Width="110" />
                         <local:MyComboBox Height="32" x:Name="ComboDownloadTranslateV2" local:SettingService.Key="ToolDownloadTranslateV2" Width="300" HorizontalAlignment="Left"
-                                          ToolTip="Mod 中文名的拼接方式，按喜好选">
+                                          ToolTip="Mod 中文名与文件名的拼接方式。">
                             <local:MyComboBoxItem Content="【机械动力】create-1.21.1-6.0.4" />
                             <local:MyComboBoxItem Content="[机械动力] create-1.21.1-6.0.4" IsSelected="True" />
                             <local:MyComboBoxItem Content="机械动力-create-1.21.1-6.0.4" />
@@ -90,7 +108,7 @@
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="列表显示" VerticalAlignment="Center" Width="110" />
                         <local:MyComboBox Height="32" x:Name="ComboModLocalNameStyle" local:SettingService.Key="ToolModLocalNameStyle" Width="300" HorizontalAlignment="Left"
-                                          ToolTip="Mod 列表里标题和详情分别显示什么">
+                                          ToolTip="Mod 列表中标题与详情的显示内容。">
                             <local:MyComboBoxItem Content="标题显示译名，详情显示文件名" IsSelected="True" />
                             <local:MyComboBoxItem Content="标题显示文件名，详情显示译名" />
                         </local:MyComboBox>

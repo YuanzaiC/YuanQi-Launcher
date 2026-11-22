@@ -17,9 +17,25 @@ Public Class PageSetupGeneral
         IsLoaded = True
 
         AniControlEnabled += 1
+        MigrateWebClickGesture()
         Reload()
         AniControlEnabled -= 1
 
+    End Sub
+
+    ''' <summary>
+    ''' 把旧的「交换左右键」开关迁移成新的「网页打开手势」下拉值（只迁一次：
+    ''' 设置项默认 -1 表示没迁移过，迁过之后就是 0/1）。
+    ''' </summary>
+    Private Shared Sub MigrateWebClickGesture()
+        Try
+            If Settings.Get(Of Integer)("UiWebClickGesture") >= 0 Then Return
+            Dim Swapped As Boolean = Settings.Get(Of Boolean)("UiSwapWebClick")
+            Settings.Set("UiWebClickGesture", If(Swapped, 1, 0))
+            Logger.Info($"已把「交换左右键」迁移为网页打开手势：{If(Swapped, 1, 0)}")
+        Catch ex As Exception
+            Logger.Warn(ex, "迁移网页打开手势设置失败")
+        End Try
     End Sub
     Public Sub Reload()
         SettingService.RefreshSettings(Me)
