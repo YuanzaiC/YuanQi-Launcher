@@ -1,4 +1,4 @@
-Imports System.Net.Http
+﻿Imports System.Net.Http
 
 ''' <summary>
 ''' 陶瓦联机（Terracotta）的本地客户端。
@@ -897,15 +897,16 @@ Public Module ModTerracotta
         End If
         Dim Info As New ProcessStartInfo With {
             .FileName = TarPath,
-            .Arguments = $"-xzf ""{FilePath}"" -C ""{ExtractPath}""",
+            .Arguments = $"-xzf ""{FilePath}"" -C ""{ExtractPath.TrimEnd(IO.Path.DirectorySeparatorChar)}""",
             .UseShellExecute = False,
             .CreateNoWindow = True
         }
         Logger.Info($"正在解压联机模块：{Info.Arguments}")
         Dim TarProcess = Process.Start(Info)
-        TarProcess.WaitForExit(30000)
+        TarProcess.WaitForExit(60000)
+        If TarProcess.ExitCode <> 0 Then Throw New Exception($"$解压联机模块失败（tar 退出码 {TarProcess.ExitCode}）。")
         '整理文件
-        Dim Files As String() = Directory.GetFiles(ExtractPath)
+        Dim Files As String() = Directory.GetFiles(ExtractPath, "*", SearchOption.AllDirectories)
         Dim ExeFile As String = Files.FirstOrDefault(Function(f) f.ToLower.EndsWith(".exe"))
         If ExeFile Is Nothing Then Throw New Exception("联机模块压缩包内容有误，请稍后重试！")
         FileUtils.Delete(CorePath)
