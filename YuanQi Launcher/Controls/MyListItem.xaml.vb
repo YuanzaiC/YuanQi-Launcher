@@ -523,6 +523,21 @@ Public Class MyListItem
 #End Region
 
     Private StateLast As String
+
+    ''' <summary>
+    ''' 确保元素的 RenderTransform 是 ScaleTransform 并返回它。
+    ''' 列表项的悬停缩放只认 ScaleTransform：外部代码（例如首页存档列表的刷新动画）如果把它换成
+    ''' TranslateTransform，原来的 CType 会抛 InvalidCastException，鼠标一移上去就崩，这里统一兜住。
+    ''' </summary>
+    Private Shared Function EnsureScaleTransform(Element As UIElement) As ScaleTransform
+        Dim Scale = TryCast(Element.RenderTransform, ScaleTransform)
+        If Scale Is Nothing Then
+            Scale = New ScaleTransform(1, 1)
+            Element.RenderTransform = Scale
+        End If
+        Return Scale
+    End Function
+
     Public IsMouseOverAnimationEnabled As Boolean = True
     Public Sub RefreshColor(sender As Object, e As EventArgs) Handles Me.MouseEnter, Me.MouseLeave, Me.PreviewMouseLeftButtonDown, Me.PreviewMouseLeftButtonUp
         '菜单虚拟化检测
@@ -561,11 +576,11 @@ Public Class MyListItem
                              AaOpacity(RectBack, 1 - RectBack.Opacity, Time,, New AniEaseOutFluent)
                          })
                 If IsScaleAnimationEnabled Then
-                    Ani.Add(AaScaleTransform(RectBack, 1 - CType(RectBack.RenderTransform, ScaleTransform).ScaleX, Time * 1.6,, New AniEaseOutFluent))
+                    Ani.Add(AaScaleTransform(RectBack, 1 - EnsureScaleTransform(RectBack).ScaleX, Time * 1.6,, New AniEaseOutFluent))
                     If IsMouseDown Then
-                        Ani.Add(AaScaleTransform(Me, 0.98 - CType(Me.RenderTransform, ScaleTransform).ScaleX, Time * 0.9,, New AniEaseOutFluent))
+                        Ani.Add(AaScaleTransform(Me, 0.98 - EnsureScaleTransform(Me).ScaleX, Time * 0.9,, New AniEaseOutFluent))
                     Else
-                        Ani.Add(AaScaleTransform(Me, 1 - CType(Me.RenderTransform, ScaleTransform).ScaleX, Time * 1.2,, New AniEaseOutFluent))
+                        Ani.Add(AaScaleTransform(Me, 1 - EnsureScaleTransform(Me).ScaleX, Time * 1.2,, New AniEaseOutFluent))
                     End If
                 End If
             Else
@@ -578,8 +593,8 @@ Public Class MyListItem
                 If IsScaleAnimationEnabled Then
                     Ani.AddRange({
                         AaColor(RectBack, Border.BackgroundProperty, If(IsMouseDown, "ColorBrush6", "ColorBrush7"), Time),
-                        AaScaleTransform(Me, 1 - CType(RenderTransform, ScaleTransform).ScaleX, Time * 3,, New AniEaseOutFluent),
-                        AaScaleTransform(RectBack, 0.996 - CType(RectBack.RenderTransform, ScaleTransform).ScaleX, Time,, New AniEaseOutFluent),
+                        AaScaleTransform(Me, 1 - EnsureScaleTransform(Me).ScaleX, Time * 3,, New AniEaseOutFluent),
+                        AaScaleTransform(RectBack, 0.996 - EnsureScaleTransform(RectBack).ScaleX, Time,, New AniEaseOutFluent),
                         AaScaleTransform(RectBack, -0.246, 1,,, True)
                     })
                 End If

@@ -68,8 +68,7 @@ Public Class PageSetupGeneral
 
     '重新查看使用引导
     Private Sub BtnSystemGuide_Click(sender As Object, e As MouseButtonEventArgs) Handles BtnSystemGuide.Click
-        MyMsgBoxGuide()
-        MyMsgGuide.MarkFinished()
+        ModGuide.StartGuide()
     End Sub
 
     '导出设置

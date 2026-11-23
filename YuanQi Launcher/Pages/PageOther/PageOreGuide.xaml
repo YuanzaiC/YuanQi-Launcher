@@ -164,13 +164,17 @@
                     <TextBlock Text="同一坐标轴对照" FontSize="11" Foreground="{DynamicResource BrushText3}" />
                     <TextBlock x:Name="LabChartTitle" Text="主世界矿石完整分布" FontSize="17" FontWeight="SemiBold" Foreground="{DynamicResource BrushText1}" Margin="0,2,0,2" />
                     <TextBlock x:Name="LabChartNote" Text="" Style="{StaticResource MutedText}" Margin="0,0,0,10" TextWrapping="Wrap" />
-                    <!-- 坐标轴：一条完整的基线 + 刻度短竖线 + 刻度值（与色带列对齐） -->
-                    <Grid Margin="172,0,76,0">
+                    <!-- 坐标轴：一条完整的基线 + 刻度短竖线 + 刻度值（与色带列对齐）；点一下定位，按住可横向拖动 -->
+                    <Grid x:Name="PanChartAxisArea" Margin="172,0,76,0" Background="Transparent" Cursor="SizeWE"
+                          PreviewMouseLeftButtonDown="ChartDragStart" PreviewMouseMove="ChartDragMove"
+                          ToolTip="点一下定位到该处，按住左右拖动可以连续移动 Y 层">
                         <UniformGrid x:Name="PanChartAxis" Rows="1" />
                         <UniformGrid x:Name="PanAxisLabels" Rows="1" />
                         <Border Height="1" VerticalAlignment="Bottom" Background="{DynamicResource BrushText3}" Opacity="0.6" />
                     </Grid>
-                    <StackPanel x:Name="PanChartRows" Margin="0,4,0,0" />
+                    <StackPanel x:Name="PanChartRows" Margin="0,4,0,0" Background="Transparent" Cursor="SizeWE"
+                                PreviewMouseLeftButtonDown="ChartDragStart" PreviewMouseMove="ChartDragMove"
+                                ToolTip="点一下定位到该处，按住左右拖动可以连续移动 Y 层" />
                     <Grid Margin="172,8,76,0">
                         <StackPanel Orientation="Horizontal">
                             <Ellipse Width="10" Height="10" Fill="{DynamicResource ColorBrush4}" Opacity="0.3" VerticalAlignment="Center" />

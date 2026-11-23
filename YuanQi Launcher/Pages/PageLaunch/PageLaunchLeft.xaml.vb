@@ -1,6 +1,12 @@
-Imports System.Windows.Threading
+﻿Imports System.Windows.Threading
 
 Public Class PageLaunchLeft
+
+    ''' <summary>
+    ''' 切换账户提示的同类标识：连续切账户时新提示替换旧提示（只留一条气泡），
+    ''' 而不是一条条往上叠。
+    ''' </summary>
+    Private Const AccountSwitchHintKey As String = "AccountSwitch"
 
     '加载当前版本
     Private IsLoad As Boolean = False
@@ -104,6 +110,9 @@ Public Class PageLaunchLeft
         If IsLoad Then Return
         IsLoad = True
         AniControlEnabled += 1
+
+        '微软登录教程是个网页入口：右键要能按「网页打开手势」的相反方式打开
+        If Not String.IsNullOrWhiteSpace(MsClientIdGuideUrl) Then CustomEventService.SetWebUrl(BtnMsGuide, MsClientIdGuideUrl)
 
         '开始按钮
         AddHandler McInstanceListLoader.LoadingStateChanged, AddressOf RefreshButtonsUI
@@ -1070,7 +1079,16 @@ UnknownType:
                 Names.AddRange(Settings.Get(Of String)("LoginLegacyName").Split("¨").Where(Function(n) n.Trim <> ""))
             End If
             ComboName.ItemsSource = If(Names.Any, Names, Nothing)
-            If Names.Contains(Input) Then
+            '优先保持账户池里选中的那个离线账户：否则切到 B 之后任何一次刷新都会跳回列表第一个，
+            '看起来就像刚选的账户丢了
+            Dim Pooled As AccountRef = Nothing
+            Try
+                Pooled = AccountPool.GetVersionAccount()
+            Catch
+            End Try
+            If Pooled IsNot Nothing AndAlso Pooled.Type = McLoginType.Legacy AndAlso Names.Contains(Pooled.Name) Then
+                ComboName.SelectedItem = Pooled.Name
+            ElseIf Names.Contains(Input) Then
                 ComboName.SelectedItem = Input
             ElseIf Names.Any Then
                 ComboName.SelectedItem = Names(0)
@@ -1111,8 +1129,12 @@ UnknownType:
             End If
             Names.Add(NewName)
             Settings.Set("LoginLegacyName", Names.Join("¨"c))
+            '注册完直接把它选为当前账户，否则账户池里没有它，界面会退回显示「离线账户」
+            AccountPool.SetVersionAccount(New AccountRef With {.Type = McLoginType.Legacy, .Name = NewName})
             ReloadLegacyName(False)
             ComboName.SelectedItem = NewName
+            RefreshAccountMenu()
+            RefreshHomeInfo()
             Hint($"已注册离线用户名 {NewName}！", HintType.Green)
         Catch ex As Exception
             Logger.Error(ex, "注册离线用户名失败")
@@ -1131,14 +1153,20 @@ UnknownType:
     ''' <summary>
     ''' 刷新当前版本下的存档列表。
     ''' </summary>
-    Public Sub RefreshSaves()
+    ''' <param name="AnimateDone">True 时刷新完成后让列表依次淡入（手动点「刷新」时用）。</param>
+    ''' <param name="OnDone">刷新结束（含未选版本、读取失败）后执行，用于恢复按钮状态。</param>
+    Public Sub RefreshSaves(Optional AnimateDone As Boolean = False, Optional OnDone As Action = Nothing)
         Try
-            If PanSavesList Is Nothing Then Return
+            If PanSavesList Is Nothing Then
+                If OnDone IsNot Nothing Then OnDone()
+                Return
+            End If
             '不在此时清空列表：等待后台读取完成后一次性「清空 + 重建」，避免每次进入首页图标闪烁
             If McInstanceSelected Is Nothing Then
                 PanSavesList.Children.Clear()
                 PanSavesList.Children.Add(New TextBlock With {.Text = "尚未选择版本", .Margin = New Thickness(0, 2, 0, 0), .Foreground = FindResource("ColorBrushGray3"), .Opacity = 0.6})
                 RefreshSavesCount()
+                If OnDone IsNot Nothing Then OnDone()
                 Return
             End If
             RunInNewThread(
@@ -1163,32 +1191,156 @@ UnknownType:
                 End Try
                 RunInUi(
                 Sub()
-                    If PanSavesList Is Nothing Then Return
-                    PanSavesList.Children.Clear()
-                    If Not Entries.Any Then
-                        PanSavesList.Children.Add(New TextBlock With {.Text = "该版本还没有存档", .Margin = New Thickness(0, 2, 0, 0), .Foreground = FindResource("ColorBrushGray3"), .Opacity = 0.6})
-                        RefreshSavesCount()
-                        Return
+                    Dim Build As Action =
+                    Sub()
+                        Try
+                            If PanSavesList Is Nothing Then Return
+                            PanSavesList.Children.Clear()
+                            If Not Entries.Any Then
+                                PanSavesList.Children.Add(New TextBlock With {.Text = "该版本还没有存档", .Margin = New Thickness(0, 2, 0, 0), .Foreground = FindResource("ColorBrushGray3"), .Opacity = 0.6})
+                            Else
+                                For Each Entry In Entries
+                                    '存档文件夹名里可能带 § 颜色码：列表里只放纯文本，否则会显示成一串 §a 之类的符号
+                                    Dim ShowName As String = McColorText.StripColorCodes(Entry.Name)
+                                    If String.IsNullOrWhiteSpace(ShowName) Then ShowName = Entry.Name
+                                    Dim Item As New MyListItem With {
+                                        .Title = ShowName,
+                                        .Info = Entry.Info,
+                                        .Height = 40,
+                                        .Type = MyListItem.CheckType.Clickable,
+                                        .Logo = Entry.Logo,
+                                        .LogoScale = 0.9
+                                    }
+                                    AddHandler Item.Click, Sub(sender As Object, e As MouseButtonEventArgs)
+                                                               OpenSavePage(Entry.Name)
+                                                           End Sub
+                                    PanSavesList.Children.Add(Item)
+                                Next
+                            End If
+                            RefreshSavesCount()
+                            If AnimateDone Then AnimateSavesRefreshed()
+                        Finally
+                            If OnDone IsNot Nothing Then OnDone()
+                        End Try
+                    End Sub
+                    '旧列表还在渐出时先别换内容：等它放完再重建，否则旧条目会被直接抹掉，渐出等于没播
+                    Dim Wait As Integer = CInt(_SavesFadeOutUntil - GetTimeMs())
+                    If Wait > 0 Then
+                        ScheduleSavesBuild(Build, Wait)
+                    Else
+                        Build()
                     End If
-                    For Each Entry In Entries
-                        Dim Item As New MyListItem With {
-                            .Title = Entry.Name,
-                            .Info = Entry.Info,
-                            .Height = 40,
-                            .Type = MyListItem.CheckType.Clickable,
-                            .Logo = Entry.Logo,
-                            .LogoScale = 0.9
-                        }
-                        AddHandler Item.Click, Sub(sender As Object, e As MouseButtonEventArgs)
-                                                   OpenSavePage(Entry.Name)
-                                               End Sub
-                        PanSavesList.Children.Add(Item)
-                    Next
-                    RefreshSavesCount()
                 End Sub)
             End Sub, "Refresh Saves List")
         Catch ex As Exception
             Logger.Error(ex, "刷新存档列表失败")
+            If OnDone IsNot Nothing Then OnDone()
+        End Try
+    End Sub
+
+    ''' <summary>旧列表渐出结束的时刻（毫秒时间戳）：重建列表要等它放完，否则旧条目会被直接抹掉。</summary>
+    Private _SavesFadeOutUntil As Long = 0
+    ''' <summary>等待渐出结束再执行的重建动作。</summary>
+    Private _SavesBuildPending As Action = Nothing
+    Private ReadOnly _SavesBuildTimer As New DispatcherTimer()
+    Private _SavesBuildHooked As Boolean = False
+
+    ''' <summary>点「刷新」时：当前列表整体渐变消失，并记下放完的时刻。</summary>
+    Private Sub AnimateSavesFadeOut()
+        Try
+            If PanSavesList Is Nothing Then Return
+            Const FadeTime As Integer = 160
+            Const FadeStagger As Integer = 16
+            Dim AniList As New List(Of AniData)
+            Dim LastIndex As Integer = -1
+            For i As Integer = 0 To PanSavesList.Children.Count - 1
+                Dim El = TryCast(PanSavesList.Children(i), FrameworkElement)
+                If El Is Nothing Then Continue For
+                AniList.Add(AaOpacity(El, -El.Opacity, FadeTime, i * FadeStagger, New AniEaseOutFluent(AniEasePower.Weak)))
+                LastIndex = i
+            Next
+            If AniList.Any() Then
+                AniStart(AniList, "Saves Refresh Out")
+                _SavesFadeOutUntil = GetTimeMs() + FadeTime + Math.Max(0, LastIndex) * FadeStagger
+            Else
+                _SavesFadeOutUntil = 0
+            End If
+        Catch ex As Exception
+            Logger.Warn(ex, "存档列表淡出失败")
+            _SavesFadeOutUntil = 0
+        End Try
+    End Sub
+
+    ''' <summary>把重建列表的动作推迟到渐出放完之后。</summary>
+    Private Sub ScheduleSavesBuild(Build As Action, WaitMs As Integer)
+        Try
+            If Build Is Nothing Then Return
+            If Not _SavesBuildHooked Then
+                _SavesBuildHooked = True
+                AddHandler _SavesBuildTimer.Tick, AddressOf SavesBuildTimer_Tick
+            End If
+            _SavesBuildPending = Build
+            _SavesBuildTimer.Stop()
+            _SavesBuildTimer.Interval = TimeSpan.FromMilliseconds(Math.Max(1, WaitMs))
+            _SavesBuildTimer.Start()
+        Catch ex As Exception
+            Logger.Warn(ex, "安排存档列表重建失败")
+            Build()
+        End Try
+    End Sub
+
+    Private Sub SavesBuildTimer_Tick()
+        _SavesBuildTimer.Stop()
+        Dim Build As Action = _SavesBuildPending
+        _SavesBuildPending = Nothing
+        If Build IsNot Nothing Then Build()
+    End Sub
+
+    ''' <summary>刷新完成：存档从屏幕外（列表左侧之外）一条条移进来。</summary>
+    Private Sub AnimateSavesRefreshed()
+        Try
+            If PanSavesList Is Nothing Then Return
+            '注意：不要给 MyListItem 换 RenderTransform —— 它内部把 RenderTransform 当 ScaleTransform 用，
+            '换成 TranslateTransform 会在鼠标移上去时抛 InvalidCastException。
+            '所以水平位移用 Margin.Left（AaX）来做，条目自己的变换保持原样；
+            '起点给得足够远（-560），配合滚动区域的裁剪，看起来就是从屏幕外滑进来。
+            Const SlideFrom As Double = 560
+            Const SlideTime As Integer = 420
+            Const SlideStagger As Integer = 140
+            Dim Items = PanSavesList.Children.OfType(Of FrameworkElement)().ToList()
+            Dim AniList As New List(Of AniData)
+            For i As Integer = 0 To Items.Count - 1
+                Dim El = Items(i)
+                El.Opacity = 0
+                El.Margin = New Thickness(-SlideFrom, El.Margin.Top, El.Margin.Right, El.Margin.Bottom)
+                '先亮起来再滑到位：滑动过程中就能看见，不会出现"看不见的时候白滑"
+                AniList.Add(AaOpacity(El, 1, 220, i * SlideStagger, New AniEaseOutFluent(AniEasePower.Weak)))
+                AniList.Add(AaX(El, SlideFrom, SlideTime, i * SlideStagger, New AniEaseOutFluent(AniEasePower.Weak)))
+            Next
+            If AniList.Any() Then
+                '兜底：整组跑完后把透明度与左边距拉正，避免某一条因为被打断停在半透明/偏移位置
+                AniList.Add(AaCode(
+                    Sub()
+                        Try
+                            If PanSavesList Is Nothing Then Return
+                            For Each El In PanSavesList.Children.OfType(Of FrameworkElement)()
+                                El.Opacity = 1
+                                El.Margin = New Thickness(0, El.Margin.Top, El.Margin.Right, El.Margin.Bottom)
+                            Next
+                        Catch
+                        End Try
+                    End Sub,, True))
+                AniStart(AniList, "Saves Refresh In")
+            End If
+        Catch ex As Exception
+            Logger.Warn(ex, "存档刷新完成动画失败")
+            Try
+                For Each El In PanSavesList.Children.OfType(Of FrameworkElement)()
+                    El.Opacity = 1
+                    El.Margin = New Thickness(0, El.Margin.Top, El.Margin.Right, El.Margin.Bottom)
+                Next
+            Catch
+            End Try
         End Try
     End Sub
 
@@ -1526,6 +1678,12 @@ Finish:
         Try
             If McInstanceSelected Is Nothing Then Return Nothing
             Dim CurrentName As String = If(McLoginName(), "")
+            Dim CurrentType As McLoginType = McLoginType.Legacy
+            Try
+                Dim CurRef = AccountPool.GetVersionAccount()
+                If CurRef IsNot Nothing Then CurrentType = CurRef.Type Else CurrentType = Settings.Get(Of McLoginType)("LoginType")
+            Catch
+            End Try
             For Each Watch As ModWatcher.Watcher In McWatcherList
                 If Watch Is Nothing OrElse Watch.GameProcess Is Nothing Then Continue For
                 If Watch.GameProcess.HasExited Then Continue For
@@ -1533,6 +1691,7 @@ Finish:
                 If Not PathUtils.IsSame(Watch.Instance.PathVersion, McInstanceSelected.PathVersion) Then Continue For
                 If Not String.IsNullOrWhiteSpace(Watch.AccountName) AndAlso Not String.IsNullOrWhiteSpace(CurrentName) Then
                     If Not String.Equals(Watch.AccountName, CurrentName, StringComparison.OrdinalIgnoreCase) Then Continue For
+                If Watch.AccountType <> CurrentType Then Continue For
                 End If
                 Return Watch
             Next
@@ -2216,9 +2375,40 @@ ExitRefresh:
     End Sub
 
     '刷新存档列表
+    Private _SavesRefreshing As Boolean = False
     Private Sub BtnSavesRefresh_Click() Handles BtnSavesRefresh.Click
-        RefreshSaves()
-        Hint("已刷新存档列表")
+        If _SavesRefreshing Then Return
+        _SavesRefreshing = True
+        Try
+            '停掉上一次「已刷新 → 刷新」的复位，免得它在这次刷新中途把文字改回去
+            AniStop("Saves Refresh Button Reset")
+            BtnSavesRefresh.IsEnabled = False
+            BtnSavesRefresh.Content = "刷新中…"
+        Catch ex As Exception
+            Logger.Warn(ex, "更新存档刷新按钮状态失败")
+        End Try
+        '先把当前列表渐变消失，等读完了再从左边一条条移进来
+        AnimateSavesFadeOut()
+        RefreshSaves(AnimateDone:=True, OnDone:=AddressOf SavesRefreshDone)
+    End Sub
+
+    ''' <summary>刷新结束：按钮恢复可用，先显示「已刷新」，一会儿再回到「刷新」。</summary>
+    Private Sub SavesRefreshDone()
+        Try
+            _SavesRefreshing = False
+            If BtnSavesRefresh Is Nothing Then Return
+            BtnSavesRefresh.IsEnabled = True
+            BtnSavesRefresh.Content = "已刷新"
+            AniStart({AaCode(
+                Sub()
+                    Try
+                        If BtnSavesRefresh IsNot Nothing Then BtnSavesRefresh.Content = "刷新"
+                    Catch
+                    End Try
+                End Sub, 900, True)}, "Saves Refresh Button Reset")
+        Catch ex As Exception
+            Logger.Warn(ex, "恢复存档刷新按钮失败")
+        End Try
     End Sub
 
     '打开存档文件夹
@@ -2404,6 +2594,7 @@ ExitRefresh:
         RestartSkinLoader(Ref.Type)
         RefreshAccountMenu()
         RefreshHomeInfo()
+        RefreshLaunchButtonText()
         PulseAccountCapsule()
         Hint($"已添加账户 {Ref.Name}", HintType.Green)
     End Sub
@@ -2686,12 +2877,17 @@ ExitRefresh:
                 RefreshRecentPlay()
                 Return
             End If
-            McInstanceSelected = Instance
-            RefreshHomeInfo()
-            RefreshSaves()
-            PulseVersionName()
-            If FrmLaunchRight IsNot Nothing Then FrmLaunchRight.ForceRefresh()
-            Hint($"已切换到 {Instance.Name}", HintType.Green)
+            AnimateHeroSwitch(
+            Sub()
+                '存档列表也走一遍「渐出 → 等放完 → 从左边滑进来」
+                AnimateSavesFadeOut()
+                McInstanceSelected = Instance
+                RefreshHomeInfo()
+                RefreshSaves(AnimateDone:=True)
+                PulseVersionName()
+                If FrmLaunchRight IsNot Nothing Then FrmLaunchRight.ForceRefresh()
+            End Sub)
+            '切版本不再弹提示：版本名本身有脉冲反馈，再弹一条只是打扰
         Catch ex As Exception
             Logger.Error(ex, "切换最近游玩版本失败")
         End Try
@@ -2718,14 +2914,98 @@ ExitRefresh:
                 Hint($"未找到版本「{Name}」，它可能已被删除或改名", HintType.Red)
                 Return
             End If
-            McInstanceSelected = Inst
-            RefreshHomeInfo()
-            RefreshSaves()
-            PulseVersionName()
-            If FrmLaunchRight IsNot Nothing Then FrmLaunchRight.ForceRefresh()
-            Hint($"已切换到 {Name}", HintType.Green)
+            AnimateHeroSwitch(
+            Sub()
+                '存档列表也走一遍「渐出 → 等放完 → 从左边滑进来」
+                AnimateSavesFadeOut()
+                McInstanceSelected = Inst
+                RefreshHomeInfo()
+                RefreshSaves(AnimateDone:=True)
+                PulseVersionName()
+                If FrmLaunchRight IsNot Nothing Then FrmLaunchRight.ForceRefresh()
+            End Sub)
+            '切版本不再弹提示：版本名本身有脉冲反馈
         Catch ex As Exception
             Logger.Error(ex, "切换最近游玩版本失败")
+        End Try
+    End Sub
+
+    ' ==================== 版本切换过渡 ====================
+    ''' <summary>换内容前的淡出时长；到点就换，不依赖动画是否被打断。</summary>
+    Private ReadOnly _HeroSwitchTimer As New DispatcherTimer With {.Interval = TimeSpan.FromMilliseconds(90)}
+    ''' <summary>待执行的切换动作：连续点不同版本时只保留最后一次。</summary>
+    Private _HeroSwitchAction As Action = Nothing
+    Private _HeroSwitchHooked As Boolean = False
+
+    ''' <summary>
+    ''' 版本切换过渡：Hero 内容先快速淡出并轻微下沉，换完内容再从上方淡入回位。
+    ''' 换内容用定时器而不是动画回调：即使动画被下一次切换打断，也一定会把内容刷成用户最后选的那个。
+    ''' </summary>
+    Private Sub AnimateHeroSwitch(Apply As Action)
+        If Apply Is Nothing Then Return
+        _HeroSwitchAction = Apply
+        If PanHeroContent Is Nothing Then
+            '页面还没挂好：直接换，不做动画
+            _HeroSwitchTimer.Stop()
+            Dim Direct As Action = _HeroSwitchAction
+            _HeroSwitchAction = Nothing
+            If Direct IsNot Nothing Then Direct()
+            Return
+        End If
+        Try
+            If Not _HeroSwitchHooked Then
+                _HeroSwitchHooked = True
+                AddHandler _HeroSwitchTimer.Tick, AddressOf HeroSwitchTimer_Tick
+            End If
+            AniStop("Hero Version Switch In")
+            If Not TypeOf PanHeroContent.RenderTransform Is TranslateTransform Then
+                PanHeroContent.RenderTransform = New TranslateTransform(0, 0)
+            End If
+            Dim Trans As TranslateTransform = DirectCast(PanHeroContent.RenderTransform, TranslateTransform)
+            AniStart({
+                AaOpacity(PanHeroContent, -PanHeroContent.Opacity, 90, 0, New AniEaseOutFluent(AniEasePower.Weak)),
+                AaTranslateY(PanHeroContent, 10 - Trans.Y, 110, 0, New AniEaseOutFluent(AniEasePower.Weak))
+            }, "Hero Version Switch Out")
+            _HeroSwitchTimer.Stop()
+            _HeroSwitchTimer.Start()
+        Catch ex As Exception
+            Logger.Warn(ex, "版本切换过渡动画失败")
+            Dim Direct As Action = _HeroSwitchAction
+            _HeroSwitchAction = Nothing
+            If Direct IsNot Nothing Then Direct()
+            Try
+                PanHeroContent.Opacity = 1
+            Catch
+            End Try
+        End Try
+    End Sub
+
+    Private Sub HeroSwitchTimer_Tick()
+        _HeroSwitchTimer.Stop()
+        Dim Apply As Action = _HeroSwitchAction
+        _HeroSwitchAction = Nothing
+        Try
+            If Apply IsNot Nothing Then Apply()
+        Catch ex As Exception
+            Logger.Warn(ex, "切换版本后刷新失败")
+        End Try
+        If PanHeroContent Is Nothing Then Return
+        Try
+            AniStop("Hero Version Switch Out")
+            PanHeroContent.Opacity = 0
+            If TypeOf PanHeroContent.RenderTransform Is TranslateTransform Then
+                DirectCast(PanHeroContent.RenderTransform, TranslateTransform).Y = -10
+            End If
+            AniStart({
+                AaOpacity(PanHeroContent, 1, 190, 10, New AniEaseOutFluent(AniEasePower.Weak)),
+                AaTranslateY(PanHeroContent, 10, 260, 10, New AniEaseOutBack(AniEasePower.Weak))
+            }, "Hero Version Switch In")
+        Catch ex As Exception
+            Logger.Warn(ex, "版本切换淡入动画失败")
+            Try
+                PanHeroContent.Opacity = 1
+            Catch
+            End Try
         End Try
     End Sub
 
@@ -2735,6 +3015,8 @@ ExitRefresh:
     Private Sub PulseVersionName()
         Try
             If LabInstanceName Is Nothing Then Return
+            '缩放中心取文字自己的中心：LabInstanceName 在 XAML 里是 HorizontalAlignment=Left（框贴着文字），
+            '所以 0.5 就是文字中间；之前它是拉伸填满整列的，0.5 落在卡片中间，看着像从卡片中间弹出来
             LabInstanceName.RenderTransformOrigin = New Point(0.5, 0.5)
             If Not TypeOf LabInstanceName.RenderTransform Is ScaleTransform Then
                 LabInstanceName.RenderTransform = New ScaleTransform(1, 1)
@@ -3142,8 +3424,9 @@ ExitRefresh:
                     Try
                         FrmLaunchLeft.RefreshPage(False, True)
                         RefreshHomeInfo()
+                        RefreshLaunchButtonText() '换了账号：别人开的游戏不该再显示「关闭游戏」
                         SkinMs.Start(IsForceRestart:=True) '强制刷新新账号皮肤头像
-                        Hint($"已切换到 {Name}", HintType.Green)
+                        Hint($"已切换到 {Name}", HintType.Green, Key:=AccountSwitchHintKey)
                     Catch ex As Exception
                         Logger.Error(ex, "切换正版账号后刷新失败")
                     End Try
@@ -3178,7 +3461,8 @@ ExitRefresh:
             ComboName.SelectedItem = If(FoundItem, Name)
             RestartSkinLoader(McLoginType.Legacy)
             RefreshHomeInfo()
-            Hint($"已切换到离线账号 {Name}", HintType.Green)
+            RefreshLaunchButtonText() '换了账号：别人开的游戏不该再显示「关闭游戏」
+            Hint($"已切换到离线账号 {Name}", HintType.Green, Key:=AccountSwitchHintKey)
         Catch ex As Exception
             Logger.Error(ex, "切换离线账号失败")
         End Try
@@ -3195,6 +3479,7 @@ ExitRefresh:
             Dim Ref As New AccountRef With {.Type = If(Token = "Nide", McLoginType.Nide, McLoginType.Auth), .Name = Name}
             AccountPool.SetVersionAccount(Ref)
             RefreshHomeInfo()
+            RefreshLaunchButtonText() '换了账号：别人开的游戏不该再显示「关闭游戏」
 
             '真正登录这个账户：登录成功后皮肤会按这个账户重新加载，头像也就跟着对了，
             '不用先启动一次游戏
@@ -3207,7 +3492,7 @@ ExitRefresh:
                     RunInUi(Sub()
                                 RestartSkinLoader(Ref.Type) '用新账户的角色重新取一次皮肤
                                 RefreshAccountUi()
-                                Hint($"已切换到 {Name}", HintType.Green)
+                                Hint($"已切换到 {Name}", HintType.Green, Key:=AccountSwitchHintKey)
                             End Sub)
                 Catch ex As Exception
                     If Not ex.IsCanceled Then Logger.Error(ex, $"切换账户失败（{Name}）", LogBehavior.Toast)
@@ -3869,7 +4154,8 @@ ExitRefresh:
                 Hint("教程链接还没配置：改一下 ModSecret.MsClientIdGuideUrl 就行", HintType.Blue)
                 Return
             End If
-            OpenWebsiteExternal(MsClientIdGuideUrl)
+            '按「网页打开手势」打开：左键默认内置浏览器，右键用系统浏览器（设置里可对调）
+            OpenWebsite(MsClientIdGuideUrl)
         Catch ex As Exception
             Logger.Error(ex, "打开微软登录教程失败")
         End Try

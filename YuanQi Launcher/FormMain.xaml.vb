@@ -787,7 +787,10 @@ Public Class FormMain
         Try
             'EULA 提示
             Const EulaVersion As Integer = 2
-            If Settings.Get(Of Integer)("SystemEulaVersion") < EulaVersion Then
+            '首次使用时，协议确认并入通知弹窗，不再单独弹一次
+            If Settings.Get(Of Integer)("SystemEulaVersion") < EulaVersion AndAlso ModGuide.ShouldAutoStart() Then
+                ModGuide.EulaPending = True
+            ElseIf Settings.Get(Of Integer)("SystemEulaVersion") < EulaVersion Then
                 Select Case MyMsgBox(
                     If(Settings.Get(Of Integer)("SystemEulaVersion") = 0,
                         "在使用缘启前，请先阅读用户协议与免责声明。",
@@ -800,17 +803,18 @@ Public Class FormMain
                         EndProgram(False)
                 End Select
             End If
-            '首次使用引导（跳过也视为看过，下次启动不再弹出）
-            If MyMsgGuide.GuideVersion > Settings.Get(Of Integer)("SystemGuideVersion") Then
-                MyMsgBoxGuide()
-                MyMsgGuide.MarkFinished()
+            '首次使用：先介绍启动器，再进分步教程（教程里翻页全由用户自己点）
+            If ModGuide.ShouldAutoStart() Then
+                ModGuide.ShowIntro() '介绍弹窗 + 环境体检
+            ElseIf ModGuide.ShouldStartTour() Then
+                ModGuide.StartGuide() '介绍看过了但教程没走完，直接续上
             End If
             '启动加载器池
             Try
                 JavaInit() '延后到同意协议后再执行，避免在初次启动时进行进程操作
                 Thread.Sleep(100)
                 ModTerracotta.CleanupStaleInstances() '兜底清理上次被强杀时遗留的联机模块
-                AutoEnvCheck() '首次运行做一次环境体检（只在有问题时提示）
+                '不再自动做环境体检：改由首次使用的介绍弹窗，或「设置 → 通用 → 环境体检」手动触发 '首次使用改由教程引导用户手动体检，不再自动跑
                 AutoCheckLauncherUpdate() '按设置自动检查更新（默认关闭）
                 DlClientListMojangLoader.Start(1) '缘启会同时根据这里的加载结果决定是否使用官方源进行下载
                 RunCountSub()
@@ -2576,15 +2580,39 @@ Public Class FormMain
         End If
         '应用模糊：能预渲染的一律预渲染，省掉逐帧的 BlurEffect
         If UseBlur Then ApplyBackgroundBlur(BlurRadius, BackgroundType)
-        '标题栏：固定只显示「缘启」二字，隐藏徽标 / 图片 / 英文
+        '标题栏标志（设置 → 个性化 → 标题栏：无 / 默认 / 文本 / 图片）
         PanTitleBadge.Visibility = Visibility.Collapsed
         ShapeTitleLogo.Visibility = Visibility.Collapsed
-        ImageTitleLogo.Visibility = Visibility.Collapsed
-        LabTitleLogo.Visibility = Visibility.Visible
-        LabTitleLogo.Text = "缘启"
+        LabTitleLogo.Visibility = Visibility.Collapsed
+        Select Case Settings.Get(Of Integer)("UiLogoType")
+            Case 0 '无：标题栏不放任何标志
+                ImageTitleLogo.Visibility = Visibility.Collapsed
+            Case 2 '文本：按设置里填写的文本显示（留空就是不放标志，与「无」一致）
+                ImageTitleLogo.Visibility = Visibility.Collapsed
+                LabTitleLogo.Visibility = Visibility.Visible
+                LabTitleLogo.Text = If(Settings.Get(Of String)("UiLogoText"), "")
+            Case 3 '图片：显示 YQL\Logo.png
+                Dim LogoImagePath As String = Paths.Base & "YQL\Logo.png"
+                If FileUtils.Exists(LogoImagePath) Then
+                    Try
+                        ImageTitleLogo.Source = Nothing '防止前后值相同导致不重新加载（#5628）
+                        ImageTitleLogo.Source = LogoImagePath
+                        ImageTitleLogo.Visibility = Visibility.Visible
+                    Catch ex As Exception
+                        Logger.Warn(ex, "显示标题栏图片失败")
+                    End Try
+                End If
+                '图片缺失或读不出来时退回文字，避免标题栏留一片空白
+                If ImageTitleLogo.Visibility <> Visibility.Visible Then
+                    LabTitleLogo.Visibility = Visibility.Visible
+                    LabTitleLogo.Text = "缘启"
+                End If
+            Case Else '默认：只显示「缘启」
+                ImageTitleLogo.Visibility = Visibility.Collapsed
+                LabTitleLogo.Visibility = Visibility.Visible
+                LabTitleLogo.Text = "缘启"
+        End Select
         FrmSetupUI?.CardLogo.TriggerForceResize()
-        '标题栏文本是否居左
-        PanTitleMain.ColumnDefinitions(0).Width = New GridLength(If(Settings.Get(Of Boolean)("UiLogoLeft") AndAlso Settings.Get(Of Integer)("UiLogoType") = 0, 0, 1), GridUnitType.Star)
     End Sub
 
     ''' <summary>
@@ -4143,9 +4171,12 @@ Public Class FormMain
         End Try
     End Sub
 
-    ''' <summary>控件本身绑定的「打开网页」事件地址；没有则返回 Nothing。</summary>
+    ''' <summary>控件本身绑定的网页地址；没有则返回 Nothing。</summary>
     Private Function GetWebEventUrl(Control As DependencyObject) As String
         If Control Is Nothing Then Return Nothing
+        '显式声明的网页地址：只给右键用，左键仍走控件自己的 Click（关于页那几个按钮就是这么标的）
+        Dim Declared As String = CustomEventService.GetWebUrl(Control)
+        If Not String.IsNullOrWhiteSpace(Declared) Then Return Declared
         If CustomEventService.GetEventType(Control) = CustomEvent.EventType.打开网页 Then
             Dim Address As String = CustomEventService.GetEventData(Control)
             If Not String.IsNullOrWhiteSpace(Address) Then Return Address

@@ -67,6 +67,22 @@ Public Class CustomEventService
         Return d.GetValue(EventDataProperty)
     End Function
 
+    'WebUrl
+    ''' <summary>
+    ''' 这个控件"指向的网页"。只给右键用：右键时按「网页打开手势」的相反方式打开，
+    ''' 左键仍走控件自己的 Click（可以是任意逻辑，不限于打开网页）。
+    ''' </summary>
+    Public Shared ReadOnly WebUrlProperty As DependencyProperty =
+            DependencyProperty.RegisterAttached("WebUrl", GetType(String), GetType(CustomEventService), New PropertyMetadata(Nothing))
+    <AttachedPropertyBrowsableForType(GetType(DependencyObject))>
+    Public Shared Sub SetWebUrl(d As DependencyObject, value As String)
+        d.SetValue(WebUrlProperty, value)
+    End Sub
+    <AttachedPropertyBrowsableForType(GetType(DependencyObject))>
+    Public Shared Function GetWebUrl(d As DependencyObject) As String
+        Return d.GetValue(WebUrlProperty)
+    End Function
+
 End Class
 
 Partial Public Module ModMain

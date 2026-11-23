@@ -12,6 +12,14 @@ Public Class PageOtherAbout
 
         ItemAboutPcl.Info = ItemAboutPcl.Info.Replace("%VERSION%", VersionDisplay).Replace("%VERSIONCODE%", VersionCode).Replace("%BRANCH%", CInt(BuildType))
 
+        '右键用系统浏览器打开：这几个按钮的左键走各自的 Click（内置浏览器 / 弹窗），
+        '右键地址单独标出来，否则主窗口的右键逻辑找不到它们是网页入口。
+        CustomEventService.SetWebUrl(BtnAboutWebsite, ModTools.WebsiteUrl)
+        If ModTools.IsRepoReady() Then
+            CustomEventService.SetWebUrl(BtnAboutGithub, ModTools.RepoUrl)
+            CustomEventService.SetWebUrl(BtnAboutFeedback, ModTools.RepoUrl & "/issues")
+        End If
+
     End Sub
 
     '提交反馈

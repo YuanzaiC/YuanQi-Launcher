@@ -60,13 +60,13 @@
                         Text="加入失败时，可在「节点状态」中查看公共节点是否正常。" />
                     <StackPanel Orientation="Horizontal">
                         <local:MyButton Height="35" MinWidth="140" Padding="13,0" Margin="0,0,20,0" HorizontalAlignment="Left"
-                            Text="使用说明" ToolTip="查看联机的使用说明与接口文档"
+                            Text="使用说明"
                             local:CustomEventService.EventType="打开网页" local:CustomEventService.EventData="https://burningtnt.github.io/Terracotta/" />
                         <local:MyButton Height="35" MinWidth="140" Padding="13,0" Margin="0,0,20,0" HorizontalAlignment="Left"
-                            Text="节点状态" ToolTip="查看内置公共节点当前是否正常"
+                            Text="节点状态"
                             local:CustomEventService.EventType="打开网页" local:CustomEventService.EventData="https://etnode.zkitefly.eu.org/about" />
                         <local:MyButton Height="35" x:Name="BtnLinkCheckUpdate" MinWidth="140" Padding="13,0" HorizontalAlignment="Left"
-                            Text="检查模块更新" ToolTip="对比本地模块与最新版本" />
+                            Text="检查模块更新" />
                     </StackPanel>
                 </StackPanel>
             </local:MyCard>

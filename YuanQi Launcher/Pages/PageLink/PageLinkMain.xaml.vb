@@ -1,4 +1,4 @@
-' =============================================================================
+﻿' =============================================================================
 '  PageLinkMain —— 联机页（陶瓦 / Terracotta）
 '  结构：整页只有一张卡片，卡片内分三层——
 '        ① PanSelect  选择联机方式（创建房间 / 加入房间）
@@ -40,6 +40,8 @@ Public Class PageLinkMain
     ''' 获取房间状态连续失败的次数。
     ''' </summary>
     Private FailCount As Integer = 0
+    '' <summary>用户点了取消：此后加载器再报失败/完成都不再切面板。</summary>
+    Private CancelRequested As Boolean = False
 
     ''' <summary>
     ''' 切换到指定的状态。
@@ -75,6 +77,7 @@ Public Class PageLinkMain
         PanAlways.Visibility = Visibility.Visible
         AddHandler LinkLoader.OnStateChangedUi,
         Sub(Loader As LoaderBase, NewState As LoadState, OldState As LoadState)
+            If CancelRequested Then Return '用户已取消，忽略后续状态
             Select Case NewState
                 Case LoadState.Finished
                     ChangeState(LinkStates.Finished)
@@ -287,6 +290,7 @@ Public Class PageLinkMain
 
     ''' <summary>由 Waiting 切换到 Loading。</summary>
     Private Sub SwitchToLoading(OldState As LinkStates)
+        CancelRequested = False
         '清理变量
         FailCount = 0
         CurrentState = Nothing
@@ -389,6 +393,7 @@ Public Class PageLinkMain
     ''' </summary>
     Private Sub BackToWaiting()
         Try
+            CancelRequested = True
             LinkLoader.Cancel()
             SyncLock LinkLoader.LockState
                 LinkLoader.State = LoadState.Waiting
@@ -397,15 +402,37 @@ Public Class PageLinkMain
             CurrentState = Nothing
             FailCount = 0
             LinkState = LinkStates.Waiting
-            UpdatePanelVisibility()
+            StopLyricTimer()
+            '按钮状态复位：连接中显示取消，失败组收起
+            If BtnLoadCancel IsNot Nothing Then BtnLoadCancel.Visibility = Visibility.Visible
+            If PanLoadRetryGroup IsNot Nothing Then PanLoadRetryGroup.Visibility = Visibility.Collapsed
             '回到选择层（用更短的时长，卡片缩回不拖沓）
             ShowLayer(PanSelect, Fast:=True)
+            Logger.Info("已取消联机并回到选择界面")
         Catch ex As Exception
             Logger.Warn(ex, "取消联机失败")
         End Try
     End Sub
-
     Private Sub BtnLoadCancel_Click() Handles BtnLoadCancel.Click
+        BackToWaiting()
+    End Sub
+
+    '' <summary>失败后重试：清掉失败态，按上次的方式重新连一次。</summary>
+    Private Sub BtnLoadRetry_Click() Handles BtnLoadRetry.Click
+        Try
+            CancelRequested = False
+            FailCount = 0
+            CurrentState = Nothing
+            LinkState = LinkStates.Waiting
+            ChangeState(LinkStates.Loading)
+        Catch ex As Exception
+            Logger.Warn(ex, "联机重试失败")
+            BackToWaiting()
+        End Try
+    End Sub
+
+    '' <summary>失败后返回：回到选择界面。</summary>
+    Private Sub BtnLoadBack_Click() Handles BtnLoadBack.Click
         BackToWaiting()
     End Sub
 

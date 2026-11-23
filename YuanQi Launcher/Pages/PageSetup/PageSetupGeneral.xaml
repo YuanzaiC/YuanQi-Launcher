@@ -1,4 +1,4 @@
-﻿<!-- PageSetupGeneral —— 设置 · 通用页：更新提醒、启动器行为、性能、设置与体检四张卡片。 -->
+<!-- PageSetupGeneral —— 设置 · 通用页：更新提醒、启动器行为、性能、设置与体检四张卡片。 -->
 <local:MyPageRight
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -18,16 +18,14 @@
                                       ToolTip="每次打开启动器时检查新版本，有新版本将在左下角提示。" />
 
                     <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                        <local:MyButton Height="35" x:Name="BtnSystemCheckUpdate" MinWidth="140" Text="立即检查更新" Padding="13,0" HorizontalAlignment="Left"
-                            ToolTip="立即检查一次启动器更新。" />
+                        <local:MyButton Height="35" x:Name="BtnSystemCheckUpdate" MinWidth="140" Text="立即检查更新" Padding="13,0" HorizontalAlignment="Left" />
                     </StackPanel>
                 </StackPanel>
             </local:MyCard>
 
             <local:MyCard Margin="0,0,0,15" Title="启动器">
                 <StackPanel Margin="25,40,25,20">
-                    <local:MyCheckBox Text="允许多开启动器" Height="22" x:Name="CheckMultiInstance" local:SettingService.Key="SystemMultiInstance"
-                                      ToolTip="允许同时运行多个启动器，用于多账号管理与联机测试。" />
+                    <local:MyCheckBox Text="允许多开启动器" Height="22" x:Name="CheckMultiInstance" local:SettingService.Key="SystemMultiInstance" />
                     <local:MyCheckBox Text="自动设置为中文" Height="22" Margin="0,6,0,0" x:Name="CheckHelpChinese" local:SettingService.Key="ToolHelpChinese"
                                       ToolTip="帮助页面自动切换为中文。" />
                     <StackPanel Orientation="Horizontal" Margin="0,12,0,6">

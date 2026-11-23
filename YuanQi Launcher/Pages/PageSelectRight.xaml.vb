@@ -30,7 +30,8 @@ Public Class PageSelectRight
             For Each Card As KeyValuePair(Of McInstanceCardType, List(Of McInstance)) In McInstanceList.ToArray
                 '确认是否为隐藏版本显示状态
                 If Card.Key = McInstanceCardType.Hidden Xor ShowHidden Then Continue For
-                Dim Instances = Card.Value.Where(Function(Instance) Not McInstanceLock.IsLocked(Instance)).ToList
+                '已归档的版本不混在各自的分类里：统一收进页面最下面的「已归档」卡片
+                Dim Instances = Card.Value.Where(Function(Instance) Not McInstanceLock.IsLocked(Instance) AndAlso Not IsArchivedSafe(Instance)).ToList
                 If Not Instances.Any Then Continue For
 #Region "确认卡片名称"
                 Dim CardName As String = ""
@@ -89,6 +90,27 @@ Public Class PageSelectRight
                 End If
             Next
 
+            '已归档的版本：单独一张卡片排在最后，默认收起
+            Dim ArchivedAll As New List(Of McInstance)
+            For Each Card As KeyValuePair(Of McInstanceCardType, List(Of McInstance)) In McInstanceList.ToArray
+                If Card.Key = McInstanceCardType.Hidden Xor ShowHidden Then Continue For
+                For Each Instance In Card.Value
+                    If McInstanceLock.IsLocked(Instance) Then Continue For
+                    If IsArchivedSafe(Instance) Then ArchivedAll.Add(Instance)
+                Next
+            Next
+            If ArchivedAll.Any Then
+                ArchivedAll.Sort(Function(A, B) String.Compare(A.Name, B.Name, StringComparison.CurrentCultureIgnoreCase))
+                Dim ArchivedCard As New MyCard With {.Title = "已归档 (" & ArchivedAll.Count & ")", .Margin = New Thickness(0, 0, 0, 15)}
+                Dim ArchivedStack As New StackPanel With {.Margin = New Thickness(20, MyCard.SwapedHeight, 18, 0), .VerticalAlignment = VerticalAlignment.Top, .RenderTransform = New TranslateTransform(0, 0)}
+                ArchivedCard.Children.Add(ArchivedStack)
+                ArchivedCard.SwapControl = ArchivedStack
+                ArchivedCard.SetContentBuilder(ArchivedAll, Function(Instance) Instance.ToListItem(AddressOf McInstanceListContent))
+                PanMain.Children.Add(ArchivedCard)
+                '归档版本平时不用，默认收起；整页只剩它时下面的「强制展开」会把它打开
+                ArchivedCard.IsSwapped = True
+            End If
+
             '若只有一个卡片，则强制展开
             If PanMain.Children.Count = 1 AndAlso CType(PanMain.Children(0), MyCard).IsSwapped Then
                 CType(PanMain.Children(0), MyCard).IsSwapped = False
@@ -116,6 +138,20 @@ Public Class PageSelectRight
             Logger.Error(ex, "将版本列表转换显示时失败")
         End Try
     End Sub
+
+    ''' <summary>
+    ''' 版本是否已归档。读不到信息时按「未归档」处理：
+    ''' 这里只是用来分组，不该因为某个版本文件夹异常就把整页列表搞崩。
+    ''' </summary>
+    Private Shared Function IsArchivedSafe(Instance As McInstance) As Boolean
+        Try
+            Return ModArchive.IsArchived(Instance.PathVersion)
+        Catch ex As Exception
+            Logger.Warn(ex, $"读取版本归档状态失败：{Instance.PathVersion}")
+            Return False
+        End Try
+    End Function
+
     Public Shared Sub McInstanceListContent(sender As MyListItem, e As EventArgs)
         Dim Instance As McInstance = sender.Tag
         '注册点击事件

@@ -20,6 +20,9 @@ Public Class PageSetupAdvanced
         SliderDebugAnim.GetHintText = Function(v) If(v > 29, "关闭", (v / 10 + 0.1) & "x")
         AniControlEnabled -= 1
 
+        '微软登录教程是个网页入口：右键要能按「网页打开手势」的相反方式打开
+        If Not String.IsNullOrWhiteSpace(MsClientIdGuideUrl) Then CustomEventService.SetWebUrl(BtnMsGuideSetup, MsClientIdGuideUrl)
+
     End Sub
     Public Sub Reload()
         SettingService.RefreshSettings(Me)
@@ -41,14 +44,14 @@ Public Class PageSetupAdvanced
     End Sub
 
     '获取微软登录用的客户端 ID
-    '用系统浏览器打开：内置 WebView2 走不到系统代理，打开 GitHub 常常是白页
+    '按「网页打开手势」打开：左键默认走启动器内置浏览器，右键用系统浏览器（可在设置里对调）
     Private Sub BtnMsGuideSetup_Click() Handles BtnMsGuideSetup.Click
         Try
             If String.IsNullOrWhiteSpace(MsClientIdGuideUrl) Then
                 Hint("教程链接还没配置：改一下 ModSecret.MsClientIdGuideUrl 就行", HintType.Blue)
                 Return
             End If
-            OpenWebsiteExternal(MsClientIdGuideUrl)
+            OpenWebsite(MsClientIdGuideUrl)
         Catch ex As Exception
             Logger.Error(ex, "打开微软登录教程失败")
         End Try

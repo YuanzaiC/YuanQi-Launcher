@@ -368,6 +368,13 @@ NextInner:
     ''' 根据登录信息获取玩家的 MC 用户名。如果无法获取则返回 Nothing。
     ''' </summary>
     Public Function McLoginName() As String
+        '账户池里选中的账户优先：否则切换离线账户后这里仍返回 LoginLegacyName 的第一项，
+        '启动按钮会误判成"还是同一个账号在跑"，一直显示「关闭游戏」，无法多开
+        Try
+            Dim Ref = AccountPool.GetVersionAccount()
+            If Ref IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(Ref.Name) Then Return Ref.Name
+        Catch ex As Exception
+        End Try
         '根据当前登录方式优先返回
         Select Case Settings.Get(Of McLoginType)("LoginType")
             Case McLoginType.Ms
@@ -2165,7 +2172,8 @@ IgnoreCustomSkin:
         WindowTitle = ArgumentReplace(WindowTitle, ReplaceTime:=False)
 
         '初始化等待
-        Dim Watcher As New Watcher(Loader, McInstanceSelected, WindowTitle, McLoginLoader.Output.Name)
+        '注意：McLoginResult.Type 是字符串（Auth/Nide/Microsoft），不能直接塞进 McLoginType 参数，否则运行时抛 InvalidCastException
+        Dim Watcher As New Watcher(Loader, McInstanceSelected, WindowTitle, McLoginLoader.Output.Name, McLoginTypeOfToken(McLoginLoader.Output.Type))
         McLaunchWatcher = Watcher
 
         '等待
@@ -2246,4 +2254,32 @@ IgnoreCustomSkin:
         End Try
     End Function
 
+    ''' <summary>
+    ''' 把登录返回里的标识符转成登录方式枚举。
+    ''' 注意：McLoginResult.Type 是字符串，只有 Auth / Nide 会写值，正版与离线是空串，
+    ''' 所以空值时必须退回账户池 / 设置里的登录方式，否则正版账户会被当成离线账户。
+    ''' </summary>
+    Public Function McLoginTypeOfToken(Token As String) As McLoginType
+        Select Case If(Token, "").Trim.ToLowerInvariant
+            Case "auth"
+                Return McLoginType.Auth
+            Case "nide"
+                Return McLoginType.Nide
+            Case "microsoft", "ms"
+                Return McLoginType.Ms
+            Case "legacy"
+                Return McLoginType.Legacy
+        End Select
+        '登录返回里没有标识：与启动按钮判定口径保持一致，先看账户池，再看设置
+        Try
+            Dim Ref = AccountPool.GetVersionAccount()
+            If Ref IsNot Nothing Then Return Ref.Type
+        Catch ex As Exception
+        End Try
+        Try
+            Return Settings.Get(Of McLoginType)("LoginType")
+        Catch ex As Exception
+            Return McLoginType.Legacy
+        End Try
+    End Function
 End Module

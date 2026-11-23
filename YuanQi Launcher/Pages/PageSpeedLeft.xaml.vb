@@ -31,6 +31,9 @@ Public Class PageSpeedLeft
 
     '定时器任务
     Private ReadOnly RightCards As New Dictionary(Of String, MyCard)
+    '任务卡片上的暂停 / 重试按钮
+    Private ReadOnly PauseButtons As New Dictionary(Of String, MyIconButton)
+    Private ReadOnly RetryButtons As New Dictionary(Of String, MyIconButton)
     Private Sub Watcher()
         If Not FrmMain.PageCurrent = FormMain.PageType.TaskManager Then Return
         Try
@@ -74,6 +77,7 @@ Public Class PageSpeedLeft
             If RightCards.ContainsKey(Loader.Name) Then
                 '已有此卡片
                 Dim Card As Grid = RightCards(Loader.Name)
+                UpdateTaskButtons(Loader)
                 Dim NewValue As Double = Loader.Progress + Loader.State
                 If Val(Card.Tag) = NewValue Then Return
                 Card.Tag = NewValue
@@ -196,6 +200,31 @@ Public Class PageSpeedLeft
                         Logger.Info($"关闭任务管理卡片：{Loader.Name}，且移出任务列表")
                         RunInThread(Sub() Loader.Cancel())
                     End Sub
+                    '暂停 / 继续（只有支持暂停的加载器才显示）
+                    If Loader.CanPause Then
+                        Dim BtnPause As New MyIconButton With {
+                            .Name = "BtnPause", .Logo = Logo.IconButtonStop, .Height = 20, .LogoScale = 0.85,
+                            .Margin = New Thickness(0, 10, 40, 0), .HorizontalAlignment = HorizontalAlignment.Right,
+                            .VerticalAlignment = VerticalAlignment.Top, .ToolTip = "暂停"}
+                        Card.Children.Add(BtnPause)
+                        PauseButtons(Loader.Name) = BtnPause
+                        AddHandler BtnPause.Click,
+                        Sub(sender As MyIconButton, e As EventArgs)
+                            TogglePause(Loader)
+                        End Sub
+                    End If
+                    '重试（只在失败时显示）：只补失败的文件，不整包重来
+                    Dim BtnRetry As New MyIconButton With {
+                        .Name = "BtnRetry", .Logo = Logo.IconButtonReset, .Height = 20, .LogoScale = 0.85,
+                        .Margin = New Thickness(0, 10, 70, 0), .HorizontalAlignment = HorizontalAlignment.Right,
+                        .VerticalAlignment = VerticalAlignment.Top, .ToolTip = "重试（只补失败的文件）",
+                        .Visibility = Visibility.Collapsed}
+                    Card.Children.Add(BtnRetry)
+                    RetryButtons(Loader.Name) = BtnRetry
+                    AddHandler BtnRetry.Click,
+                    Sub(sender As MyIconButton, e As EventArgs)
+                        RetryTask(Loader)
+                    End Sub
                     '如果已经失败，再刷新一次，修改成失败的控件
                     If Loader.State = LoadState.Failed Then
                         Card.Tag = Nothing '避免重复导致刷新无效
@@ -221,6 +250,64 @@ Public Class PageSpeedLeft
                 Logger.Info($"移除任务管理卡片：{Loader.Name}")
             End Sub)
         End If
+    End Sub
+
+    ''' <summary>刷新任务卡片上的暂停 / 重试按钮状态。</summary>
+    Private Sub UpdateTaskButtons(Loader As LoaderBase)
+        Try
+            Dim Pause As MyIconButton = Nothing
+            If PauseButtons.TryGetValue(Loader.Name, Pause) AndAlso Pause IsNot Nothing Then
+                If Loader.IsPaused Then
+                    Pause.Logo = Logo.IconPlay
+                    Pause.ToolTip = "继续"
+                Else
+                    Pause.Logo = Logo.IconButtonStop
+                    Pause.ToolTip = "暂停"
+                End If
+                Pause.Visibility = If(Loader.CanPause, Visibility.Visible, Visibility.Collapsed)
+            End If
+            Dim Retry As MyIconButton = Nothing
+            If RetryButtons.TryGetValue(Loader.Name, Retry) AndAlso Retry IsNot Nothing Then
+                Retry.Visibility = If(Loader.State = LoadState.Failed, Visibility.Visible, Visibility.Collapsed)
+            End If
+        Catch ex As Exception
+            Logger.Warn(ex, "刷新任务按钮状态失败")
+        End Try
+    End Sub
+
+    ''' <summary>暂停 / 继续：暂停时让出全部并发名额，其它任务照常跑。</summary>
+    Private Sub TogglePause(Loader As LoaderBase)
+        Try
+            If Loader.IsPaused Then
+                Loader.Unpause()
+            Else
+                Loader.Pause()
+            End If
+            UpdateTaskButtons(Loader)
+        Catch ex As Exception
+            Logger.Error(ex, "暂停/继续任务失败")
+        End Try
+    End Sub
+
+    ''' <summary>重试：优先只补失败的文件；没有可续传的才重跑整个任务。</summary>
+    Private Sub RetryTask(Loader As LoaderBase)
+        Try
+            Dim AnyRetried As Boolean = False
+            For Each SubLoader In CType(Loader, Object).GetLoaderList()
+                Dim Download = TryCast(SubLoader, LoaderDownload)
+                If Download IsNot Nothing AndAlso Download.RetryFailedFiles() Then AnyRetried = True
+            Next
+            If AnyRetried Then
+                Loader.NotifyRetry()
+                Hint("只重试失败的文件", HintType.Blue)
+            Else
+                Hint("没有可续传的文件，重新执行整个任务", HintType.Blue)
+                Loader.Start()
+            End If
+            UpdateTaskButtons(Loader)
+        Catch ex As Exception
+            Logger.Error(ex, "重试任务失败")
+        End Try
     End Sub
 
     ''' <summary>

@@ -46,7 +46,7 @@
                         <TextBlock Text="微软登录 · 应用客户端 ID" FontSize="13.5" FontWeight="SemiBold"
                                    Foreground="{StaticResource ColorBrush1}" HorizontalAlignment="Left" VerticalAlignment="Center" />
                         <local:MyTextButton x:Name="BtnMsGuideSetup" Text="获取教程" HorizontalAlignment="Right" VerticalAlignment="Center"
-                                            ToolTip="怎么自己申请一个 Azure 应用，拿到微软登录用的客户端 ID" />
+                                            ToolTip="怎么自己申请一个 Azure 应用，拿到微软登录用的客户端 ID。&#xa;左键在启动器内打开，右键用系统浏览器打开（可在「通用」里对调）。" />
                     </Grid>
                     <local:MyTextBox x:Name="TextOAuthClientId" local:SettingService.Key="LaunchOAuthClientId"
                                      HintText="未填写时无法登录微软账户" MaxLength="80"

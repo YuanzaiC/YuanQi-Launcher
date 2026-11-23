@@ -38,11 +38,11 @@
                         <local:MyButton x:Name="BtnAboutCheckUpdate" Text="检查更新" Width="160" Height="35" Padding="13,0" Margin="0,0,15,0" ColorType="Highlight"
                                         ToolTip="立即检查启动器是否有新版本。" />
                         <local:MyButton x:Name="BtnAboutWebsite" Text="打开官网" Width="160" Height="35" Padding="13,0" Margin="0,0,15,0"
-                                        ToolTip="在浏览器中打开缘启官网。" />
+                                        ToolTip="左键在启动器内打开缘启官网，右键用系统浏览器打开。" />
                         <local:MyButton x:Name="BtnAboutGithub" Text="打开仓库" Width="160" Height="35" Padding="13,0" Margin="0,0,15,0"
-                                        ToolTip="在浏览器中打开启动器的源代码仓库。" />
+                                        ToolTip="左键在启动器内打开源代码仓库，右键用系统浏览器打开。" />
                         <local:MyButton x:Name="BtnAboutFeedback" Text="提交反馈" Width="160" Height="35" Padding="13,0"
-                                        ToolTip="在浏览器中打开反馈页面，提交问题或建议。" />
+                                        ToolTip="左键在启动器内打开反馈页面，右键用系统浏览器打开。" />
                     </WrapPanel>
                 </Grid>
             </local:MyCard>

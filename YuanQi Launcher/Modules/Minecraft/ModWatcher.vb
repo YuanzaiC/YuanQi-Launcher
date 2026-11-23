@@ -1,4 +1,4 @@
-Public Module ModWatcher
+﻿Public Module ModWatcher
 
     '对全体的监视
     Public McWatcherList As New List(Of Watcher)
@@ -62,14 +62,17 @@ Public Module ModWatcher
         Public Instance As McInstance
         ''' <summary>启动这个实例时使用的账号名。切到别的账号后就不该显示"关闭游戏"。</summary>
         Public AccountName As String = ""
+        '记录启动这个实例时的登录方式：不同登录方式可能同名，只比名字会误判成同一个账号
+        Public AccountType As McLoginType = McLoginType.Legacy
         Private WindowTitle As String = ""
         Private PID As Integer
         Private PlayStartTicks As Long = 0
         Public Loader As LoaderTask(Of Process, Integer)
-        Public Sub New(Loader As LoaderTask(Of Process, Integer), Instance As McInstance, WindowTitle As String, Optional AccountName As String = Nothing)
+        Public Sub New(Loader As LoaderTask(Of Process, Integer), Instance As McInstance, WindowTitle As String, Optional AccountName As String = Nothing, Optional AccountType As McLoginType = McLoginType.Legacy)
             Me.Loader = Loader
             Me.Instance = Instance
             Me.AccountName = If(AccountName, "")
+            Me.AccountType = AccountType
             Me.WindowTitle = WindowTitle
             Me.PID = Loader.Input.Id
             PlayStartTicks = Date.Now.Ticks '记录本次游玩开始时间

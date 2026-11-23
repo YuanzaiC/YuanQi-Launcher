@@ -60,9 +60,7 @@ Public Class PageSetupUI
             BackgroundRefresh(False, False)
 
             '标题栏
-            CheckLogoLeft.Visibility = If(RadioLogoType0.Checked, Visibility.Visible, Visibility.Collapsed)
-            PanLogoText.Visibility = If(RadioLogoType2.Checked, Visibility.Visible, Visibility.Collapsed)
-            PanLogoChange.Visibility = If(RadioLogoType3.Checked, Visibility.Visible, Visibility.Collapsed)
+            RefreshLogoPanels()
 
             '背景音乐
             MusicRefreshUI()
@@ -170,6 +168,16 @@ Public Class PageSetupUI
     End Sub
 
     '顶部栏
+    ''' <summary>按当前选中的「标题栏」类型，显示或隐藏下面的文本框 / 图片按钮。</summary>
+    Private Sub RefreshLogoPanels()
+        If PanLogoText Is Nothing Then Return
+        PanLogoText.Visibility = If(RadioLogoType2.Checked, Visibility.Visible, Visibility.Collapsed)
+        PanLogoChange.Visibility = If(RadioLogoType3.Checked, Visibility.Visible, Visibility.Collapsed)
+        CardLogo.TriggerForceResize()
+    End Sub
+    Private Sub RadioLogoType_Check(sender As Object, e As RouteEventArgs) Handles RadioLogoType0.Check, RadioLogoType1.Check, RadioLogoType2.Check, RadioLogoType3.Check
+        RefreshLogoPanels()
+    End Sub
     Private Sub BtnLogoChange_Click(sender As Object, e As EventArgs) Handles BtnLogoChange.Click
         Dim FileName As String = Dialogs.SelectFile("选择图片", False, filter:={({"png", "jpg", "jpeg", "gif", "webp"}, "常用图片文件")}).FirstOrDefault()
         If String.IsNullOrEmpty(FileName) Then Return

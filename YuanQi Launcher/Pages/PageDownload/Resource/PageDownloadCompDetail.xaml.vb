@@ -1,4 +1,4 @@
-﻿Imports System.Collections.ObjectModel
+Imports System.Collections.ObjectModel
 
 Public Class PageDownloadResourceDetail
     Private ResourceItem As MyResourceItem = Nothing
@@ -307,10 +307,11 @@ GroupDone:
                 End If
             End If
 
-            If String.Equals(Title, Current, StringComparison.OrdinalIgnoreCase) Then Return True
-            '分组后的标题（如按 Drop 归为 26.3 / 折叠旧版本）也要能对上
-            If String.Equals(GetGroupedVersionName(Current, GroupedDrop, GroupedOld), Title, StringComparison.OrdinalIgnoreCase) Then Return True
-            Return False
+            '卡片标题用的是「精确版本名」（见 UpdateFilterResult 里的 GetGroupedVersionName(GameVersion, False, False)），
+            '所以这里必须按同一套规则换算，不能按 Drop 分组比：
+            '1.20.1 按 Drop 分组会变成 "1.20"，于是 1.20 那张卡片也被标成当前版本
+            Dim Expected As String = GetGroupedVersionName(Current, False, False)
+            Return String.Equals(Title, Expected, StringComparison.OrdinalIgnoreCase)
         Catch
             Return False
         End Try
@@ -361,42 +362,66 @@ GroupDone:
         AniControlEnabled -= 1
     End Sub
 
-    ''' <summary>把地图（世界）下载到当前版本的 saves 里并解压好。</summary>
-    Private Sub InstallMap(File As ResourceVersion)
+    ''' <summary>
+    ''' 把地图（世界）解压进存档文件夹：下载的压缩包只当中间文件，解压完立刻删掉，不在 saves 里留 zip。
+    ''' </summary>
+    ''' <param name="SaveRootOverride">指定的存档文件夹（saves 目录）；留空则用当前版本的 saves。</param>
+    Private Sub InstallMap(File As ResourceVersion, Optional SaveRootOverride As String = Nothing)
         Try
-            Dim Instance As McInstance = McInstanceSelected
-            If Instance Is Nothing Then
-                Hint("先在「启动」页选一个版本，再把地图装进它的存档文件夹", HintType.Red)
-                Return
+            Dim SaveRoot As String
+            If Not String.IsNullOrWhiteSpace(SaveRootOverride) Then
+                SaveRoot = PathUtils.AddSlashSuffix(SaveRootOverride)
+            Else
+                Dim Instance As McInstance = McInstanceSelected
+                If Instance Is Nothing Then
+                    Hint("先在「启动」页选一个版本，再把地图装进它的存档文件夹", HintType.Red)
+                    Return
+                End If
+                SaveRoot = $"{Instance.PathIndie}saves\"
             End If
-            Dim SaveRoot As String = $"{Instance.PathIndie}saves\"
             DirectoryUtils.Create(SaveRoot)
-            Dim ZipPath As String = SaveRoot & "_map_download.zip"
+            '存档文件夹名取地图包名（去扩展名），并把 Windows 不允许的字符换掉：
+            '地图名里带 : ? 之类的字符时，原来会直接抛出"文件名、目录名或卷标语法不正确"
+            Dim Name As String = SanitizeSaveFolderName(PathUtils.GetFileNameWithoutExtension(File.FileName))
+            '压缩包放临时目录：万一解压失败也不会在存档文件夹里留一个几百 MB 的 zip
+            Dim ZipPath As String = PathTemp & "MapDownload_" & GetUuid() & ".zip"
             Dim Loader As New LoaderCombo(Of Integer)("地图下载：" & File.Display, {
                 New LoaderDownload("下载地图", {File.ToNetFile(ZipPath, ResourceVersion.DownloadReason.Standalone, File.GameVersions.FirstOrDefault, File.ModLoaders)}) With {.ProgressWeight = 10},
                 New LoaderTask(Of Integer, Integer)("解压地图",
                 Sub(Task)
-                    Dim Name As String = PathUtils.GetFileNameWithoutExtension(File.FileName)
-                    Dim Target As String = $"{SaveRoot}{Name}\"
-                    If DirectoryUtils.Exists(Target) Then DirectoryUtils.Delete(Target)
-                    DirectoryUtils.Create(Target)
-                    FileUtils.ExtractToDirectory(ZipPath, Target, Task.CreateCancellationToken())
-                    FileUtils.Delete(ZipPath)
-                    '有些地图包里面还套了一层文件夹，把它提到存档根目录，否则游戏认不出这个存档
-                    Dim Di = DirectoryUtils.GetInfo(Target)
-                    Dim SubDirs = Di.GetDirectories()
-                    Dim RootFiles = Di.GetFiles()
-                    If SubDirs.Length = 1 AndAlso RootFiles.Length = 0 AndAlso
-                       FileUtils.Exists(PathUtils.AddSlashSuffix(SubDirs(0).FullName) & "level.dat") Then
-                        Dim Inner As String = PathUtils.AddSlashSuffix(SubDirs(0).FullName)
-                        For Each F In DirectoryUtils.EnumerateFiles(Inner, True)
-                            Dim Rel As String = F.Substring(Inner.Length)
-                            DirectoryUtils.Create(PathUtils.RemoveLastPart(Target & Rel))
-                            FileUtils.Copy(F, Target & Rel)
-                        Next
-                        DirectoryUtils.Delete(SubDirs(0).FullName)
-                    End If
-                    Hint($"地图已装进 {Instance.Name} 的存档文件夹", HintType.Green)
+                    Dim TempExtract As String = PathTemp & "MapExtract_" & GetUuid() & "\"
+                    Try
+                        '先解到临时目录，找到 level.dat 之后再整块搬进 saves：
+                        '不用在存档目录里做"上提一层文件夹"的搬运，少一堆路径拼接的坑
+                        DirectoryUtils.Create(TempExtract)
+                        FileUtils.ExtractToDirectory(ZipPath, TempExtract, Task.CreateCancellationToken())
+                        Dim LevelDat As String = DirectoryUtils.EnumerateFiles(TempExtract, True, "level.dat").FirstOrDefault()
+                        If LevelDat Is Nothing Then Throw New Exception("这个压缩包里没有 level.dat，看起来不是地图存档。")
+                        Dim WorldRoot As String = PathUtils.RemoveSlashSuffix(PathUtils.RemoveLastPart(LevelDat))
+                        Dim Target As String = $"{SaveRoot}{Name}\"
+                        Try
+                            DirectoryUtils.Create(SaveRoot)
+                            '同名存档先清掉再放（Move 内部也会删一次，这里删是为了给出准确的失败位置）
+                            If DirectoryUtils.Exists(Target) Then DirectoryUtils.Delete(Target)
+                            DirectoryUtils.Move(WorldRoot, PathUtils.RemoveSlashSuffix(Target))
+                        Catch ex As Exception
+                            Throw New Exception($"把地图放到 {Target} 时出错：{ex.Message}", ex)
+                        End Try
+                        '装好不弹提示，只写日志：地图是点一下就走完的操作，不需要再确认一次
+                        Logger.Info($"地图已装进存档文件夹：{Target}")
+                    Finally
+                        '临时解压目录与下载的压缩包都清掉：用户要的是解压好的存档，不是 zip
+                        Try
+                            If DirectoryUtils.Exists(TempExtract) Then DirectoryUtils.Delete(TempExtract)
+                        Catch ex As Exception
+                            Logger.Warn(ex, $"清理地图临时解压目录失败：{TempExtract}")
+                        End Try
+                        Try
+                            If FileUtils.Exists(ZipPath) Then FileUtils.Delete(ZipPath)
+                        Catch ex As Exception
+                            Logger.Warn(ex, $"清理地图压缩包失败：{ZipPath}")
+                        End Try
+                    End Try
                 End Sub) With {.ProgressWeight = 1}
             })
             LoaderTaskbarAdd(Loader)
@@ -406,6 +431,19 @@ GroupDone:
             Hint("安装地图失败：" & ex.Message, HintType.Red)
         End Try
     End Sub
+
+    ''' <summary>
+    ''' 把地图包名整理成合法的存档文件夹名：去掉非法字符、去掉结尾的点与空格，空的就退回「地图」。
+    ''' </summary>
+    Private Shared Function SanitizeSaveFolderName(Raw As String) As String
+        Dim S As String = If(Raw, "").Trim()
+        For Each C As Char In IO.Path.GetInvalidFileNameChars()
+            S = S.Replace(C, "_"c)
+        Next
+        S = S.TrimEnd("."c, " "c)
+        If String.IsNullOrWhiteSpace(S) Then S = "地图"
+        Return S
+    End Function
 
     '整合包安装
     Public Sub Install_Click(sender As MyListItem, e As EventArgs)
@@ -595,6 +633,13 @@ GroupDone:
                 If File.ResourceType = ResourceTypes.Mod Then FileName = FileName.Replace("~", "-") '~ 会导致 Mixin 加载失败
                 RunInUi(
                 Sub()
+                    '地图是压缩包：不存 zip，选一个存档文件夹，解压进去之后自动把压缩包删掉
+                    If File.ResourceType = ResourceTypes.Map Then
+                        Dim SaveFolder As String = Dialogs.SelectFolder("选择要放入的存档文件夹（saves）", False, DefaultFolder).FirstOrDefault()
+                        If String.IsNullOrEmpty(SaveFolder) Then Return
+                        InstallMap(File, SaveFolder)
+                        Return
+                    End If
                     '弹窗要求选择保存位置
                     Dim Target As String
                     Dim Ext As String = If(File.ResourceType = ResourceTypes.Mod,

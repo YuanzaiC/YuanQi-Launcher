@@ -1,4 +1,4 @@
-Imports Microsoft.Win32
+﻿Imports Microsoft.Win32
 
 ''' <summary>
 ''' 杂项工具：更新检查、环境体检、空间体检。
@@ -99,8 +99,13 @@ Public Module ModTools
         Dim TagRaw As String = Tag.ToString.Trim()
         Dim Latest As String = NormalizeVersion(TagRaw)
         Logger.Info($"启动器最新版本：{Latest}（tag：{TagRaw}），当前版本：{VersionBaseName}")
-        If String.Equals(Latest, VersionBaseName, StringComparison.OrdinalIgnoreCase) Then
+        '按版本号大小比较，不能只看字符串是否相等：
+        '本地版本比仓库里的发布还新（比如刚打包还没发布）时必须按「已是最新」处理，
+        '否则点「立即更新」会把启动器装回旧版本。
+        Dim CompareResult As Integer = CompareVersion(Latest, VersionBaseName)
+        If CompareResult <= 0 Then
             If Not UpdateCheckIgnoreVersion Then
+                If CompareResult < 0 Then Logger.Info($"仓库里的最新发布（{Latest}）比当前版本旧，按已是最新处理")
                 If Not Silent Then RunInUiWait(Sub() MyMsgBox($"当前已是最新版本（{VersionBaseName}）。", "检查更新"))
                 Return
             End If
@@ -357,6 +362,12 @@ Public Module ModTools
                 If(FileUtils.Exists(Paths.Base & "System.Numerics.Vectors.dll"), "OK", "缺失（彩蛋动画的透明视频会失效）")))
         Catch
         End Try
+        '联机模块（联机功能本体）
+        Try
+            Result.Add(New KeyValuePair(Of String, String)("联机模块",
+                If(ModTerracotta.IsCorePresent(), "OK", "缺失（联机功能不可用，点下面的按钮下载）")))
+        Catch
+        End Try
         'tar.exe（解压联机模块用）
         Try
             Result.Add(New KeyValuePair(Of String, String)("系统 tar.exe",
@@ -367,6 +378,41 @@ Public Module ModTools
     End Function
 
     ''' <summary>显示环境体检结果。</summary>
+    ''' <summary>下载并安装联机模块（体检发现缺失时用）。</summary>
+    Public Sub DownloadTerracottaCore()
+        Hint("正在获取联机模块版本……", HintType.Blue, False)
+        RunInNewThread(
+        Sub()
+            Try
+                Dim Latest As String = ModTerracotta.GetLatestVersion()
+                If String.IsNullOrWhiteSpace(Latest) Then Throw New Exception("无法获取联机模块的最新版本，请检查网络")
+                '资源名用的是 x86_64 / arm64 / x86，不是 x64
+                Dim Arch As String
+                Select Case System.Runtime.InteropServices.RuntimeInformation.OSArchitecture
+                    Case System.Runtime.InteropServices.Architecture.X64
+                        Arch = "x86_64"
+                    Case System.Runtime.InteropServices.Architecture.Arm64
+                        Arch = "arm64"
+                    Case Else
+                        Arch = "x86"
+                End Select
+                Dim Urls = ModTerracotta.GetDownloadUrls(Arch, Latest)
+                If Urls Is Nothing OrElse Urls.Count = 0 Then Throw New Exception("没有找到可用的下载地址")
+                Dim Local As String = PathTemp & "TerracottaCore.tar.gz"
+                DirectoryUtils.Create(PathTemp)
+                Dim Loader As New LoaderDownload("下载联机模块", New List(Of NetFile) From {New NetFile(Urls, Local)})
+                Loader.Start()
+                Loader.WaitForExit()
+                If Not FileUtils.Exists(Local) Then Throw New Exception("下载没有完成")
+                ModTerracotta.ExtractPackage(Local)
+                ModTerracotta.MarkCoreVersion(Latest)
+                RunInUi(Sub() Hint($"联机模块 {Latest} 已就绪", HintType.Green))
+            Catch ex As Exception
+                Logger.Warn(ex, "下载联机模块失败")
+                RunInUi(Sub() Hint("联机模块下载失败：" & ex.Message, HintType.Red))
+            End Try
+        End Sub, "Download Terracotta Core", ThreadPriority.BelowNormal)
+    End Sub
     Public Sub ShowEnvCheck()
         Try
             Dim Items = RunEnvCheck()

@@ -1,4 +1,4 @@
-﻿Imports System.Collections.ObjectModel
+Imports System.Collections.ObjectModel
 Imports System.Windows.Interop
 Imports System.Windows.Threading
 
@@ -166,7 +166,8 @@ EndHint:
     ''' 安排一个提示气泡的自动消失。
     ''' </summary>
     Private Sub ScheduleHintHide(Control As Border, Text As String)
-        Dim Delay As Double = (2000 + Text.Length.Clamp(5, 30) * 110) * AniSpeed
+        '停留时长：短提示约 1.7s、长提示约 3.7s（原来分别是 2.5s / 5.3s，读起来太拖）
+        Dim Delay As Double = (1300 + Text.Length.Clamp(5, 30) * 80) * AniSpeed
         AniStart({
             AaOpacity(Control, -1, 180, Delay),
             AaX(Control, -10, 180, Delay),

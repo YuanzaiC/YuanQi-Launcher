@@ -185,6 +185,35 @@ Public Module ModLoader
         Public MustOverride Sub Start(Optional Input As Object = Nothing, Optional IsForceRestart As Boolean = False)
         Public MustOverride Sub Cancel()
         Public MustOverride Sub Failed(Ex As Exception)
+
+        '暂停 / 继续
+        ''' <summary>
+        ''' 当前是否处于暂停状态。只有 CanPause 为 True 的加载器会用到。
+        ''' </summary>
+        Public Property IsPaused As Boolean = False
+        ''' <summary>
+        ''' 该加载器是否支持暂停（目前只有文件下载支持）。
+        ''' </summary>
+        Public Overridable ReadOnly Property CanPause As Boolean
+            Get
+                Return False
+            End Get
+        End Property
+        ''' <summary>
+        ''' 暂停。默认不做任何事，由支持暂停的加载器重写。
+        ''' </summary>
+        Public Overridable Sub Pause()
+        End Sub
+        ''' <summary>
+        ''' 从暂停中继续。默认不做任何事，由支持暂停的加载器重写。
+        ''' </summary>
+        Public Overridable Sub Unpause()
+        End Sub
+        ''' <summary>
+        ''' 子加载器要求重试时通知父加载器把自己从失败状态恢复。默认不做任何事。
+        ''' </summary>
+        Public Overridable Sub NotifyRetry()
+        End Sub
         Private CancellationTokenSource As CancellationTokenSource
         ''' <summary>
         ''' 创建一个随此加载器取消的取消令牌；令牌取消时也会调用此加载器的 Cancel。
@@ -555,6 +584,36 @@ Public Module ModLoader
                 Loader.Cancel()
             Next
             FrmMain.BtnExtraDownload.ShowRefresh()
+        End Sub
+
+        ''' <summary>只要有一个子加载器支持暂停，整个任务就能暂停。</summary>
+        Public Overrides ReadOnly Property CanPause As Boolean
+            Get
+                Return Loaders.Any(Function(l) l.CanPause)
+            End Get
+        End Property
+        Public Overrides Sub Pause()
+            IsPaused = True
+            For Each Loader In Loaders
+                If Loader.CanPause Then Loader.Pause()
+            Next
+        End Sub
+        Public Overrides Sub Unpause()
+            IsPaused = False
+            For Each Loader In Loaders
+                If Loader.CanPause Then Loader.Unpause()
+            Next
+        End Sub
+        ''' <summary>
+        ''' 子加载器要求重试：把整个任务从失败状态拉回进行中，后续步骤会自然接上。
+        ''' </summary>
+        Public Overrides Sub NotifyRetry()
+            SyncLock LockState
+                If State <> LoadState.Failed AndAlso State <> LoadState.Canceled Then Return
+                [Error] = Nothing
+                State = LoadState.Loading
+            End SyncLock
+            RunInThread(AddressOf Update)
         End Sub
 
         ''' <summary>

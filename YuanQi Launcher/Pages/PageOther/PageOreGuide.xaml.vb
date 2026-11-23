@@ -71,6 +71,12 @@ Public Class PageOreGuide
             _Loaded = True
             LoadData()
         End If
+        '拖动的后续动作挂在页面级别：起拖后鼠标被页面捕获，移动与抬起都走这里
+        If Not _DragHooked Then
+            _DragHooked = True
+            AddHandler PreviewMouseMove, AddressOf ChartDragMove
+            AddHandler PreviewMouseLeftButtonUp, AddressOf ChartDragEnd
+        End If
         '内容保留（重复进入不重建），维度状态按当前选择对齐
         SwitchDimension(If(RadioOverworld.IsChecked = True, RadioOverworld, RadioNether))
         '页面挂载处于切页动画的 AniControlEnabled 抑制窗口内：
@@ -376,6 +382,58 @@ Public Class PageOreGuide
         End Try
     End Sub
 
+    ' ==================== 色带 / 坐标轴：点击定位 + 按住拖动 ====================
+    Private _ChartDragging As Boolean = False
+    Private _DragHooked As Boolean = False
+
+    ''' <summary>按下：按鼠标横向位置定位 Y，并开始拖动（后续移动由页面级事件接管）。</summary>
+    Private Sub ChartDragStart(sender As Object, e As MouseButtonEventArgs)
+        If CurDim Is Nothing OrElse PanChartAxisArea Is Nothing Then Return
+        Try
+            Dim X As Double = e.GetPosition(PanChartAxisArea).X
+            '只认绘图区：点在左侧矿石名或右侧百分比上不算拖图
+            If X < 0 OrElse X > PanChartAxisArea.ActualWidth Then Return
+            _ChartDragging = True
+            '捕获鼠标：拖到绘图区外面也能继续跟手；万一捕获失败，区内的移动事件仍然够用
+            Try : Me.CaptureMouse() : Catch : End Try
+            ChartDragToY(X)
+            e.Handled = True
+        Catch ex As Exception
+            Logger.Warn(ex, "矿石分布：开始拖动失败")
+        End Try
+    End Sub
+
+    ''' <summary>把绘图区内的横坐标换算成 Y 层：连续跟手，不是只在格子之间跳。</summary>
+    Private Sub ChartDragToY(X As Double)
+        If CurDim Is Nothing OrElse PanChartAxisArea Is Nothing Then Return
+        Dim W As Double = PanChartAxisArea.ActualWidth
+        If W <= 1 Then Return
+        Dim Frac As Double = X / W
+        If Frac < 0 Then Frac = 0
+        If Frac > 1 Then Frac = 1
+        Dim Span As Integer = CurDim.MaxY + 1 - CurDim.MinY
+        Dim Target As Integer = CurDim.MinY + CInt(Math.Floor(Frac * Span))
+        If Target > CurDim.MaxY Then Target = CurDim.MaxY
+        If Target <> CurY Then SetY(Target)
+    End Sub
+
+    Private Sub ChartDragMove(sender As Object, e As MouseEventArgs)
+        If Not _ChartDragging Then Return
+        Try
+            '拖到绘图区外也跟手：换算时会自动夹到两端
+            ChartDragToY(e.GetPosition(PanChartAxisArea).X)
+            e.Handled = True
+        Catch
+        End Try
+    End Sub
+
+    Private Sub ChartDragEnd(sender As Object, e As MouseButtonEventArgs)
+        If Not _ChartDragging Then Return
+        _ChartDragging = False
+        Try : Me.ReleaseMouseCapture() : Catch : End Try
+        e.Handled = True
+    End Sub
+
     Private Sub SetY(Y As Integer)
         If CurDim Is Nothing Then Return
         Dim Target = Math.Max(CurDim.MinY, Math.Min(CurDim.MaxY, Y))
@@ -391,6 +449,24 @@ Public Class PageOreGuide
         ApplyY()
     End Sub
 
+    ''' <summary>
+    ''' 设置某一格「当前 Y」高亮的外观。
+    ''' 必须成对复位：只给新格加圆角、不复位旧格的话，拖动扫过多少格，色带上就留多少个圆角，
+    ''' 看起来就是整条色带一圈锯齿。
+    ''' </summary>
+    Private Sub MarkCell(Cell As Border, Active As Boolean)
+        If Cell Is Nothing Then Return
+        If Active Then
+            Cell.BorderThickness = New Thickness(2)
+            Cell.BorderBrush = New SolidColorBrush(Color.FromRgb(25, 25, 25))
+            Cell.CornerRadius = New CornerRadius(2)
+        Else
+            Cell.BorderThickness = New Thickness(0)
+            Cell.BorderBrush = Nothing
+            Cell.CornerRadius = New CornerRadius(0)
+        End If
+    End Sub
+
     ' <summary>增量刷新：仅切换新旧两个色带格的高亮与徽标（全量遍历在拖动滑杆时会卡顿）。</summary>
     Private Sub DeltaChartHighlight()
         For Each Ore In CurDim.Ores
@@ -400,10 +476,8 @@ Public Class PageOreGuide
             Dim OldIdx As Integer
             If Not ChartPrevIdx.TryGetValue(Ore.Name, OldIdx) Then OldIdx = -1
             If OldIdx <> NewIdx Then
-                If OldIdx >= 0 AndAlso OldIdx < Borders.Count Then Borders(OldIdx).BorderThickness = New Thickness(0)
-                Borders(NewIdx).BorderThickness = New Thickness(2)
-                Borders(NewIdx).BorderBrush = New SolidColorBrush(Color.FromRgb(25, 25, 25))
-                Borders(NewIdx).CornerRadius = New CornerRadius(2)
+                If OldIdx >= 0 AndAlso OldIdx < Borders.Count Then MarkCell(Borders(OldIdx), False)
+                MarkCell(Borders(NewIdx), True)
                 ChartPrevIdx(Ore.Name) = NewIdx
             End If
             If ChartBadges.ContainsKey(Ore.Name) Then
@@ -627,7 +701,8 @@ Public Class PageOreGuide
             Grid.SetColumn(Head, 0)
             Row.Children.Add(Head)
 
-            Dim Bars As New System.Windows.Controls.Primitives.UniformGrid With {.Rows = 1, .Columns = BinCount}
+            'UseLayoutRounding：让每一格的左右边界落在整数像素上，相邻两格之间不会因为半像素而出现细缝
+            Dim Bars As New System.Windows.Controls.Primitives.UniformGrid With {.Rows = 1, .Columns = BinCount, .UseLayoutRounding = True}
             Dim Borders As New List(Of Border)
             For i As Integer = 0 To BinCount - 1
                 Dim Lvl = If(MaxW > 0.0001, Weights(i) / MaxW, 0)
@@ -635,8 +710,8 @@ Public Class PageOreGuide
                 Dim Cell As New Border With {
                     .Margin = New Thickness(0, 2, 0, 2),
                     .Background = If(Alpha > 0, New SolidColorBrush(Color.FromArgb(CByte(Alpha), Ore.Accent.R, Ore.Accent.G, Ore.Accent.B)), TryFindResource("BrushSurface2")),
-                    .Cursor = Cursors.Hand, .Tag = CurDim.MinY + i * CurDim.LayersPerBin}
-                AddHandler Cell.MouseLeftButtonUp, Sub(sender, e) SetY(CType(CType(sender, Border).Tag, Integer) + CurDim.LayersPerBin \ 2)
+                    .Cursor = Cursors.SizeWE, .Tag = CurDim.MinY + i * CurDim.LayersPerBin, .SnapsToDevicePixels = True}
+                '按下 / 拖动统一由 PanChartRows 上的 ChartDragStart 处理，这里不再单独挂点击
                 Grid.SetColumn(Cell, i)
                 Bars.Children.Add(Cell)
                 Borders.Add(Cell)
@@ -661,7 +736,7 @@ Public Class PageOreGuide
         Next
 
         LabChartTitle.Text = CurDim.Name & "矿石完整分布"
-        LabChartNote.Text = $"每格代表{CurDim.Name} {CurDim.LayersPerBin} 层，颜色取该区间内的相对高度；点击色带可把检查器移动到对应区间。下界矿石色带同理（每格 2 层）。"
+        LabChartNote.Text = $"每格代表{CurDim.Name} {CurDim.LayersPerBin} 层，颜色取该区间内的相对高度；在色带或上方坐标轴上点一下即可定位，按住左右拖动可以连续移动 Y 层。下界矿石色带同理（每格 2 层）。"
         HighlightChart()
     End Sub
 
@@ -672,15 +747,11 @@ Public Class PageOreGuide
             If Not ChartBins.ContainsKey(Ore.Name) Then Continue For
             Dim Borders = ChartBins(Ore.Name)
             For Each B In Borders
-                B.BorderThickness = New Thickness(0)
+                MarkCell(B, False)
             Next
             Dim Idx = Math.Max(0, Math.Min(Borders.Count - 1, (CurY - CurDim.MinY) \ CurDim.LayersPerBin))
             ChartPrevIdx(Ore.Name) = Idx
-            If Idx >= 0 AndAlso Idx < Borders.Count Then
-                Borders(Idx).BorderThickness = New Thickness(2)
-                Borders(Idx).BorderBrush = New SolidColorBrush(Color.FromRgb(25, 25, 25))
-                Borders(Idx).CornerRadius = New CornerRadius(2)
-            End If
+            If Idx >= 0 AndAlso Idx < Borders.Count Then MarkCell(Borders(Idx), True)
             If ChartBadges.ContainsKey(Ore.Name) Then
                 Dim Pct = RelativeAt(Ore, CurY)
                 ChartBadges(Ore.Name).Text = If(Pct < 0.03, "无分布", CInt(Pct * 100) & "%")

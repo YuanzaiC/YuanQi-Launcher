@@ -1,4 +1,4 @@
-Imports System.Security.Cryptography
+﻿Imports System.Security.Cryptography
 
 Public Class Settings
 
@@ -22,6 +22,8 @@ Public Class Settings
         New Setting("HintSnapshot", False, Source:=Sources.Registry),
         New Setting("SystemEulaVersion", 0, Source:=Sources.Registry),
         New Setting("SystemGuideVersion", 0, Source:=Sources.Registry),
+        New Setting("GuideFinished", False, Source:=Sources.Registry),
+        New Setting("GuideTourFinished", False, Source:=Sources.Registry),
         New Setting("SystemMultiInstance", True, Source:=Sources.Registry),
         New Setting("SystemCount", 0, Source:=Sources.Registry, Encrypted:=True),
         New Setting("SystemLaunchCount", 0, Source:=Sources.Registry, Encrypted:=True),
@@ -152,7 +154,7 @@ Public Class Settings
         New Setting("UiCustomNet", ""),
         New Setting("UiLogoType", 1, OnChanged:=AddressOf FormMain.UpdateBackgroundAndTitleBar),
         New Setting("UiLogoText", "", OnChanged:=AddressOf FormMain.UpdateBackgroundAndTitleBar),
-        New Setting("UiLogoLeft", False, OnChanged:=AddressOf FormMain.UpdateBackgroundAndTitleBar),
+        New Setting("UiLogoLeft", False, OnChanged:=AddressOf FormMain.UpdateBackgroundAndTitleBar), '已停用：新版标题栏没有面包屑，界面上不再有「标题栏居左」，保留 key 只为兼容旧配置
         New Setting("UiNavCollapsed", False),
         New Setting("UiMusicVolume", 500),
         New Setting("UiMusicStop", False),

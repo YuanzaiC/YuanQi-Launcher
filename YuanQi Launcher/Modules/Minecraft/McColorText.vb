@@ -172,16 +172,19 @@ Public Module McColorText
     End Function
 
     ''' <summary>构建 WPF Run 列表（用于彩色文字显示）。Darken=True 时输出 25% 亮度的阴影层。</summary>
-    Public Function BuildInlines(Text As String, Optional DefaultColor As Nullable(Of Color) = Nothing, Optional Darken As Boolean = False) As List(Of Run)
-        Return BuildRunPairs(Text, DefaultColor, Darken).Select(Function(p) p.Inline).ToList()
+    ''' <param name="ForLightSurface">目标背景是浅色界面（如白色卡片）时为 True，过亮的颜色会被压暗到看得清。</param>
+    Public Function BuildInlines(Text As String, Optional DefaultColor As Nullable(Of Color) = Nothing, Optional Darken As Boolean = False, Optional ForLightSurface As Boolean = False) As List(Of Run)
+        Return BuildRunPairs(Text, DefaultColor, Darken, ForLightSurface).Select(Function(p) p.Inline).ToList()
     End Function
 
     ''' <summary>构建 Run 并保留段落信息（用于混淆段动画）。</summary>
-    Public Function BuildRunPairs(Text As String, Optional DefaultColor As Nullable(Of Color) = Nothing, Optional Darken As Boolean = False) As List(Of McInline)
+    Public Function BuildRunPairs(Text As String, Optional DefaultColor As Nullable(Of Color) = Nothing, Optional Darken As Boolean = False, Optional ForLightSurface As Boolean = False) As List(Of McInline)
         Dim Result As New List(Of McInline)
         For Each R In Parse(Text, DefaultColor)
             If String.IsNullOrEmpty(R.Text) Then Continue For
-            Dim Run As New Run(R.Text) With {.Foreground = New SolidColorBrush(If(Darken, DarkenColor(R.Color, 0.25), R.Color))}
+            Dim Fore As Color = If(ForLightSurface, ReadableOnLight(R.Color), R.Color)
+            If Darken Then Fore = DarkenColor(Fore, 0.25)
+            Dim Run As New Run(R.Text) With {.Foreground = New SolidColorBrush(Fore)}
             If R.Bold Then Run.FontWeight = FontWeights.Bold
             If R.Italic Then Run.FontStyle = FontStyles.Italic
             Dim Decor As New TextDecorationCollection()
@@ -196,6 +199,35 @@ Public Module McColorText
     ''' <summary>把颜色按比例调暗（用于模拟 Minecraft 文字阴影）。</summary>
     Public Function DarkenColor(c As Color, factor As Double) As Color
         Return Color.FromRgb(CByte(c.R * factor), CByte(c.G * factor), CByte(c.B * factor))
+    End Function
+
+    ''' <summary>单个通道的 sRGB → 线性值（WCAG 相对亮度算法）。</summary>
+    Private Function LinearChannel(v As Byte) As Double
+        Dim S As Double = v / 255.0
+        If S <= 0.04045 Then Return S / 12.92
+        Return Math.Pow((S + 0.055) / 1.055, 2.4)
+    End Function
+
+    ''' <summary>相对亮度：0 = 纯黑，1 = 纯白。</summary>
+    Public Function RelativeLuminance(c As Color) As Double
+        Return 0.2126 * LinearChannel(c.R) + 0.7152 * LinearChannel(c.G) + 0.0722 * LinearChannel(c.B)
+    End Function
+
+    ''' <summary>
+    ''' 把游戏里的配色适配到浅色界面。
+    ''' 游戏内默认白字，直接搬到白色卡片上等于没有字：这里把过亮的颜色压暗到看得清，
+    ''' 有彩色的保留色相（绿色仍是绿的，只是深一点），白色 / 浅灰这类近中性色换成界面正文的深浅两档。
+    ''' </summary>
+    Public Function ReadableOnLight(c As Color) As Color
+        Dim Lum As Double = RelativeLuminance(c)
+        If Lum <= 0.3 Then Return c '本来就够深，维持原样
+        Dim MaxC As Integer = Math.Max(c.R, Math.Max(c.G, c.B))
+        Dim MinC As Integer = Math.Min(c.R, Math.Min(c.G, c.B))
+        Dim Sat As Double = If(MaxC = 0, 0, 1 - MinC / MaxC)
+        If Sat < 0.12 Then Return If(Lum > 0.55, Color.FromRgb(&H2B, &H2B, &H2B), Color.FromRgb(&H6E, &H6E, &H6E))
+        'sRGB 亮度近似与通道值的 2.2 次方成正比，按这个指数反推压暗系数
+        Dim K As Double = Math.Pow(0.25 / Lum, 1 / 2.2)
+        Return Color.FromRgb(ToByteSafe(c.R * K), ToByteSafe(c.G * K), ToByteSafe(c.B * K))
     End Function
 
     ''' <summary>移除全部格式码（含 §x 序列），返回纯文本。</summary>

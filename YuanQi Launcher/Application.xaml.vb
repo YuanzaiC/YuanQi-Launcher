@@ -1,4 +1,4 @@
-Imports System.Reflection
+﻿Imports System.Reflection
 Imports System.Windows.Threading
 Imports System.Windows.Input
 
@@ -281,7 +281,13 @@ Public Class Application
                 Logger.Warn(ex, "读取多开设置失败，将按单例运行")
             End Try
             Dim MutexCreatedNew As Boolean
-            PclMutex = New Mutex(True, "YQL_SingletonMutex", MutexCreatedNew)
+            '便携副本（如首次使用测试版）可与正式版同时运行：程序目录下有 StandaloneInstance.flag 时用独立互斥量
+            Dim MutexName As String = "YQL_SingletonMutex"
+            Try
+                If IO.File.Exists(Paths.Base & "YQL\StandaloneInstance.flag") Then MutexName &= "_" & Math.Abs(Paths.Base.GetHashCode()).ToString
+            Catch ex As Exception
+            End Try
+            PclMutex = New Mutex(True, MutexName, MutexCreatedNew)
             If MutexCreatedNew Then Return
             Logger.Warn("已有一个缘启实例正在运行")
             '等待已有的缘启退出

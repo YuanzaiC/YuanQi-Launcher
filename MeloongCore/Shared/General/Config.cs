@@ -120,7 +120,12 @@ public class JsonConfigProvider : IConfigProvider {
 }
 
 public static class ConfigProviders {
-    public static JsonConfigProvider Default = new(Path.Combine(Paths.AppDataThenName, "config.json"));
+    /// <summary>
+    /// 全局配置的默认提供器。
+    /// <para/>路径用程序目录而不是 AppData：调用方（如便携版启动器）要求数据只落在程序目录，
+    /// 而 <see cref="ConfigEntry{T}"/> 在构造时就绑定提供器，事后改这个字段已经来不及了。
+    /// </summary>
+    public static JsonConfigProvider Default = new(Path.Combine(Paths.BaseThenName, "config.json"));
 }
 
 #endregion

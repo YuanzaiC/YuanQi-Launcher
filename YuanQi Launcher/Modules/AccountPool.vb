@@ -133,7 +133,13 @@ Public Module AccountPool
 
     ''' <summary>设置当前版本的选中账户。</summary>
     Public Sub SetVersionAccount(Ref As AccountRef)
-        If McInstanceSelected Is Nothing OrElse Ref Is Nothing Then Return
+        If Ref Is Nothing Then Return
+        '还没有选中任何版本时不能写"版本账户"：退而设为全局默认账户，
+        '否则首次注册的账户会被丢掉，界面只能显示兜底的「离线账户」。
+        If McInstanceSelected Is Nothing Then
+            SetDefaultAccount(Ref)
+            Return
+        End If
         Settings.Set(VersionAccountKey, Ref.Type.ToString() & "|" & Ref.Name, Instance:=McInstanceSelected)
         Settings.Set("LoginType", Ref.Type) '同步全局登录方式，兼容旧逻辑
         TouchAccount(Ref) '选过就算最近使用

@@ -19,7 +19,7 @@ Public Class PageSaveSetup
         SavesRoot = IO.Path.GetDirectoryName(Folder.TrimEnd("\"c))
         TabButtons = {BtnTab0, BtnTab1, BtnTab2, BtnTab3, BtnTab4, BtnTab5}
         TabPanels = {PanOverview, PanWorld, PanPlayer, PanInventory, PanSnapshot, PanData}
-        LabName.Text = SaveFolder
+        SetColoredName(LabName, SaveFolder, "未命名存档")
         Try
             Dim IconPath = Folder.TrimEnd("\"c) & "\icon.png"
             If IO.File.Exists(IconPath) Then ImgIcon.Source = IconPath Else ImgIcon.Source = PathImage & "Blocks/Grass.png"
@@ -194,7 +194,8 @@ Public Class PageSaveSetup
             Tb.Text = Fallback
         ElseIf Raw.Contains("§") Then
             Try
-                For Each R In McColorText.BuildInlines(Raw)
+                '存档名里可能带 § 颜色码：按颜色渲染；白色 / 浅色会被压暗，否则在白卡片上等于没字
+                For Each R In McColorText.BuildInlines(Raw, Nothing, False, True)
                     Tb.Inlines.Add(R)
                 Next
             Catch
@@ -395,8 +396,8 @@ Public Class PageSaveSetup
             IO.Directory.Move(SavePath, Target)
             SavePath = Target
             SaveName = NewName
-            LabName.Text = NewName
-            Hint("已重命名为 " & NewName, HintType.Green)
+            SetColoredName(LabName, NewName, "未命名存档")
+            Hint("已重命名为 " & McColorText.StripColorCodes(NewName), HintType.Green)
             RefreshAll()
         Catch ex As Exception
             Logger.Error(ex, "重命名存档失败")
@@ -423,12 +424,20 @@ Public Class PageSaveSetup
         End Try
     End Sub
 
+    ''' <summary>纯文本形式的存档名（去掉 § 颜色码），弹窗与提示里用，免得显示成一串 §a。</summary>
+    Private ReadOnly Property SaveNamePlain As String
+        Get
+            Dim S = McColorText.StripColorCodes(SaveName)
+            Return If(String.IsNullOrWhiteSpace(S), SaveName, S)
+        End Get
+    End Property
+
     Private Sub DoDelete()
         If Not CheckNotRunning() Then Return
         Try
-            If MyMsgBox($"确定要删除存档「{SaveName}」吗？删除后会移动到回收站。", "删除存档", "删除", "取消", IsWarn:=True) = 1 Then
+            If MyMsgBox($"确定要删除存档「{SaveNamePlain}」吗？删除后会移动到回收站。", "删除存档", "删除", "取消", IsWarn:=True) = 1 Then
                 DirectoryUtils.Delete(SavePath, True)
-                Hint("已删除存档 " & SaveName, HintType.Green)
+                Hint("已删除存档 " & SaveNamePlain, HintType.Green)
                 FrmMain.PageBack()
             End If
         Catch ex As Exception

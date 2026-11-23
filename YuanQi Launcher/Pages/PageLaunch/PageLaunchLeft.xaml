@@ -1,4 +1,4 @@
-﻿<local:MyPageLeft x:Class="PageLaunchLeft"
+<local:MyPageLeft x:Class="PageLaunchLeft"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
@@ -236,7 +236,7 @@
                             <Border.Effect>
                                 <DropShadowEffect BlurRadius="16" ShadowDepth="3" Direction="270" Opacity="0.2" Color="{DynamicResource ColorObject2}" RenderingBias="Performance" />
                             </Border.Effect>
-                                        <Grid>
+                                        <Grid x:Name="PanHeroContent">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
@@ -293,7 +293,9 @@
                                             <local:MyImage x:Name="ImgInstanceLogo" Source="pack://application:,,,/images/SplashIcon.png" Stretch="UniformToFill" />
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
-                                            <TextBlock x:Name="LabInstanceName" Text="加载中…" Style="{StaticResource TitleDisplay}" Margin="0,0,0,4" />
+                                            <!-- HorizontalAlignment=Left：让文字框贴着文字本身，切换版本时的缩放脉冲才会以文字中心为轴
+                                                 （拉伸填满整列时，0.5 会落到卡片中间，看着像从卡片中间弹出来） -->
+                                            <TextBlock x:Name="LabInstanceName" Text="加载中…" Style="{StaticResource TitleDisplay}" Margin="0,0,0,4" HorizontalAlignment="Left" />
                                             <TextBlock x:Name="LabInstanceMeta" Text="" FontSize="13" Foreground="{DynamicResource BrushText2}" TextTrimming="CharacterEllipsis" />
                                         </StackPanel>
                                     </Grid>
@@ -369,7 +371,7 @@
                                         <TextBlock Text="存档" Style="{StaticResource CardTitle}" />
                                         <TextBlock x:Name="LabSavesCount" Style="{StaticResource MutedText}" Margin="8,3,0,0" VerticalAlignment="Center" />
                                     </StackPanel>
-                                    <Button x:Name="BtnSavesRefresh" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <Button x:Name="BtnSavesRefresh" HorizontalAlignment="Right" VerticalAlignment="Center" MinWidth="64"
                                             Style="{StaticResource BtnGhost}" Height="24" Padding="8,0" FontSize="11.5" Content="刷新" />
                                 </Grid>
                                 <!-- 固定最大高度 + 内部滚动：卡片高度不随存档数量撑爆 -->
@@ -475,7 +477,7 @@
                                             <TextBlock Text="点击下方按钮，将在浏览器中打开微软登录页；完成后账户会自动加入账户池。" Style="{StaticResource MutedText}" TextWrapping="Wrap" />
                                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
                                                 <local:MyTextButton x:Name="BtnMsGuide" Text="获取教程" VerticalAlignment="Center" Margin="0,0,12,0"
-                                                                     ToolTip="怎么自己申请一个 Azure 应用，拿到微软登录用的客户端 ID" />
+                                                                     ToolTip="怎么自己申请一个 Azure 应用，拿到微软登录用的客户端 ID。&#xa;左键在启动器内打开，右键用系统浏览器打开（可在「设置 → 通用」里对调）。" />
                                                 <Button x:Name="BtnAddMs" Style="{StaticResource BtnBase}" Content="登录微软账户" />
                                             </StackPanel>
                                         </StackPanel>

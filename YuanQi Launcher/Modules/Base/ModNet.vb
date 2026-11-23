@@ -754,6 +754,11 @@ Retry:
         Public SimulateBrowserHeaders As Boolean
 
         ''' <summary>
+        ''' 是否被用户暂停。暂停时不新开线程，已有的线程会自行退出并让出并发名额。
+        ''' </summary>
+        Public IsPaused As Boolean = False
+
+        ''' <summary>
         ''' 上次记速时的时间。
         ''' </summary>
         Private SpeedLastTime As Long = GetTimeMs()
@@ -874,6 +879,8 @@ Retry:
                     If NetTaskThreadCount >= NetTaskThreadLimit OrElse Not HasAvailableSource() OrElse
                         (IsNoSplit AndAlso Threads IsNot Nothing AndAlso Threads.State <> NetState.Canceled) Then Return Nothing
                     If State >= NetState.Merging OrElse State = NetState.WaitingToCheck Then Return Nothing
+                    '被用户暂停：不再开新线程（已有线程会自己退出并让出名额）
+                    If IsPaused Then Return Nothing
                     SyncLock LockState
                         If State < NetState.Connecting Then State = NetState.Connecting
                     End SyncLock
@@ -1051,6 +1058,11 @@ NotSupportRange:
                 HttpDataCount = ResponseStream.ReadAsync(ResponseBytes, 0, 16384, CancelToken.Token).GetResultWithTimeout(CancelToken, Timeout)
                 While (IsUnknownSize OrElse Th.DownloadUndone > 0) AndAlso '判断是否下载完成
                             HttpDataCount > 0 AndAlso Not IsProgramEnding AndAlso State < NetState.Merging AndAlso (Not Th.Source.IsFailed OrElse Th.Source.SingleThread = Th)
+                    '用户暂停：退出线程并让出并发名额，已下载的片段留着，继续时从这里接着下
+                    If IsPaused Then
+                        Logger.Info($"{LocalName}：已暂停，已下载 {DownloadDone}")
+                        Exit While
+                    End If
                     '限速
                     While NetTaskSpeedLimitHigh > 0 AndAlso NetTaskSpeedLimitLeft <= 0
                         Threading.Thread.Sleep(16)
@@ -1293,11 +1305,20 @@ Retry:
                     Threading.Thread.Sleep(500 * RetryCount)
                     GoTo Retry
                 End If
-                '失败，禁用当前下载源并重启下载
+                '失败：坏文件绝不能留在实例里，先把成品与临时分片一起删掉，再换源重下
                 Try
                     FileUtils.Delete(LocalPath)
                 Catch exx As Exception
                     Logger.Warn(ex, $"删除合并失败的文件出错（{LocalPath}）")
+                End Try
+                Try
+                    If Threads IsNot Nothing Then
+                        For Each T As NetThread In Threads
+                            If Not String.IsNullOrEmpty(T.Temp) AndAlso FileUtils.Exists(T.Temp) Then FileUtils.Delete(T.Temp)
+                        Next
+                    End If
+                Catch exx As Exception
+                    Logger.Warn(exx, $"清理校验失败的分片出错（{LocalName}）")
                 End Try
                 SourceFail(Th, ex, True)
             Finally
@@ -1342,6 +1363,26 @@ Retry:
         End Sub
 
         '状态改变接口
+        ''' <summary>
+        ''' 把失败的文件恢复成「待下载」，只补这一个文件；已下载的片段尽量保留。
+        ''' </summary>
+        Public Sub ResetForRetry()
+            SyncLock LockState
+                If State <> NetState.Canceled Then Return
+                State = NetState.WaitingToDownload
+            End SyncLock
+            '下载源全部恢复可用：之前被禁用、被降级成单线程的都重新试一次
+            SyncLock LockSource
+                For Each Source In Sources
+                    Source.IsFailed = False
+                    Source.FailCount = 0
+                    Source.Ex = Nothing
+                    Source.SingleThread = Nothing
+                Next
+                SourcesOnce.Clear()
+            End SyncLock
+            Retried = False
+        End Sub
         ''' <summary>
         ''' 将该文件设置为已下载完成。
         ''' </summary>
@@ -1452,6 +1493,62 @@ FinishExCatch:
             Me.Name = Name
             Files = New ConcurrentQueue(Of NetFile)(FileTasks)
         End Sub
+
+        ''' <summary>下载任务支持暂停：暂停时让出并发名额，其它任务照跑。</summary>
+        Public Overrides ReadOnly Property CanPause As Boolean
+            Get
+                Return State = LoadState.Loading
+            End Get
+        End Property
+        Public Overrides Sub Pause()
+            Try
+                If State <> LoadState.Loading Then Return
+                IsPaused = True
+                For Each File In Files
+                    If File.State < NetState.Finished Then File.IsPaused = True
+                Next
+                Logger.Info($"{Name}：已暂停")
+            Catch ex As Exception
+                Logger.Warn(ex, "暂停下载任务失败")
+            End Try
+        End Sub
+        Public Overrides Sub Unpause()
+            Try
+                If Not IsPaused Then Return
+                IsPaused = False
+                For Each File In Files
+                    File.IsPaused = False
+                Next
+                Logger.Info($"{Name}：已继续")
+            Catch ex As Exception
+                Logger.Warn(ex, "继续下载任务失败")
+            End Try
+        End Sub
+
+        ''' <summary>
+        ''' 只重试失败的文件：不整包重来，把失败文件重新排回下载队列。
+        ''' </summary>
+        ''' <returns>是否有文件被重新排队。</returns>
+        Public Function RetryFailedFiles() As Boolean
+            Try
+                Dim Failed As New List(Of NetFile)
+                For Each File In Files
+                    If File.State = NetState.Canceled Then Failed.Add(File)
+                Next
+                If Not Failed.Any() Then Return False
+                IsPaused = False
+                SyncLock LockState
+                    [Error] = Nothing
+                    State = LoadState.Loading
+                End SyncLock
+                NetManager.RetryFiles(Me, Failed)
+                Logger.Info($"{Name}：只重试 {Failed.Count} 个失败的文件")
+                Return True
+            Catch ex As Exception
+                Logger.Warn(ex, "重试失败文件失败")
+                Return False
+            End Try
+        End Function
         Public Overrides Sub Start(Optional Input As Object = Nothing, Optional IsForceRestart As Boolean = False)
             If Input IsNot Nothing Then Files = New ConcurrentQueue(Of NetFile)(CType(Input, IEnumerable(Of NetFile)))
             '去重
@@ -1790,12 +1887,18 @@ FinishExCatch:
                         If Id = 0 AndAlso FileRemain = 0 Then AllFiles.Clear() '若已完成，则清空
                         For Each File As NetFile In AllFiles.Values
                             If File.Uuid Mod 2 = Id Then Continue For
+                            If File.IsPaused Then Continue For '暂停的文件不占线程
                             If File.State = NetState.WaitingToDownload Then
                                 WaitingFiles.Add(File)
                             ElseIf File.State < NetState.Merging AndAlso File.State >= NetState.WaitingToDownload Then
                                 OngoingFiles.Add(File)
                             End If
                         Next
+                        '按体积从大到小排队：大文件先占并发，小文件排在后面随时补位，
+                        '避免一堆小文件先把线程占满、大文件迟迟不动
+                        If WaitingFiles.Count > 1 Then
+                            WaitingFiles.Sort(Function(A, B) FileQueueWeight(B).CompareTo(FileQueueWeight(A)))
+                        End If
                         '为等待中的文件开始线程
                         For Each File As NetFile In WaitingFiles
                             If NetTaskThreadCount >= NetTaskThreadLimit Then Continue While '最大线程数检查
@@ -1855,6 +1958,34 @@ FinishExCatch:
 
         Private DownloadCacheLock As New Object
         Private IsDownloadCacheCleared As Boolean = False
+
+        ''' <summary>
+        ''' 排队权重：越大越先分到并发。还没探测到大小的文件当作大文件先跑（要先知道它多大），
+        ''' 本地复制的小文件排最后，不占下载线程。
+        ''' </summary>
+        Private Function FileQueueWeight(File As NetFile) As Long
+            If File Is Nothing Then Return 0
+            If File.IsCopy Then Return -1
+            If File.FileSize = -2 Then Return Long.MaxValue
+            If File.FileSize = -1 Then Return Long.MaxValue \ 2
+            Return File.FileSize
+        End Function
+
+        ''' <summary>
+        ''' 只重试指定的文件：把它们重新放回下载队列，其它已经完成的文件不受影响。
+        ''' </summary>
+        Public Sub RetryFiles(Task As LoaderDownload, Files As IEnumerable(Of NetFile))
+            StartManager()
+            If Files Is Nothing Then Return
+            For Each File In Files
+                If File Is Nothing Then Continue For
+                File.ResetForRetry()
+                AllFiles(File.LocalPath) = File
+                Interlocked.Increment(FileRemain)
+                Logger.Info($"{File.LocalName}：加入重试队列")
+            Next
+        End Sub
+
         ''' <summary>
         ''' 开始一个下载任务。
         ''' </summary>

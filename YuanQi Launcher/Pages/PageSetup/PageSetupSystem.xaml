@@ -85,10 +85,8 @@
                 <StackPanel Margin="25,40,25,20">
                     <TextBlock FontSize="12" LineHeight="17" Foreground="{StaticResource ColorBrushGray4}" TextWrapping="Wrap" Margin="0,0,0,10"
                         Text="官方发布新版本时在左下角提示。" />
-                    <local:MyCheckBox Text="有新的正式版时提示" Height="24" x:Name="CheckUpdateRelease" local:SettingService.Key="ToolUpdateRelease"
-                                      ToolTip="官方发布新正式版（Release）时提示。" />
-                    <local:MyCheckBox Text="有新的快照版时提示" Height="24" Margin="0,6,0,0" x:Name="CheckUpdateSnapshot" local:SettingService.Key="ToolUpdateSnapshot"
-                                      ToolTip="官方发布新快照（Snapshot）时提示。" />
+                    <local:MyCheckBox Text="有新的正式版时提示" Height="24" x:Name="CheckUpdateRelease" local:SettingService.Key="ToolUpdateRelease" />
+                    <local:MyCheckBox Text="有新的快照版时提示" Height="24" Margin="0,6,0,0" x:Name="CheckUpdateSnapshot" local:SettingService.Key="ToolUpdateSnapshot" />
                 </StackPanel>
             </local:MyCard>
 
