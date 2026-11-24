@@ -477,6 +477,8 @@ code{
   gap:clamp(18px,3vw,44px);
   padding-block:clamp(30px,4.4vw,54px);
 }
+/* 拿不到最新版本号时会隐藏第一格，这时按三列排，右边不留空档 */
+.facts__grid.is-3{ grid-template-columns:repeat(3,minmax(0,1fr)); }
 .fact strong{
   display:block;
   font-size:clamp(1.6rem,2.9vw,2.35rem);

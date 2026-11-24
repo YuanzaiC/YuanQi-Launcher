@@ -282,3 +282,114 @@
   measureGallery();
   requestScroll();
 })();
+
+/* ============================================================
+   最新版本号：页面里不写死，运行时自动取
+   - 先问 GitHub Releases（权威），拿不到再问 jsDelivr 的标签列表
+   - 页面元素用 data-version="模板 {ver}" 标记，拿到版本号后替换
+   - 带 data-version-hide 的元素在拿不到版本号时整体隐藏
+   - 结果缓存 1 小时，避免频繁请求
+   ============================================================ */
+(function () {
+  "use strict";
+
+  var REPO = "YuanzaiC/YuanQi-Launcher";
+  var TITLE_BASE = "缘启 YuanQi Launcher";
+  var TITLE_TAIL = " · 为 Minecraft 重做的启动器";
+  var CACHE_KEY = "yql-site-version";
+  var CACHE_TTL = 60 * 60 * 1000;
+
+  var $$ = function (s) { return Array.prototype.slice.call(document.querySelectorAll(s)); };
+  var clean = function (tag) {
+    var v = String(tag || "").trim().replace(/^v/i, "");
+    return /^\d+(\.\d+){1,3}$/.test(v) ? v : "";
+  };
+
+  function setVersion(ver) {
+    $$("[data-version]").forEach(function (el) {
+      var tpl = el.getAttribute("data-version") || "";
+      el.textContent = tpl.replace(/\{ver\}/g, ver);
+      el.removeAttribute("hidden");
+    });
+    $$("[data-version-hide]").forEach(function (el) { el.removeAttribute("hidden"); });
+    var grid = document.querySelector(".facts__grid");
+    if (grid) grid.classList.remove("is-3");
+    document.title = TITLE_BASE + " " + ver + TITLE_TAIL;
+    var og = document.querySelector('meta[property="og:title"]');
+    if (og) og.setAttribute("content", TITLE_BASE + " " + ver);
+  }
+
+  function clearVersion() {
+    $$("[data-version-hide]").forEach(function (el) { el.setAttribute("hidden", ""); });
+    var grid = document.querySelector(".facts__grid");
+    if (grid) grid.classList.add("is-3");
+  }
+
+  function readCache() {
+    try {
+      var raw = localStorage.getItem(CACHE_KEY);
+      if (!raw) return null;
+      var o = JSON.parse(raw);
+      if (!o || !o.v || (Date.now() - o.t) > CACHE_TTL) return null;
+      return o.v;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function writeCache(ver) {
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify({ v: ver, t: Date.now() })); } catch (err) {}
+  }
+
+  function fromGitHub() {
+    return fetch("https://api.github.com/repos/" + REPO + "/releases/latest", {
+      headers: { Accept: "application/vnd.github+json" },
+      cache: "no-store"
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (d) { return clean(d && d.tag_name); });
+  }
+
+  function fromJsDelivr() {
+    return fetch("https://data.jsdelivr.com/v1/packages/gh/" + REPO, { cache: "no-store" })
+      .then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (d) {
+        var list = (d && d.versions) || [];
+        for (var i = 0; i < list.length; i++) {
+          var v = clean(list[i] && list[i].version);
+          if (v) return v;
+        }
+        return "";
+      });
+  }
+
+  function load() {
+    var cached = readCache();
+    if (cached) { setVersion(cached); return; }
+    if (!window.fetch) { clearVersion(); return; }
+
+    fromGitHub()
+      .catch(function () { return fromJsDelivr(); })
+      .then(function (ver) {
+        if (!ver) throw new Error("no version");
+        writeCache(ver);
+        setVersion(ver);
+      })
+      .catch(function () {
+        /* 两个源都拿不到就不写版本号，别让页面挂着一个过期的数字 */
+        clearVersion();
+      });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", load);
+  } else {
+    load();
+  }
+})();
