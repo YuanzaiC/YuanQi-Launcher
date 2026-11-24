@@ -477,8 +477,17 @@ code{
   gap:clamp(18px,3vw,44px);
   padding-block:clamp(30px,4.4vw,54px);
 }
-/* 拿不到最新版本号时会隐藏第一格，这时按三列排，右边不留空档 */
-.facts__grid.is-3{ grid-template-columns:repeat(3,minmax(0,1fr)); }
+/* 规格条：一行四格，回答「能装什么、要什么」 */
+.spec{ min-width:0; }
+.spec__k{
+  display:block; font-size:11.5px; font-weight:600; letter-spacing:.06em;
+  color:var(--muted-2);
+}
+.spec__v{
+  display:block; margin-top:9px; font-size:14px; line-height:1.65;
+  font-weight:600; color:var(--ink-2); text-wrap:balance;
+}
+.spec__v span{ white-space:nowrap; }
 .fact strong{
   display:block;
   font-size:clamp(1.6rem,2.9vw,2.35rem);

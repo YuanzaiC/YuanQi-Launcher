@@ -312,8 +312,6 @@
       el.removeAttribute("hidden");
     });
     $$("[data-version-hide]").forEach(function (el) { el.removeAttribute("hidden"); });
-    var grid = document.querySelector(".facts__grid");
-    if (grid) grid.classList.remove("is-3");
     document.title = TITLE_BASE + " " + ver + TITLE_TAIL;
     var og = document.querySelector('meta[property="og:title"]');
     if (og) og.setAttribute("content", TITLE_BASE + " " + ver);
@@ -321,8 +319,6 @@
 
   function clearVersion() {
     $$("[data-version-hide]").forEach(function (el) { el.setAttribute("hidden", ""); });
-    var grid = document.querySelector(".facts__grid");
-    if (grid) grid.classList.add("is-3");
   }
 
   function readCache() {
