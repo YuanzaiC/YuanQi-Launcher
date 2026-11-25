@@ -51,47 +51,135 @@
     if (topbar) topbar.classList.toggle("is-stuck", y > 12);
     if (toTop) toTop.classList.toggle("is-on", y > 640);
 
-    updateGallery();
     updateSeedMap();
   }
   function requestScroll() {
     if (!scrollQueued) { scrollQueued = true; requestAnimationFrame(onScrollFrame); }
   }
 
-  /* ---------------- 横向画廊 ---------------- */
-  var gallery = $("#gallery");
-  var galleryTrack = $("#galleryTrack");
-  var galleryView = $("#galleryViewport");
-  var galleryBar = $("#galleryBar");
-  var travel = 0;
-  var pinned = false;
 
-  function measureGallery() {
-    if (!gallery || !galleryTrack || !galleryView) return;
-    pinned = window.innerWidth > 900 && !reduced && !isStatic;
-    gallery.classList.toggle("no-pin", !pinned);
-
-    if (!pinned) {
-      gallery.style.height = "";
-      galleryTrack.style.transform = "";
-      if (galleryBar) galleryBar.style.width = "0%";
-      travel = 0;
-      return;
+  /* ---------------- 工具箱：左侧切换 ---------------- */
+  var bench = $(".bench");
+  if (bench) {
+    var benchItems = $$(".bench__item", bench);
+    var benchPanels = $$(".panel", bench);
+    function benchShow(i) {
+      benchItems.forEach(function (b, k) {
+        b.classList.toggle("is-on", k === i);
+        b.setAttribute("aria-selected", k === i ? "true" : "false");
+      });
+      benchPanels.forEach(function (p, k) { p.classList.toggle("is-on", k === i); });
     }
-    travel = Math.max(0, galleryTrack.scrollWidth - galleryView.clientWidth);
-    gallery.style.height = (window.innerHeight + travel) + "px";
-    updateGallery();
+    benchItems.forEach(function (b, k) {
+      b.addEventListener("click", function () { benchShow(k); });
+    });
+  }
+  /* ---------------- 界面画廊：大图 + 缩略图 ---------------- */
+  var gStage = $("#galleryStage");
+  var gThumbs = $("#galleryThumbs");
+  var gCount = $("#galleryCount");
+  var gPrev = $("#galleryPrev");
+  var gNext = $("#galleryNext");
+  var gShots = [], gTabs = [], gIndex = 0;
+
+  function pad2(n) { return (n < 10 ? "0" : "") + n; }
+
+  function gShow(i) {
+    if (!gShots.length) return;
+    gIndex = (i + gShots.length) % gShots.length;
+    gShots.forEach(function (s, k) { s.classList.toggle("is-active", k === gIndex); });
+    gTabs.forEach(function (b, k) {
+      b.classList.toggle("is-active", k === gIndex);
+      b.setAttribute("aria-selected", k === gIndex ? "true" : "false");
+    });
+    if (gCount) gCount.textContent = pad2(gIndex + 1) + " / " + pad2(gShots.length);
   }
 
-  function updateGallery() {
-    if (!pinned || !gallery) return;
-    var total = gallery.offsetHeight - window.innerHeight;
-    if (total <= 0) return;
-    var p = clamp(-gallery.getBoundingClientRect().top / total, 0, 1);
-    galleryTrack.style.transform = "translate3d(" + (-p * travel).toFixed(2) + "px,0,0)";
-    if (galleryBar) galleryBar.style.width = (p * 100).toFixed(2) + "%";
-  }
+  if (gStage) {
+    gShots = $$(".shot", gStage);
+    gTabs = gThumbs ? $$(".thumb", gThumbs) : [];
+    gTabs.forEach(function (b, k) {
+      b.addEventListener("click", function () { gShow(k); });
+    });
+    if (gPrev) gPrev.addEventListener("click", function () { gShow(gIndex - 1); });
+    if (gNext) gNext.addEventListener("click", function () { gShow(gIndex + 1); });
+    gStage.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowRight") { e.preventDefault(); gShow(gIndex + 1); }
+      if (e.key === "ArrowLeft") { e.preventDefault(); gShow(gIndex - 1); }
+    });
+    gShow(0);
 
+    /* 标题居中开场 → 滚动时滑到左侧并浮出截图 */
+    var gPin = $("#galleryPin");
+    var gInner = $(".gallery__inner", gallery);
+    var gH2 = $(".gallery__aside h2", gallery);
+    var gPinOn = false;
+
+    var gPinTarget = 0, gPinCur = 0, gPinRaf = 0;
+
+    function smooth(x) { return x * x * (3 - 2 * x); }
+
+    function applyGalleryVars() {
+      var p = gPinCur;
+      var t = smooth(clamp(p / 0.55, 0, 1));
+      var c = smooth(clamp((p - 0.35) / 0.65, 0, 1));
+      gallery.style.setProperty("--p", p.toFixed(4));
+      gallery.style.setProperty("--t", t.toFixed(4));
+      gallery.style.setProperty("--c", c.toFixed(4));
+    }
+
+    function gPinTick() {
+      var d = gPinTarget - gPinCur;
+      if (Math.abs(d) < 0.0012) {
+        gPinCur = gPinTarget;
+        applyGalleryVars();
+        gPinRaf = 0;
+        return;
+      }
+      gPinCur += d * 0.14;
+      applyGalleryVars();
+      gPinRaf = requestAnimationFrame(gPinTick);
+    }
+
+    function updateGalleryPin() {
+      if (!gPinOn || !gPin) return;
+      var hold = window.innerHeight * 0.30;
+      var len = gPin.offsetHeight - window.innerHeight - hold;
+      if (len <= 0) return;
+      gPinTarget = clamp(-gPin.getBoundingClientRect().top / len, 0, 1);
+      if (!gPinRaf) gPinRaf = requestAnimationFrame(gPinTick);
+    }
+
+    function layoutGalleryPin() {
+      if (!gPin || !gInner || !gH2) return;
+      gPinOn = window.innerWidth > 960 && !reduced && !isStatic;
+      gallery.classList.toggle("is-pin", gPinOn);
+      if (!gPinOn) {
+        gPinCur = 1; gPinTarget = 1;
+        gallery.style.setProperty("--p", "1");
+        gallery.style.setProperty("--t", "1");
+        gallery.style.setProperty("--c", "1");
+        gallery.style.removeProperty("--shift");
+        return;
+      }
+      var prev = gallery.style.getPropertyValue("--p") || "1";
+      gallery.style.setProperty("--p", "1");
+      var ri = gInner.getBoundingClientRect();
+      var rh = gH2.getBoundingClientRect();
+      gallery.style.setProperty("--shift", ((ri.left + ri.width / 2) - (rh.left + rh.width / 2)).toFixed(1) + "px");
+      gallery.style.setProperty("--p", prev);
+      updateGalleryPin();
+    }
+
+    var gPinQueued = false;
+    window.addEventListener("scroll", function () {
+      if (!gPinOn || gPinQueued) return;
+      gPinQueued = true;
+      requestAnimationFrame(function () { gPinQueued = false; updateGalleryPin(); });
+    }, { passive: true });
+    window.addEventListener("resize", layoutGalleryPin);
+    layoutGalleryPin();
+  }
   /* ---------------- 种子地图视差 ---------------- */
   var seedmap = $("#seedmap");
   var seedmapImg = $("#seedmapImg");
@@ -257,29 +345,27 @@
   /* ---------------- 事件绑定 ---------------- */
   window.addEventListener("scroll", requestScroll, { passive: true });
   window.addEventListener("resize", function () {
-    measureGallery();
+
     requestScroll();
   });
 
   if (reduceMQ.addEventListener) {
     reduceMQ.addEventListener("change", function (e) {
       reduced = e.matches;
-      measureGallery();
+
       requestScroll();
     });
   }
 
   /* 字体加载完成后重新量一次画廊宽度 */
   if (document.fonts && document.fonts.ready) {
-    document.fonts.ready.then(measureGallery);
   }
 
   window.addEventListener("load", function () {
-    measureGallery();
+
     requestScroll();
   });
 
-  measureGallery();
   requestScroll();
 })();
 

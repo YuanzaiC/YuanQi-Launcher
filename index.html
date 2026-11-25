@@ -269,120 +269,120 @@
 </section>
 <!-- ============ 02 界面画廊 ============ -->
 <section class="gallery" id="gallery">
-  <div class="gallery__sticky">
-    <div class="gallery__head container">
+  <div class="gallery__pin" id="galleryPin">
+    <div class="gallery__sticky">
+      <div class="container gallery__inner">
+    <div class="gallery__aside">
       <p class="kicker kicker--light reveal"><i>02</i>界面</p>
-      <h2 class="reveal" style="--d:.05s">每个页面，只做一件事</h2>
-      <p class="reveal" style="--d:.1s">
-        启动、下载、联机、种子、设置、工具箱、关于，左边一条导航走完。
-        从别的页面切回来，还停在你上次看到的位置。
-      </p>
-      <p class="gallery__hint reveal" style="--d:.15s">
-        <span class="gallery__hint-desk">向下滚动，本区块横向展开</span>
-        <span class="gallery__hint-mobile">左右滑动切换</span>
-      </p>
+      <h2 class="reveal" style="--d:.05s">每个页面，<br>只做一件事</h2>
+      <p class="reveal" style="--d:.1s">启动、下载、联机、种子、设置、工具箱、关于，左边一条导航走完。从别的页面切回来，还停在你上次看到的位置。</p>
+      <div class="gallery__tools reveal" style="--d:.15s">
+        <span class="gallery__count" id="galleryCount">01 / 10</span>
+        <button class="gallery__btn" id="galleryPrev" type="button" aria-label="上一张截图">&#8592;</button>
+        <button class="gallery__btn" id="galleryNext" type="button" aria-label="下一张截图">&#8594;</button>
+      </div>
     </div>
 
-    <div class="gallery__viewport" id="galleryViewport">
-      <div class="gallery__track" id="galleryTrack">
-        <figure class="shot reveal">
-          <div class="frame"><img src="assets/img/shot-home.jpg" alt="启动页：当前实例、存档、游玩日历、游玩洞察" width="1400" height="889" loading="lazy"></div>
+    <div class="gallery__main">
+      <div class="gallery__stage" id="galleryStage" tabindex="0" aria-label="界面截图">
+        <figure class="shot is-active">
+          <div class="frame"><img src="assets/img/shot-home.jpg" alt="启动页：当前实例、存档、游玩日历、游玩洞察" width="1400" height="889" loading="eager"></div>
           <figcaption><b>01 启动</b><span>实例、存档、日历与洞察，一屏看完</span></figcaption>
         </figure>
-        <figure class="shot reveal" style="--d:.04s">
+        <figure class="shot">
           <div class="frame"><img src="assets/img/shot-download.jpg" alt="下载页：原版游戏与社区资源" width="1400" height="889" loading="lazy"></div>
           <figcaption><b>02 下载</b><span>社区资源搜索：下载量、更新时间与来源站</span></figcaption>
         </figure>
-        <figure class="shot reveal" style="--d:.08s">
+        <figure class="shot">
           <div class="frame"><img src="assets/img/shot-link.jpg" alt="联机页：创建房间与加入房间" width="1400" height="889" loading="lazy"></div>
           <figcaption><b>03 联机</b><span>建房或凭邀请码加入</span></figcaption>
         </figure>
-        <figure class="shot reveal" style="--d:.12s">
+        <figure class="shot">
           <div class="frame"><img src="assets/img/shot-seedmap.jpg" alt="种子地图：主世界地形与结构标记" width="1400" height="889" loading="lazy"></div>
           <figcaption><b>04 种子地图</b><span>本地渲染，地形结构随你筛</span></figcaption>
         </figure>
-        <figure class="shot reveal" style="--d:.16s">
+        <figure class="shot">
           <div class="frame"><img src="assets/img/shot-save.jpg" alt="存档概览：种子、版本、大小、玩家" width="1400" height="889" loading="lazy"></div>
           <figcaption><b>05 存档 · 概览</b><span>种子、版本、大小、玩家与所在目录</span></figcaption>
         </figure>
-        <figure class="shot reveal" style="--d:.2s">
-          <div class="frame"><img src="assets/img/shot-save-world.jpg" alt="版本管理：可安装版本与已归档版本，显示占用与压缩比" width="1400" height="889" loading="lazy"></div>
+        <figure class="shot">
+          <div class="frame"><img src="assets/img/shot-save-world.jpg" alt="版本管理：可安装版本与已归档版本" width="1400" height="889" loading="lazy"></div>
           <figcaption><b>06 版本管理</b><span>可安装与已归档分开列，占用一目了然</span></figcaption>
         </figure>
-        <figure class="shot reveal" style="--d:.24s">
+        <figure class="shot">
           <div class="frame"><img src="assets/img/shot-colortext.jpg" alt="彩色文字生成器：渐变、颜色、实时预览" width="1400" height="889" loading="lazy"></div>
           <figcaption><b>07 彩色文字</b><span>边调边看，直接复制</span></figcaption>
         </figure>
-        <figure class="shot reveal" style="--d:.32s">
-          <div class="frame"><img src="assets/img/shot-ore.jpg" alt="矿石分布：按 Y 层给出挖掘建议与该层命中的生成规则" width="1400" height="889" loading="lazy"></div>
-          <figcaption><b>09 矿石分布</b><span>按 Y 层看矿，挖之前先算</span></figcaption>
-        </figure>
-        <figure class="shot reveal" style="--d:.36s">
-          <div class="frame"><img src="assets/img/shot-stats.jpg" alt="游戏统计：总时长、每日曲线、实例排行与时段分布" width="1400" height="889" loading="lazy"></div>
-          <figcaption><b>10 游戏统计</b><span>这个月玩了多久，一目了然</span></figcaption>
-        </figure>        <figure class="shot reveal" style="--d:.28s">
+        <figure class="shot">
           <div class="frame"><img src="assets/img/shot-command.jpg" alt="指令查询：组件候选与示例" width="1400" height="889" loading="lazy"></div>
           <figcaption><b>08 指令查询</b><span>候选列在下面，点一下就填</span></figcaption>
         </figure>
+        <figure class="shot">
+          <div class="frame"><img src="assets/img/shot-ore.jpg" alt="矿石分布：按 Y 层给出挖掘建议" width="1400" height="889" loading="lazy"></div>
+          <figcaption><b>09 矿石分布</b><span>按 Y 层看矿，挖之前先算</span></figcaption>
+        </figure>
+        <figure class="shot">
+          <div class="frame"><img src="assets/img/shot-stats.jpg" alt="游戏统计：总时长、每日曲线与时段分布" width="1400" height="889" loading="lazy"></div>
+          <figcaption><b>10 游戏统计</b><span>这个月玩了多久，一目了然</span></figcaption>
+        </figure>
+      </div>
+      <div class="gallery__thumbs" id="galleryThumbs" role="tablist" aria-label="切换截图">
+        <button class="thumb is-active" type="button" role="tab" aria-label="01 启动"><img src="assets/img/shot-home.jpg" alt="" loading="lazy"><span>01</span></button>
+        <button class="thumb" type="button" role="tab" aria-label="02 下载"><img src="assets/img/shot-download.jpg" alt="" loading="lazy"><span>02</span></button>
+        <button class="thumb" type="button" role="tab" aria-label="03 联机"><img src="assets/img/shot-link.jpg" alt="" loading="lazy"><span>03</span></button>
+        <button class="thumb" type="button" role="tab" aria-label="04 种子地图"><img src="assets/img/shot-seedmap.jpg" alt="" loading="lazy"><span>04</span></button>
+        <button class="thumb" type="button" role="tab" aria-label="05 存档 · 概览"><img src="assets/img/shot-save.jpg" alt="" loading="lazy"><span>05</span></button>
+        <button class="thumb" type="button" role="tab" aria-label="06 版本管理"><img src="assets/img/shot-save-world.jpg" alt="" loading="lazy"><span>06</span></button>
+        <button class="thumb" type="button" role="tab" aria-label="07 彩色文字"><img src="assets/img/shot-colortext.jpg" alt="" loading="lazy"><span>07</span></button>
+        <button class="thumb" type="button" role="tab" aria-label="08 指令查询"><img src="assets/img/shot-command.jpg" alt="" loading="lazy"><span>08</span></button>
+        <button class="thumb" type="button" role="tab" aria-label="09 矿石分布"><img src="assets/img/shot-ore.jpg" alt="" loading="lazy"><span>09</span></button>
+        <button class="thumb" type="button" role="tab" aria-label="10 游戏统计"><img src="assets/img/shot-stats.jpg" alt="" loading="lazy"><span>10</span></button>
       </div>
     </div>
-    <div class="gallery__bar" aria-hidden="true"><span id="galleryBar"></span></div>
+  </div>
+    </div>
   </div>
 </section>
 
 <!-- ============ 03 联机 ============ -->
-<section class="section" id="link">
-  <div class="container link__grid">
-    <div class="link__copy">
+<section class="section link" id="link">
+  <div class="container">
+    <div class="link__intro">
       <p class="kicker reveal"><i>03</i>联机</p>
-      <h2 class="reveal" style="--d:.05s">和朋友一起玩，<br class="br-desk">一个邀请码的事</h2>
-      <p class="reveal" style="--d:.1s">
-        房主点「创建房间」，把邀请码发给你；你粘贴、回车，就进去了。
-        不用公网 IP，也不用去路由器上开端口。
-      </p>
-      <ul class="ticks reveal" style="--d:.15s">
-        <li>跨网络走内置中转，两边都不用改网络设置；想只走直连也可以。</li>
-        <li>两边的联机模块会自动对齐版本，不会卡在「正在建立连接」。</li>
-        <li>连接分四段显示：卡在哪一步、为什么失败都写出来，失败可以原地重试。</li>
-        <li>房间里谁进来了、连了多久都看得到，网络差时会提示可能走了中继。</li>
-      </ul>
-      <p class="byline reveal" style="--d:.2s">联机由陶瓦联机（Terracotta）提供，随启动器一起装好，不用另外下载。</p>
+      <h2 class="reveal" style="--d:.05s">房间开在你自己的电脑上</h2>
+      <p class="link__lede reveal" style="--d:.1s">不用公网 IP，也不用去路由器上开端口。房主建好房间拿到邀请码，朋友粘贴回车就进来了。</p>
     </div>
 
-    <div class="link__card reveal" style="--d:.12s">
-      <div class="room room--make">
-        <div class="room__head">
-          <span class="room__icon">
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="3.6" y="3.6" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><rect x="8.4" y="8.4" width="12" height="12" rx="2" fill="currentColor" opacity=".22"/><rect x="8.4" y="8.4" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>
-          </span>
-          <div><b>创建房间</b><small>我是房主</small></div>
-          <span class="room__arrow">›</span>
-        </div>
+    <div class="wire reveal" style="--d:.15s">
+      <div class="wire__node">
+        <span class="wire__tag">房主 · 你的电脑</span>
+        <b class="wire__name">张三的小屋</b>
+        <span class="wire__meta">2 / 8 人 · 32 ms</span>
       </div>
 
-      <div class="room room--join">
-        <div class="room__head">
-          <span class="room__icon">
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M14 4.6h4.4A1.6 1.6 0 0 1 20 6.2v11.6a1.6 1.6 0 0 1-1.6 1.6H14M10.5 8.2 14.8 12l-4.3 3.8M14.4 12H4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </span>
-          <div><b>加入房间</b><small>我是访客</small></div>
-        </div>
-        <div class="room__field">
-          <span>粘贴邀请码，回车即加入</span>
-          <b>加入</b>
-        </div>
+      <div class="wire__path">
+        <span class="wire__cap">UDP 直连</span>
+        <span class="wire__rail" aria-hidden="true"></span>
+        <span class="wire__code"><i>邀请码</i>YQ-8F2K-9QX</span>
+        <span class="wire__cap wire__cap--low">打不通自动走中转</span>
       </div>
 
-      <ol class="steps" aria-label="连接四段">
-        <li class="done">准备</li>
-        <li class="done">模块</li>
-        <li class="now">房间</li>
-        <li>就绪</li>
-      </ol>
+      <div class="wire__node wire__node--guest">
+        <span class="wire__tag">访客 · 朋友的电脑</span>
+        <b class="wire__name">粘贴邀请码</b>
+        <span class="wire__meta">回车即进入</span>
+      </div>
     </div>
+
+    <ul class="link__facts reveal" style="--d:.2s">
+      <li><b>直连优先</b>两边网络允许就走直连，不行才经中转，延迟写在房间里。</li>
+      <li><b>账号不限</b>正版、离线、第三方登录都能进同一个房间。</li>
+      <li><b>卡住能查</b>准备、模块、房间、就绪四段分别显示，失败会说清停在哪，可原地重试。</li>
+    </ul>
+
+    <p class="link__byline reveal" style="--d:.24s">联机由陶瓦联机（Terracotta）提供，随启动器一起装好，不用另外下载。</p>
   </div>
 </section>
-
 <!-- ============ 04 种子地图 ============ -->
 <section class="seedmap" id="seedmap">
   <div class="seedmap__media" aria-hidden="true">
@@ -403,55 +403,191 @@
 </section>
 
 <!-- ============ 05 工具箱 ============ -->
-<section class="section" id="tools">
+<section class="section toolbox" id="tools">
   <div class="container">
-    <header class="section__head">
+    <div class="tools__head">
       <p class="kicker reveal"><i>05</i>工具箱</p>
-      <h2 class="reveal" style="--d:.05s">几个小工具，<br class="br-desk">顺手就能用</h2>
-      <p class="section__sub reveal" style="--d:.1s">彩色文字、矿石分布、游戏统计、指令查询，都在启动器里，不用另开网页。全部在本地算，不上传任何内容。</p>
-    </header>
+      <h2 class="reveal" style="--d:.05s">五个小工具，<br class="br-desk">都在启动器里</h2>
+      <p class="tools__sub reveal" style="--d:.1s">彩色文字、矿石分布、游戏统计、指令查询、直链下载。全部在本地算，不上传任何内容。</p>
+    </div>
 
-    <div class="tools">
-      <article class="tool reveal">
-        <span class="tool__no">01</span>
-        <h3>彩色文字</h3>
-        <p>打一句话，逐字渐变自己就出来了，右边能直接看到聊天栏和 MotD 的效果。复制走就能贴进游戏或服务器配置。</p>
-        <div class="tool__demo tool__demo--text" aria-hidden="true"><span class="grad-text"><span style="color:#e0508a">缘</span><span style="color:#c25ba8">启</span><span style="color:#a05ac2">L</span><span style="color:#7f5ed5">a</span><span style="color:#5f7ce0">u</span><span style="color:#4f97df">n</span><span style="color:#3fae9e">c</span><span style="color:#3fb98a">h</span><span style="color:#8fc22f">e</span><span style="color:#c9a227">r</span></span></div>
-      </article>
+    <div class="bench reveal" style="--d:.14s">
+      <div class="bench__list" role="tablist" aria-label="工具箱">
+        <button class="bench__item is-on" type="button" role="tab" aria-selected="true">
+          <span class="bench__no">01</span><span class="bench__body"><b>彩色文字</b><em>逐字渐变，边调边看</em></span>
+        </button>
+        <button class="bench__item" type="button" role="tab" aria-selected="false">
+          <span class="bench__no">02</span><span class="bench__body"><b>矿石分布</b><em>拖 Y 层，看这一层出什么</em></span>
+        </button>
+        <button class="bench__item" type="button" role="tab" aria-selected="false">
+          <span class="bench__no">03</span><span class="bench__body"><b>游戏统计</b><em>玩了多久，哪几天最凶</em></span>
+        </button>
+        <button class="bench__item" type="button" role="tab" aria-selected="false">
+          <span class="bench__no">04</span><span class="bench__body"><b>指令查询</b><em>候选跟着版本走，点一下就复制</em></span>
+        </button>
+        <button class="bench__item" type="button" role="tab" aria-selected="false">
+          <span class="bench__no">05</span><span class="bench__body"><b>直链下载</b><em>粘贴地址，文件下到本地</em></span>
+        </button>
+      </div>
 
-      <article class="tool reveal" style="--d:.06s">
-        <span class="tool__no">02</span>
-        <h3>矿石分布</h3>
-        <p>想知道钻石在哪个高度最好挖？拖动 Y 层，这一层会出什么矿、概率多高，一眼就能看明白。</p>
-        <div class="tool__demo tool__demo--ore" aria-hidden="true">
-          <div class="ore-bar"><i style="--h:84%"></i><i style="--h:52%"></i><i style="--h:96%"></i><i style="--h:38%"></i><i style="--h:64%"></i><i style="--h:22%"></i></div>
-          <small>Y -64 → 319</small>
+      <div class="bench__stage">
+
+        <div class="panel is-on" role="tabpanel">
+          <div class="panel__demo">
+            <div class="app">
+              <div class="app__bar"><span class="app__logo"></span><b>缘启</b><em>彩色文字</em><span class="app__ctl"><i></i><i></i><i></i></span></div>
+              <div class="app__body">
+                <div class="app__rail"><span class="app__ico is-on"></span><span class="app__ico"></span><span class="app__ico"></span><span class="app__ico"></span><span class="app__ico"></span><span class="app__ico"></span></div>
+                <div class="app__view ct">
+                  <div class="ct__col">
+                    <div class="app__label">文字输入<span>实际字符 0 / 256 · 含格式码 0</span></div>
+                    <div class="ct__box">输入文字，或点击「插入示例」快速体验</div>
+                    <div class="ct__tools"><b>B</b><i>I</i><i>U</i><i>S</i><span class="app__gap"></span><em>撤销</em><em>重做</em><em>重置样式</em><em>清空</em></div>
+                  </div>
+                  <div class="ct__col">
+                    <div class="app__label">预览<span>复制输出</span></div>
+                    <div class="ct__prev"><span class="grad-big">缘启 Launcher</span></div>
+                    <div class="chatline"><span class="chatline__tag">聊天栏</span><span class="grad-small">缘启 Launcher</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="panel__copy">
+            <h3>彩色文字</h3>
+            <p>打一句话，逐字渐变自己就出来了。聊天栏与 MotD 的效果同时给出来，复制走就能贴进游戏或服务器配置。</p>
+          </div>
         </div>
-      </article>
 
-      <article class="tool reveal" style="--d:.12s">
-        <span class="tool__no">03</span>
-        <h3>游戏统计</h3>
-        <p>这个月玩了多少小时、哪几天玩得最凶、哪个版本花的时间最多，都给你算好了，最长能看四个月。</p>
-        <div class="tool__demo tool__demo--stats" aria-hidden="true">
-          <svg viewBox="0 0 120 46" preserveAspectRatio="none"><path d="M2 38 14 30 26 33 38 22 50 26 62 14 74 19 86 10 98 15 110 6 118 9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 38 14 30 26 33 38 22 50 26 62 14 74 19 86 10 98 15 110 6 118 9V46H2z" fill="currentColor" opacity=".12"/></svg>
+        <div class="panel" role="tabpanel">
+          <div class="panel__demo">
+            <div class="app">
+              <div class="app__bar"><span class="app__logo"></span><b>缘启</b><em>矿石分布</em><span class="app__ctl"><i></i><i></i><i></i></span></div>
+              <div class="app__body">
+                <div class="app__rail"><span class="app__ico"></span><span class="app__ico is-on"></span><span class="app__ico"></span><span class="app__ico"></span><span class="app__ico"></span><span class="app__ico"></span></div>
+                <div class="app__view og">
+                  <div class="og__chips"><span class="is-on">主世界 · Y -64~319</span><span>下界 · Y 0~127</span><span class="app__gap"></span><span>钻石</span></div>
+                  <div class="og__body">
+                    <div class="og__kv">
+                      <div><em>当前目标</em><b>钻石</b></div>
+                      <div><em>实用开采层</em><b>Y -59</b></div>
+                      <div><em>生成范围</em><b>Y -64 ~ 16</b></div>
+                      <div><em>规则峰值</em><b>Y -59</b></div>
+                      <div><em>最大矿脉</em><b>8 个</b></div>
+                      <div><em>空气丢弃率</em><b>0%</b></div>
+                    </div>
+                    <div class="og__chart">
+                      <div class="og__bars">
+                        <i style="--h:8%"></i><i style="--h:14%"></i><i style="--h:22%"></i><i style="--h:38%"></i><i style="--h:56%"></i><i style="--h:74%"></i><i style="--h:92%"></i><i style="--h:100%"></i><i style="--h:88%"></i><i style="--h:66%"></i><i style="--h:44%"></i><i style="--h:28%"></i><i style="--h:16%"></i><i style="--h:9%"></i>
+                      </div>
+                      <div class="og__axis"><span>319</span><span>128</span><span>0</span><span>-64</span></div>
+                      <div class="og__slider"><i></i></div>
+                      <div class="og__hint">当前 Y -59 · 这一层钻石概率最高</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="panel__copy">
+            <h3>矿石分布</h3>
+            <p>想知道钻石在哪个高度最好挖？拖动 Y 层，这一层会出什么矿、概率多高，按版本算好的结果直接列出来。</p>
+          </div>
         </div>
-      </article>
 
-      <article class="tool reveal" style="--d:.18s">
-        <span class="tool__no">04</span>
-        <h3>指令查询</h3>
-        <p>记不住指令写法？按分类翻，候选项跟着你当前玩的版本走，常用指令带例子，点一下就能复制。</p>
-        <div class="tool__demo tool__demo--cmd" aria-hidden="true">
-          <span class="cmd-line">/give @s minecraft:bow<b>[</b></span>
-          <span class="cmd-pick">附魔<em>选完可继续选择等级</em></span>
-          <span class="cmd-pick">自定义名称<em>支持 JSON 文本</em></span>
+        <div class="panel" role="tabpanel">
+          <div class="panel__demo">
+            <div class="app">
+              <div class="app__bar"><span class="app__logo"></span><b>缘启</b><em>游戏统计</em><span class="app__ctl"><i></i><i></i><i></i></span></div>
+              <div class="app__body">
+                <div class="app__rail"><span class="app__ico"></span><span class="app__ico"></span><span class="app__ico is-on"></span><span class="app__ico"></span><span class="app__ico"></span><span class="app__ico"></span></div>
+                <div class="app__view gs">
+                  <div class="gs__range"><span>近 1 天</span><span class="is-on">近 1 周</span><span>近 1 月</span><span>自定义</span></div>
+                  <div class="gs__nums">
+                    <div><em>总游玩时长</em><b>18.5 小时</b></div>
+                    <div><em>游玩天数</em><b>12 天</b></div>
+                    <div><em>日均时长</em><b>1.5 小时</b></div>
+                    <div><em>单日最长</em><b>3.2 小时</b></div>
+                  </div>
+                  <div class="gs__chart">
+                    <svg viewBox="0 0 320 92" preserveAspectRatio="none" aria-hidden="true">
+                      <path d="M4 76 32 62 60 68 88 44 116 52 144 28 172 38 200 18 228 26 256 12 284 20 312 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                      <path d="M4 76 32 62 60 68 88 44 116 52 144 28 172 38 200 18 228 26 256 12 284 20 312 6V92H4z" fill="currentColor" opacity=".1"/>
+                    </svg>
+                    <div class="gs__axis"><span>第 1 周</span><span>第 2 周</span><span>第 3 周</span><span>第 4 周</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="panel__copy">
+            <h3>游戏统计</h3>
+            <p>这个月玩了多少小时、哪几天玩得最凶、哪个版本占的时间最多，都算好了，最长能看四个月。</p>
+          </div>
         </div>
-      </article>
+
+        <div class="panel" role="tabpanel">
+          <div class="panel__demo">
+            <div class="app">
+              <div class="app__bar"><span class="app__logo"></span><b>缘启</b><em>指令查询</em><span class="app__ctl"><i></i><i></i><i></i></span></div>
+              <div class="app__body">
+                <div class="app__rail"><span class="app__ico"></span><span class="app__ico"></span><span class="app__ico"></span><span class="app__ico is-on"></span><span class="app__ico"></span><span class="app__ico"></span></div>
+                <div class="app__view cq">
+                  <div class="cq__input"><b>/</b><span>搜索指令、功能或参数，例如 give / 传送 / 实体</span></div>
+                  <div class="cq__cols">
+                    <div class="cq__list">
+                      <div class="cq__row is-on"><b>/give</b><em>给予玩家物品</em></div>
+                      <div class="cq__row"><b>/tp</b><em>传送实体</em></div>
+                      <div class="cq__row"><b>/summon</b><em>生成实体</em></div>
+                      <div class="cq__row"><b>/effect</b><em>给予状态效果</em></div>
+                    </div>
+                    <div class="cq__detail">
+                      <div class="cq__title">/give &lt;目标&gt; &lt;物品&gt; [数量]</div>
+                      <div class="cq__params"><span class="is-on">@s</span><span>minecraft:bow</span><span>1</span></div>
+                      <div class="cq__note">候选项跟着你当前玩的版本走，点一下填进去。</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="panel__copy">
+            <h3>指令查询</h3>
+            <p>记不住写法就按分类翻。候选项跟着你当前玩的版本走，常用指令带例子，点一下直接复制。</p>
+          </div>
+        </div>
+
+        <div class="panel" role="tabpanel">
+          <div class="panel__demo">
+            <div class="app">
+              <div class="app__bar"><span class="app__logo"></span><b>缘启</b><em>直链下载</em><span class="app__ctl"><i></i><i></i><i></i></span></div>
+              <div class="app__body">
+                <div class="app__rail"><span class="app__ico"></span><span class="app__ico"></span><span class="app__ico"></span><span class="app__ico"></span><span class="app__ico is-on"></span><span class="app__ico"></span></div>
+                <div class="app__view dl">
+                  <div class="dl__field">
+                    <em>下载地址</em>
+                    <div class="dl__in"><span>粘贴以 http:// 或 https:// 开头的直链</span></div>
+                  </div>
+                  <div class="dl__two">
+                    <div class="dl__field"><em>文件名</em><div class="dl__in"><span>留空则按地址自动取名</span></div></div>
+                    <div class="dl__field"><em>保存目录</em><div class="dl__in"><span>D:\Downloads\YuanQi</span><b>选择</b></div></div>
+                  </div>
+                  <div class="dl__field"><em>下载方式</em><div class="dl__in"><span>多线程（默认）</span><b>切换</b></div></div>
+                  <div class="dl__actions"><b>开始下载</b><span>打开目录</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="panel__copy">
+            <h3>直链下载</h3>
+            <p>浏览器里点下载老是跳网盘页面？把直链粘进来，文件名、目录自己定，下载会进任务列表，进度在右下角。</p>
+          </div>
+        </div>
+
+      </div>
     </div>
   </div>
 </section>
-
 <!-- ============ 06 个性化 ============ -->
 <section class="section section--tint" id="look">
   <div class="container">
@@ -464,84 +600,110 @@
           透明度和模糊也能调。
         </p>
         <p class="reveal" style="--d:.15s">界面能放大缩小，高分屏也不糊；用不到的页面可以藏起来，眼不见心不烦。设置还能导出带走。</p>
+      </div>
 
-        <div class="swatches reveal" style="--d:.2s">
-          <p class="swatches__label">点一下，这页的主题色立刻跟着变</p>
-          <div class="swatches__row" id="swatches" role="group" aria-label="主题色">
-            <button type="button" data-theme="grass"  style="--c:#3d8a2d" aria-label="青草" aria-pressed="true"><span>青草</span></button>
-            <button type="button" data-theme="bamboo" style="--c:#4b8f5a" aria-label="竹青" aria-pressed="false"><span>竹青</span></button>
-            <button type="button" data-theme="mint"   style="--c:#33a68a" aria-label="薄荷" aria-pressed="false"><span>薄荷</span></button>
-            <button type="button" data-theme="deep"   style="--c:#2f6f8f" aria-label="深海" aria-pressed="false"><span>深海</span></button>
-            <button type="button" data-theme="purple" style="--c:#6a5ac0" aria-label="夜紫" aria-pressed="false"><span>夜紫</span></button>
-            <button type="button" data-theme="rose"   style="--c:#c04a86" aria-label="玫红" aria-pressed="false"><span>玫红</span></button>
-            <button type="button" data-theme="sakura" style="--c:#d0699a" aria-label="樱粉" aria-pressed="false"><span>樱粉</span></button>
-            <button type="button" data-theme="vermil" style="--c:#c0452f" aria-label="朱砂" aria-pressed="false"><span>朱砂</span></button>
-            <button type="button" data-theme="dusk"   style="--c:#d2693c" aria-label="晚霞" aria-pressed="false"><span>晚霞</span></button>
-            <button type="button" data-theme="caramel" style="--c:#9a6b3f" aria-label="焦糖" aria-pressed="false"><span>焦糖</span></button>
-            <button type="button" data-theme="amber"  style="--c:#c1902c" aria-label="琥珀" aria-pressed="false"><span>琥珀</span></button>
-            <button type="button" data-theme="gold"   style="--c:#b8912f" aria-label="鎏金" aria-pressed="false"><span>鎏金</span></button>
-            <button type="button" data-theme="wheat"  style="--c:#a08a4a" aria-label="麦穗" aria-pressed="false"><span>麦穗</span></button>
-            <button type="button" data-theme="ink"    style="--c:#5d6a70" aria-label="水墨" aria-pressed="false"><span>水墨</span></button>
+      <div class="look__mock reveal" style="--d:.12s">
+        <div class="app app--home">
+          <div class="app__bar"><span class="app__logo"></span><b>缘启</b><em>启动</em><span class="app__ctl"><i></i><i></i><i></i></span></div>
+          <div class="app__body">
+            <div class="app__rail"><span class="app__ico is-on"></span><span class="app__ico"></span><span class="app__ico"></span><span class="app__ico"></span><span class="app__ico"></span><span class="app__ico"></span></div>
+            <div class="app__view">
+              <div class="hm__hello">这是你第 43 次启动了哦<em>11 月 25 日 · 周二</em></div>
+              <div class="hm__card">
+                <div class="hm__tags"><span>1.20.1</span><span>Fabric 0.18.1</span><span>Java 自动</span><span>内存 9.8 / 31.2 GB</span></div>
+                <b class="hm__name">1.20.1-Fabric 0.18.1</b>
+                <div class="hm__row">
+                  <span class="hm__play">▶ 启动游戏</span>
+                  <span class="hm__mini">版本选择</span><span class="hm__mini">版本设置</span><span class="hm__mini">打开目录</span>
+                </div>
+              </div>
+              <div class="hm__two">
+                <div class="hm__panel">
+                  <h4>存档<em>2 个</em></h4>
+                  <div class="hm__save">Questioning<em>1.20.1 · 生存</em></div>
+                  <div class="hm__save">Perfection<em>1.20.1 · 生存</em></div>
+                </div>
+                <div class="hm__panel">
+                  <h4>游玩日历<em>11 月</em></h4>
+                  <div class="hm__cal"><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i class="now"></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
+    </div>
 
-      <aside class="sleep reveal" style="--d:.1s">
-        <div class="sleep__media">
-          <img src="assets/img/immersive.jpg" alt="休眠观赏页：全屏全景、左下角时间与版本号" width="1400" height="875" loading="lazy">
-          <span class="sleep__esc">ESC 或点击任意处返回</span>
-        </div>
-        <div class="sleep__body">
-          <h3>挂机时，变成一张风景画</h3>
-          <p>
-            不玩的时候点右上角，启动器会切成无边框全屏，画面取自你游戏里的全景图，左下角只剩时间和当前版本。
-            没有按钮，点一下或按 ESC 就回来；挂着也不怎么吃资源。
-          </p>
-        </div>
-      </aside>
+    <div class="swatches reveal" style="--d:.18s">
+      <p class="swatches__label">点一下，上面这个窗口和整页的配色一起换</p>
+      <div class="swatches__row" id="swatches" role="group" aria-label="主题色">
+        <button type="button" data-theme="grass"  style="--c:#3d8a2d" aria-label="青草" aria-pressed="true"><span>青草</span></button>
+        <button type="button" data-theme="bamboo" style="--c:#4b8f5a" aria-label="竹青" aria-pressed="false"><span>竹青</span></button>
+        <button type="button" data-theme="mint"   style="--c:#33a68a" aria-label="薄荷" aria-pressed="false"><span>薄荷</span></button>
+        <button type="button" data-theme="deep"   style="--c:#2f6f8f" aria-label="深海" aria-pressed="false"><span>深海</span></button>
+        <button type="button" data-theme="purple" style="--c:#6a5ac0" aria-label="夜紫" aria-pressed="false"><span>夜紫</span></button>
+        <button type="button" data-theme="rose"   style="--c:#c04a86" aria-label="玫红" aria-pressed="false"><span>玫红</span></button>
+        <button type="button" data-theme="sakura" style="--c:#d0699a" aria-label="樱粉" aria-pressed="false"><span>樱粉</span></button>
+        <button type="button" data-theme="vermil" style="--c:#c0452f" aria-label="朱砂" aria-pressed="false"><span>朱砂</span></button>
+        <button type="button" data-theme="dusk"   style="--c:#d2693c" aria-label="晚霞" aria-pressed="false"><span>晚霞</span></button>
+        <button type="button" data-theme="caramel" style="--c:#9a6b3f" aria-label="焦糖" aria-pressed="false"><span>焦糖</span></button>
+        <button type="button" data-theme="amber"  style="--c:#c1902c" aria-label="琥珀" aria-pressed="false"><span>琥珀</span></button>
+        <button type="button" data-theme="gold"   style="--c:#b8912f" aria-label="鎏金" aria-pressed="false"><span>鎏金</span></button>
+        <button type="button" data-theme="wheat"  style="--c:#a08a4a" aria-label="麦穗" aria-pressed="false"><span>麦穗</span></button>
+        <button type="button" data-theme="ink"    style="--c:#5d6a70" aria-label="水墨" aria-pressed="false"><span>水墨</span></button>
+      </div>
+    </div>
+
+    <div class="rest reveal" style="--d:.1s">
+      <div class="rest__media">
+        <img src="assets/img/immersive.jpg" alt="休眠观赏页：全屏全景、左下角时间与版本号" width="1400" height="875" loading="lazy">
+        <span class="rest__esc">ESC 或点击任意处返回</span>
+      </div>
+      <div class="rest__body">
+        <h3>挂机时，变成一张风景画</h3>
+        <p>不玩的时候点右上角，启动器会切成无边框全屏，画面取自你游戏里的全景图，左下角只剩时间和当前版本。没有按钮，点一下或按 ESC 就回来；挂着也不怎么吃资源。</p>
+      </div>
     </div>
   </div>
 </section>
-
 <!-- ============ 07 下载与安装 ============ -->
 <section class="section" id="install">
   <div class="container">
     <header class="section__head section__head--center">
-      <p class="kicker reveal"><i>07</i>下载</p>
-      <h2 class="reveal" style="--d:.05s">下载、装好、开玩</h2>
-      <p class="section__sub reveal" style="--d:.1s">安装包放在 GitHub Releases，下最新的那个就行。</p>
+      <p class="kicker reveal"><i>07</i>安装</p>
+      <h2 class="reveal" style="--d:.05s">安装与首次启动</h2>
+      <p class="section__sub reveal" style="--d:.1s">安装包发布于 GitHub Releases，取最新版本即可。</p>
     </header>
 
     <ol class="install">
       <li class="install__step reveal">
         <span class="install__no">1</span>
-        <h3>拿到安装包</h3>
-        <p>点下面的按钮，下载 <code data-version="YuanQi-Setup-{ver}.exe">YuanQi-Setup.exe</code>。双击就能装，不用先装别的东西。</p>
+        <h3>获取安装包</h3>
+        <p>下载 <code data-version="YuanQi-Setup-{ver}.exe">YuanQi-Setup.exe</code> 并运行。安装过程不依赖其他运行时，无需预先配置环境。</p>
       </li>
       <li class="install__step reveal" style="--d:.07s">
         <span class="install__no">2</span>
-        <h3>挑个位置装</h3>
-        <p>程序、资源和联机模块装在一起；你的设置和存档放在同一个文件夹里，不会散到系统各处，以后想删干净也很简单。</p>
+        <h3>选择安装位置</h3>
+        <p>程序文件、资源文件与联机模块安装在同一目录；配置与游戏数据同样保存在该目录下，不写入系统其他位置，便于日后完整移除。</p>
       </li>
       <li class="install__step reveal" style="--d:.14s">
         <span class="install__no">3</span>
-        <h3>打开就能玩</h3>
-        <p>第一次打开会带你选版本和内存，选完点启动。电脑里已经有 <code>.minecraft</code> 的话，直接指过去就能接着用，不用重新下载游戏。</p>
+        <h3>首次启动</h3>
+        <p>首次启动需指定游戏版本与分配内存，确认后即可启动。若本机已有 <code>.minecraft</code> 目录，可在引导中直接指向该目录，其中版本、存档与资源会被识别，无需重新下载游戏文件。</p>
       </li>
     </ol>
 
     <div class="install__cta reveal" style="--d:.1s">
       <a class="btn btn--primary btn--lg" href="https://github.com/YuanzaiC/YuanQi-Launcher/releases/latest" target="_blank" rel="noopener">
-        <span data-version="下载 {ver}">下载最新版</span>
+        <span data-version="下载 {ver}">下载最新版本</span>
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4.5 11.5 11.5 4.5M6 4.5h5.5V10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </a>
-      <a class="btn btn--quiet btn--lg" href="https://github.com/YuanzaiC/YuanQi-Launcher" target="_blank" rel="noopener">看看源码</a>
+      <a class="btn btn--quiet btn--lg" href="https://github.com/YuanzaiC/YuanQi-Launcher" target="_blank" rel="noopener">查看源代码</a>
     </div>
-    <p class="install__note reveal" style="--d:.14s">需要 Windows 10 及以上。安装时要一次管理员权限，装完之后平时都以普通权限运行。</p>
-    <p class="install__note reveal" style="--d:.16s">以后升级还是用同一个安装包，只换程序文件，你的设置和游戏都留着。卸载时会问你要不要连存档一起删。</p>
+    <p class="install__note reveal" style="--d:.14s">系统要求：Windows 10 及以上。安装过程需要一次管理员权限，此后以普通权限运行。</p>
+    <p class="install__note reveal" style="--d:.16s">后续升级使用同一安装包，仅替换程序文件，配置与游戏数据保留。卸载时可选择是否同时删除存档。</p>
   </div>
 </section>
-
 <!-- ============ FAQ ============ -->
 <section class="section section--faq" id="faq">
   <div class="container faq">
