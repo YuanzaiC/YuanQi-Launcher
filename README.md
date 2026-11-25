@@ -16,7 +16,7 @@
 
 </div>
 
-<img src="docs/images/home.png" alt="缘启主页">
+<img src="docs/images/home.png?v=2" alt="缘启主页">
 
 <p align="center"><sub>主页 · 当前实例、存档、最近游玩、游玩日历、游玩洞察与账户一屏掌握</sub></p>
 
@@ -50,21 +50,21 @@ Windows 10 及以上。Releases 里只有一个文件 `YuanQi-Setup-<版本号>.
 
 <table>
 <tr>
-<td width="50%"><img src="docs/images/link.png" alt="联机"></td>
-<td width="50%"><img src="docs/images/save-world.png" alt="版本管理"></td>
+<td width="50%"><img src="docs/images/link.png?v=2" alt="联机"></td>
+<td width="50%"><img src="docs/images/save-world.png?v=2" alt="版本管理"></td>
 </tr>
 <tr>
 <td align="center"><sub>联机 · 一键建房，或粘贴邀请码加入</sub></td>
 <td align="center"><sub>版本管理 · 可安装与已归档分开列，占用与压缩比一眼看到</sub></td>
 </tr>
 <tr>
-<td colspan="2"><img src="docs/images/seed-map.png" alt="种子地图"></td>
+<td colspan="2"><img src="docs/images/seed-map.png?v=2" alt="种子地图"></td>
 </tr>
 <tr>
 <td colspan="2" align="center"><sub>种子地图 · 主世界地形与远古城市、废弃传送门等结构，带坐标轴与生物群系筛选</sub></td>
 </tr>
 <tr>
-<td colspan="2"><img src="docs/images/immersive.jpg" alt="全屏待机赏景"></td>
+<td colspan="2"><img src="docs/images/immersive.jpg?v=2" alt="全屏待机赏景"></td>
 </tr>
 <tr>
 <td colspan="2" align="center"><sub>全屏待机赏景 · 游戏全景配时间、日期与当前版本，点一下或按 ESC 返回</sub></td>
@@ -76,24 +76,24 @@ Windows 10 及以上。Releases 里只有一个文件 `YuanQi-Setup-<版本号>.
 
 <table>
 <tr>
-<td width="50%"><img src="docs/images/download.png" alt="下载"></td>
-<td width="50%"><img src="docs/images/save-overview.png" alt="存档概览"></td>
+<td width="50%"><img src="docs/images/download.png?v=2" alt="下载"></td>
+<td width="50%"><img src="docs/images/save-overview.png?v=2" alt="存档概览"></td>
 </tr>
 <tr>
 <td align="center"><sub>下载 · 社区资源搜索：来源与类型筛选、下载量与更新时间、来源站一目了然</sub></td>
 <td align="center"><sub>存档 · 概览（种子、版本、大小、玩家、维度与所在目录）</sub></td>
 </tr>
 <tr>
-<td><img src="docs/images/tool-color-text.png" alt="彩色文字"></td>
-<td><img src="docs/images/tool-command.png" alt="指令查询"></td>
+<td><img src="docs/images/tool-color-text.png?v=2" alt="彩色文字"></td>
+<td><img src="docs/images/tool-command.png?v=2" alt="指令查询"></td>
 </tr>
 <tr>
 <td align="center"><sub>工具 · 彩色文字：样式、颜色与渐变，右侧实时预览，输出 &amp; 码 / JSON / MiniMessage</sub></td>
 <td align="center"><sub>工具 · 指令查询：指令台带候选项，分类浏览，常用指令附示例</sub></td>
 </tr>
 <tr>
-<td><img src="docs/images/tool-ore.png" alt="矿石分布"></td>
-<td><img src="docs/images/tool-stats.png" alt="游戏统计"></td>
+<td><img src="docs/images/tool-ore.png?v=2" alt="矿石分布"></td>
+<td><img src="docs/images/tool-stats.png?v=2" alt="游戏统计"></td>
 </tr>
 <tr>
 <td align="center"><sub>工具 · 矿石分布：按 Y 层给出挖掘建议，并标出该层命中的生成规则</sub></td>
