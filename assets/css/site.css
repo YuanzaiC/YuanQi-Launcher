@@ -1213,3 +1213,18 @@ html.js .hero__title .line.is-in{ transform:none; opacity:1; }
   }
   html.js .reveal,html.js .hero__title .line{ opacity:1 !important; transform:none !important; }
 }
+
+/* ---------- 01 日常：等高卡片网格 ---------- */
+.daily{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin-top:clamp(26px,3.6vw,40px); }
+.daily__item{
+  background:var(--white); border:1px solid var(--line); border-radius:var(--r);
+  padding:20px 20px 22px; display:flex; flex-direction:column;
+}
+.daily__icon{
+  width:34px; height:34px; border-radius:10px; display:grid; place-items:center;
+  background:var(--accent-soft); color:var(--accent-deep); margin-bottom:12px;
+}
+.daily__item h3{ font-size:15px; font-weight:650; line-height:1.45; margin:0 0 6px; color:var(--ink); }
+.daily__item p{ font-size:13px; line-height:1.72; color:var(--muted); margin:0; }
+@media (max-width:960px){ .daily{ grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:600px){ .daily{ grid-template-columns:1fr; gap:12px; } }

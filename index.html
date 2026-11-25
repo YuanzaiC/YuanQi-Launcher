@@ -166,7 +166,7 @@
   </div>
 </section>
 
-<!-- ============ 01 启动 ============ -->
+<!-- ============ 01 日常 ============ -->
 <section class="section" id="start">
   <div class="container">
     <header class="section__head">
@@ -177,125 +177,55 @@
       </p>
     </header>
 
-    <div class="bento">
-      <!-- A -->
-      <article class="card card--wide reveal">
-        <div class="card__body">
-          <h3>开游戏前，该设的都摆在你眼前</h3>
-          <p>版本、加载器、Java 和分到的内存就写在这张卡上，看清楚了直接点「启动游戏」。想换版本、改设置或打开游戏目录，旁边就是入口，不用先去找菜单。</p>
-        </div>
-        <div class="mock mock--launch" aria-hidden="true">
-          <div class="mock__tags"><span>26.3</span><span>Fabric 0.20.1</span><span>Java 自动</span><span>内存 10 / 31.2 GB</span></div>
-          <div class="mock__row">
-            <div class="mock__icon"><img src="assets/img/blocks/grass.png" alt="" width="64" height="64"></div>
-            <div class="mock__title">BingGo<small>正式版 26.3 · Fabric 0.20.1</small></div>
-          </div>
-          <div class="mock__play"><span>▶</span> 启动游戏</div>
-          <div class="mock__actions"><span>版本选择</span><span>版本设置</span><span>打开目录</span></div>
-        </div>
+    <div class="daily">
+      <article class="daily__item reveal">
+        <span class="daily__icon"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M8 5.5v13l10-6.5z" fill="currentColor"/></svg></span>
+        <h3>开游戏前，该设的都摆在你眼前</h3>
+        <p>版本、加载器、Java 与分到的内存写在同一张卡上，看清楚直接点「启动游戏」。</p>
       </article>
-
-      <!-- B -->
-      <article class="card card--wide reveal" style="--d:.06s">
-        <div class="card__body">
-          <h3>存档能看，也能改</h3>
-          <p>点开一个存档，种子、版本、占多大、上次玩是什么时候都直接读出来；想调世界规则、坐标或经验值也能改，动手之前自动存一份备份，改坏了还能退回去。</p>
-        </div>
-        <div class="mock mock--save" aria-hidden="true">
-          <div class="mock__savehead"><i></i><div><b>新的世界</b><small>26.3 · 生存 · 上次修改 1 天前</small></div></div>
-          <div class="mock__tabs"><b>概览</b><span>世界</span><span>玩家</span><span>物品</span><span>备份 0</span><span>数据</span></div>
-          <div class="mock__kv">
-            <div><small>世界种子</small><b>-4734547568854480142</b></div>
-            <div><small>游戏版本</small><b>1.20.1</b></div>
-            <div><small>上次游玩</small><b>10/25 12:14</b></div>
-          </div>
-        </div>
+      <article class="daily__item reveal" style="--d:.04s">
+        <span class="daily__icon"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M4 9.5h16M8.5 13.5h4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+        <h3>存档能看，也能改</h3>
+        <p>种子、版本、大小、玩家一读就有；规则、坐标、经验能改，动手前自动备份。</p>
       </article>
-
-      <!-- C 安装补齐 -->
-      <article class="card reveal">
-        <div class="card__icon">
-          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3.4v8.6m0 0 3.1-3.1M12 12 8.9 8.9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.6 15.2v2.6a2 2 0 0 0 2 2h10.8a2 2 0 0 0 2-2v-2.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-        </div>
+      <article class="daily__item reveal" style="--d:.08s">
+        <span class="daily__icon"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 4v8m0 0 3-3m-3 3-3-3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 15v2.5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>
         <h3>整合包丢进来，缺的自己补</h3>
-        <p>装整合包时，包里要的 Forge、NeoForge、Fabric、OptiFine 会一起装好；装 Mod 前先看看前置缺不缺，缺了可以顺手一起下。原版分正式、预览、远古和愚人节，社区资源有 Mod、整合包、数据包、资源包与光影。</p>
+        <p>包里要的 Forge、NeoForge、Fabric、OptiFine 一起装好；装 Mod 前先看前置缺不缺。</p>
       </article>
-
-      <!-- 导入 -->
-      <article class="card reveal">
-        <div class="card__icon">
-          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3.4v9.2m0 0 3.2-3.2M12 12.6 8.8 9.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.6 14.6v3a2 2 0 0 0 2 2h10.8a2 2 0 0 0 2-2v-3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-        </div>
-        <h3>从别的启动器搬过来</h3>
-        <p>以前在 PCL、HMCL 或官方启动器里玩过的，第一次打开就能接过来：版本、存档、Mod、资源包都在。想只搬几个版本也行，搬完还能把原来的文件夹收进回收站。</p>
-      </article>
-      <!-- D 版本归档 -->
-      <article class="card reveal" style="--d:.06s">
-        <div class="card__icon">
-          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="3.6" y="5.4" width="16.8" height="14" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M3.6 9.8h16.8M9.6 3.2h4.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M9.4 13.2h5.2M9.4 16.4h5.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-        </div>
+      <article class="daily__item reveal" style="--d:.12s">
+        <span class="daily__icon"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="4" y="6" width="16" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M4 10h16M9 3.5h6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>
         <h3>不常玩的版本，收起来</h3>
-        <p>每个版本占多少空间一眼能看到。很久没开的可以打包收起来，列表里照样在，点一下自动解压还原；空间紧张时还能一键挑出最久没玩的那几个。</p>
+        <p>每个版本占多少一眼能看到；很久没开的打包收起来，点一下自动解压还原。</p>
       </article>
-
-      <!-- 体检与多开 -->
-      <article class="card reveal" style="--d:.12s">
-        <div class="card__icon">
-          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M2.8 12h4l2-5 3.4 10 2.4-6 1.6 3h4.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </div>
-        <h3>出问题先体检，多开也不打架</h3>
-        <p>游戏打不开时先跑一次体检，缺什么运行库、少了哪个组件会直接写出来。想同时开两个客户端也行，两个启动器互不干扰。</p>
+      <article class="daily__item reveal" style="--d:.16s">
+        <span class="daily__icon"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 4v9m0 0 3.2-3.2M12 13 8.8 9.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 15v2.5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>
+        <h3>从别的启动器搬过来</h3>
+        <p>PCL、HMCL、官方启动器里玩过的版本、存档、Mod 都能接过来，想只搬几个版本也行。</p>
       </article>
-
-      <!-- E 绿色便携 -->
-      <article class="card reveal" style="--d:.12s">
-        <div class="card__icon">
-          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3.2 19.4 6v6.1c0 4.3-2.9 7-7.4 8.7-4.5-1.7-7.4-4.4-7.4-8.7V6z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M8.9 12.1 11.3 14.5 15.4 10.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </div>
-        <h3>整个文件夹拷走，换台电脑接着玩</h3>
-        <p>程序、设置、账户、存档和自动下好的 Java 都在这一个文件夹里，U 盘拷走就能换机。系统里不留东西，重装系统也不怕丢配置。</p>
-      </article>
-
-      <!-- D -->
-      <article class="card reveal" style="--d:.06s">
-        <div class="card__icon">
-          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3.6 21 19H3z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M12 9.4v4.2M12 16.3v.1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        </div>
+      <article class="daily__item reveal" style="--d:.2s">
+        <span class="daily__icon"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 4.5 20 19H4z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M12 10v4M12 16.5v.1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
         <h3>崩了，它会告诉你怎么改</h3>
-        <p>游戏闪退不用自己翻几千行日志。缘启会读崩溃原因，指出是哪个加载器、哪个 Mod 或哪个 Java 版本对不上，再告诉你下一步该做什么。</p>
+        <p>读崩溃原因，指出是哪个加载器、哪个 Mod 或哪个 Java 版本对不上，再给下一步。</p>
       </article>
-
-      <!-- 多账户 -->
-      <article class="card reveal">
-        <div class="card__icon">
-          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="8.2" r="3.6" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M4.8 20c.9-3.6 3.7-5.6 7.2-5.6s6.3 2 7.2 5.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-        </div>
+      <article class="daily__item reveal" style="--d:.24s">
+        <span class="daily__icon"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="8.4" r="3.4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M5 19.6c.9-3.4 3.6-5.4 7-5.4s6.1 2 7 5.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>
         <h3>几个账号，各玩各的</h3>
-        <p>正版、离线、统一通行证和第三方登录都放在一个账号池里，点一下就能换，头像各自缓存。和室友共用一台电脑也不会互相顶号。</p>
-        <div class="mini-accounts" aria-hidden="true">
-          <span class="mini-accounts__a">Y</span>
-          <span class="mini-accounts__b">S</span>
-          <span class="mini-accounts__c">+</span>
-        </div>
+        <p>正版、离线、外置登录放在一个账号池里，点一下切换，头像各自缓存。</p>
       </article>
-
-      <!-- F -->
-      <article class="card card--full reveal">
-        <div class="card__body card__body--row">
-          <div>
-            <h3>今天更新了什么，顺手就能看到</h3>
-            <p>首页顶部会告诉你游戏版本的最新动态，下面一排是常用的几个站点，点开就走。这些都缓存在本地，不联网也能看到上次的内容。</p>
-          </div>
-          <ul class="chips" aria-label="社区入口">
-            <li>Minecraft 官网</li><li>中文 Wiki</li><li>苦力怕论坛</li><li>MineBBS</li>
-            <li>MC 百科</li><li>CurseForge</li><li>Modrinth</li><li>MCPEDL</li>
-          </ul>
-        </div>
+      <article class="daily__item reveal" style="--d:.28s">
+        <span class="daily__icon"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M3 12h3.6l2-5 3.4 10 2.4-6 1.6 3H21" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <h3>出问题先体检，多开也不打架</h3>
+        <p>缺什么运行库、少了哪个组件会直接写出来；想同时开两个客户端也行。</p>
+      </article>
+      <article class="daily__item reveal" style="--d:.32s">
+        <span class="daily__icon"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 8v4l2.6 1.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>
+        <h3>今天更新了什么，顺手就能看到</h3>
+        <p>首页顶部汇总当天的版本动态，下面一排常用站点，内容缓存在本地。</p>
       </article>
     </div>
   </div>
 </section>
-
 <!-- ============ 02 界面画廊 ============ -->
 <section class="gallery" id="gallery">
   <div class="gallery__sticky">
