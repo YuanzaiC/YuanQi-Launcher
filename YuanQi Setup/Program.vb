@@ -2,6 +2,7 @@
 ''' 安装程序入口。支持参数：
 '''   /S                     静默安装（不显示界面）
 '''   /D=&lt;路径&gt;              指定安装目录
+'''   /update                由启动器发起的原地更新：静默安装、装完自动重启，失败时弹窗说明原因
 '''   /uninstall             卸载
 '''   /removedata            卸载时同时删除 YQL 与 .minecraft
 ''' </summary>
@@ -20,7 +21,7 @@ Public Module Program
             Return
         End If
 
-        If Installer.Silent Then
+        If Installer.Silent OrElse Installer.UpdateMode Then
             Installer.RunSilent()
         Else
             Application.Run(New SetupForm())

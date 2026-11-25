@@ -26,6 +26,8 @@ Public Module Installer
     Public RemoveData As Boolean
     Public NoLaunch As Boolean
     Public NoShortcut As Boolean
+    ''' <summary>由启动器发起的原地更新：静默安装、装完重启，失败时弹窗说明原因。</summary>
+    Public UpdateMode As Boolean
     Public ArgTarget As String
 
     ''' <summary>安装包内嵌的启动器版本。</summary>
@@ -53,6 +55,10 @@ Public Module Installer
             Dim Arg = Raw.Trim()
             Dim Lower = Arg.ToLowerInvariant()
             If Lower = "/s" OrElse Lower = "-s" OrElse Lower = "/silent" Then
+                Silent = True
+            ElseIf Lower = "/update" OrElse Lower = "-update" Then
+                '启动器发起的原地更新：等同静默，但失败要让人看见原因
+                UpdateMode = True
                 Silent = True
             ElseIf Lower = "/uninstall" OrElse Lower = "-uninstall" Then
                 UninstallMode = True
@@ -448,11 +454,17 @@ Public Module Installer
 #Region "静默安装与卸载"
 
     Public Sub RunSilent()
+        Dim Target As String = ""
         Try
-            Dim Target As String = If(String.IsNullOrWhiteSpace(ArgTarget), DetectInstallPath(), ArgTarget)
+            Target = If(String.IsNullOrWhiteSpace(ArgTarget), DetectInstallPath(), ArgTarget)
             Trace("静默安装目标：" & Target)
             If Not CanWriteTo(Target) Then
                 Trace("目标目录没有写入权限，已中止。请改用用户目录，或以管理员身份重新运行：" & Target)
+                If UpdateMode Then
+                    MessageBox.Show("更新失败：没有权限写入" & vbCrLf & Target & vbCrLf & vbCrLf &
+                                    "请把缘启放到用户目录，或右键安装包选择「以管理员身份运行」。",
+                                    "缘启 更新", MessageBoxButtons.OK, MessageBoxIcon.Error)
+                End If
                 System.Environment.Exit(2)
                 Return
             End If
@@ -462,6 +474,13 @@ Public Module Installer
         Catch ex As Exception
             Trace("静默安装失败：" & ex.ToString())
             If TypeOf ex Is UnauthorizedAccessException Then Trace("提示：目标目录没有写入权限，请改用用户目录或管理员身份运行")
+            '由启动器发起的更新：启动器已经退出，失败必须让用户看到原因，否则就是"点了一下什么都没发生"
+            If UpdateMode Then
+                Try
+                    MessageBox.Show("更新失败：" & vbCrLf & DescribeError(ex, Target), "缘启 更新", MessageBoxButtons.OK, MessageBoxIcon.Error)
+                Catch
+                End Try
+            End If
             System.Environment.Exit(1)
         End Try
     End Sub

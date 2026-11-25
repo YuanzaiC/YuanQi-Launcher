@@ -34,6 +34,7 @@ Public Class PageSetupLaunch
             Logger.Error(ex, "重载启动设置时出错")
         End Try
     End Sub
+
     Public Sub Reset()
         Try
             SettingService.ResetSettings(Me)

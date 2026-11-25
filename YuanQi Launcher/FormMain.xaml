@@ -8,7 +8,7 @@
     TextElement.Foreground="{DynamicResource ColorBrush1}"
     AllowDrop="True" Topmost="False" Title="缘启 YuanQi Launcher　" AllowsTransparency="True" MinHeight="640" MinWidth="1040"
     ScrollViewer.VerticalScrollBarVisibility="Disabled" Icon="/YuanQi Launcher;component/Images/icon.ico" WindowStyle="None" 
-    ResizeMode="CanResize" Background="{x:Null}" d:DesignWidth="1360" d:DesignHeight="840" Width="1360" Height="840" 
+    ResizeMode="CanResize" Background="{x:Null}" d:DesignWidth="1250" d:DesignHeight="793" Width="1250" Height="793" 
     RenderTransformOrigin="0.5,0.5">
     <Window.Resources>
         <!-- 标题栏按钮：46×40，悬停浅灰，关闭键悬停红 -->
@@ -107,74 +107,17 @@
         <TaskbarItemInfo ThumbnailClipMargin="{Binding Margin, ElementName=PanForm}" />
     </Window.TaskbarItemInfo>
     <Grid x:Name="PanBack" SnapsToDevicePixels="True" UseLayoutRounding="True" Margin="0" RenderTransformOrigin="0.5,0.5">
-        <Rectangle x:Name="ResizerT" Stroke="{x:Null}" StrokeThickness="0.0001" Height="8" VerticalAlignment="Top" Margin="13,0" Cursor="SizeNS">
-            <Rectangle.Fill>
-                <LinearGradientBrush EndPoint="0.5,1" StartPoint="0.5,0">
-                    <GradientStop Color="#21000000" Offset="1" />
-                    <GradientStop Color="#11000000" Offset="0.7" />
-                    <GradientStop Color="#00000000" Offset="0" />
-                </LinearGradientBrush>
-            </Rectangle.Fill>
-        </Rectangle>
-        <Rectangle x:Name="ResizerB" Stroke="{x:Null}" StrokeThickness="0.0001" Height="8" VerticalAlignment="Bottom" Margin="13,0" Cursor="SizeNS">
-            <Rectangle.Fill>
-                <LinearGradientBrush EndPoint="0.5,1" StartPoint="0.5,0">
-                    <GradientStop Color="#21000000" Offset="0" />
-                    <GradientStop Color="#11000000" Offset="0.3" />
-                    <GradientStop Color="#00000000" Offset="1" />
-                </LinearGradientBrush>
-            </Rectangle.Fill>
-        </Rectangle>
-        <Rectangle x:Name="ResizerR" HorizontalAlignment="Right" Margin="0,13" Stroke="{x:Null}" StrokeThickness="0.0001" Width="8" Cursor="SizeWE">
-            <Rectangle.Fill>
-                <LinearGradientBrush EndPoint="1,0.5" StartPoint="0,0.5">
-                    <GradientStop Color="#21000000" Offset="0" />
-                    <GradientStop Color="#11000000" Offset="0.3" />
-                    <GradientStop Color="#00000000" Offset="1" />
-                </LinearGradientBrush>
-            </Rectangle.Fill>
-        </Rectangle>
-        <Rectangle x:Name="ResizerL" HorizontalAlignment="Left" Stroke="{x:Null}" Width="8" Margin="0,13" StrokeThickness="0.0001" Cursor="SizeWE">
-            <Rectangle.Fill>
-                <LinearGradientBrush EndPoint="1,0.5" StartPoint="0,0.5">
-                    <GradientStop Color="#21000000" Offset="1" />
-                    <GradientStop Color="#11000000" Offset="0.7" />
-                    <GradientStop Color="#00000000" Offset="0" />
-                </LinearGradientBrush>
-            </Rectangle.Fill>
-        </Rectangle>
-        <Rectangle x:Name="ResizerLT" HorizontalAlignment="Left" Stroke="{x:Null}" Width="13" StrokeThickness="0.0001" VerticalAlignment="Top" Height="13" Cursor="SizeNWSE">
-            <Rectangle.Fill>
-                <RadialGradientBrush Center="1,1" GradientOrigin="1,1" RadiusX="1" RadiusY="1">
-                    <GradientStop Color="#21000000" Offset="0.2" />
-                    <GradientStop Color="#00000000" Offset="1" />
-                </RadialGradientBrush>
-            </Rectangle.Fill>
-        </Rectangle>
-        <Rectangle x:Name="ResizerLB" HorizontalAlignment="Left" Stroke="{x:Null}" Width="13" StrokeThickness="0.0001" VerticalAlignment="Bottom" Height="13" Cursor="SizeNESW">
-            <Rectangle.Fill>
-                <RadialGradientBrush Center="1,0" GradientOrigin="1,0" RadiusX="1" RadiusY="1">
-                    <GradientStop Color="#21000000" Offset="0.2" />
-                    <GradientStop Color="#00000000" Offset="1" />
-                </RadialGradientBrush>
-            </Rectangle.Fill>
-        </Rectangle>
-        <Rectangle x:Name="ResizerRB" HorizontalAlignment="Right" Stroke="{x:Null}" Width="13" StrokeThickness="0.0001" VerticalAlignment="Bottom" Height="13" Cursor="SizeNWSE">
-            <Rectangle.Fill>
-                <RadialGradientBrush Center="0,0" GradientOrigin="0,0" RadiusX="1" RadiusY="1">
-                    <GradientStop Color="#21000000" Offset="0.2" />
-                    <GradientStop Color="#00000000" Offset="1" />
-                </RadialGradientBrush>
-            </Rectangle.Fill>
-        </Rectangle>
-        <Rectangle x:Name="ResizerRT" HorizontalAlignment="Right" Stroke="{x:Null}" Width="13" StrokeThickness="0.0001" VerticalAlignment="Top" Height="13" Cursor="SizeNESW">
-            <Rectangle.Fill>
-                <RadialGradientBrush Center="0,1" GradientOrigin="0,1" RadiusX="1" RadiusY="1">
-                    <GradientStop Color="#21000000" Offset="0.2" />
-                    <GradientStop Color="#00000000" Offset="1" />
-                </RadialGradientBrush>
-            </Rectangle.Fill>
-        </Rectangle>
+        <!-- 缩放热区：卡片可见边缘在窗口里内缩 8px（外面那 8px 是投影留白），
+             热区必须贴在卡片边缘内侧，否则鼠标要飘到窗口外面才有反应。
+             这几个矩形的 Margin 由 SetResizerInset 按模式改写（加速模式卡片铺满，内缩 0）。 -->
+        <Rectangle x:Name="ResizerT" Height="8" VerticalAlignment="Top" Margin="8,8,8,0" Fill="Transparent" Cursor="SizeNS" />
+        <Rectangle x:Name="ResizerB" Height="8" VerticalAlignment="Bottom" Margin="8,0,8,8" Fill="Transparent" Cursor="SizeNS" />
+        <Rectangle x:Name="ResizerL" Width="8" HorizontalAlignment="Left" Margin="8,8,0,8" Fill="Transparent" Cursor="SizeWE" />
+        <Rectangle x:Name="ResizerR" Width="8" HorizontalAlignment="Right" Margin="0,8,8,8" Fill="Transparent" Cursor="SizeWE" />
+        <Rectangle x:Name="ResizerLT" Width="12" Height="12" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8,8,0,0" Fill="Transparent" Cursor="SizeNWSE" />
+        <Rectangle x:Name="ResizerLB" Width="12" Height="12" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="8,0,0,8" Fill="Transparent" Cursor="SizeNESW" />
+        <Rectangle x:Name="ResizerRB" Width="12" Height="12" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,8,8" Fill="Transparent" Cursor="SizeNWSE" />
+        <Rectangle x:Name="ResizerRT" Width="12" Height="12" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,8,8,0" Fill="Transparent" Cursor="SizeNESW" />
         <Border Margin="8" x:Name="BorderForm" Background="#E9ECEF" BorderBrush="#DADEE3" BorderThickness="1">
             <Border.Clip>
                 <RectangleGeometry x:Name="RectForm" RadiusX="8" RadiusY="8" />

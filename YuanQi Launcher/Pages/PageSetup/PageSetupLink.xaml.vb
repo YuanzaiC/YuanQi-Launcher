@@ -2,6 +2,13 @@ Public Class PageSetupLink
 
     Private Sub PageSetupLink_Loaded(sender As Object, e As RoutedEventArgs) Handles Me.Loaded
 
+        '联机模块更新检查：按钮跟着「检查中」状态走，不弹提示气泡
+        RemoveHandler ModTools.TerracottaCheckStarted, AddressOf OnTerracottaCheckStarted
+        RemoveHandler ModTools.TerracottaCheckFinished, AddressOf OnTerracottaCheckFinished
+        AddHandler ModTools.TerracottaCheckStarted, AddressOf OnTerracottaCheckStarted
+        AddHandler ModTools.TerracottaCheckFinished, AddressOf OnTerracottaCheckFinished
+        ApplyTerracottaCheckState()
+
         '重复加载部分
         PanBack.ScrollToHome()
         RefreshSeedCacheUsage()
@@ -15,6 +22,26 @@ Public Class PageSetupLink
         Reload()
         AniControlEnabled -= 1
 
+    End Sub
+    Private Sub PageSetupLink_Unloaded(sender As Object, e As RoutedEventArgs) Handles Me.Unloaded
+        RemoveHandler ModTools.TerracottaCheckStarted, AddressOf OnTerracottaCheckStarted
+        RemoveHandler ModTools.TerracottaCheckFinished, AddressOf OnTerracottaCheckFinished
+    End Sub
+    Private Sub OnTerracottaCheckStarted()
+        RunInUi(Sub() ApplyTerracottaCheckState())
+    End Sub
+    Private Sub OnTerracottaCheckFinished()
+        RunInUi(Sub() ApplyTerracottaCheckState())
+    End Sub
+    ''' <summary>检查模块更新按钮跟着检查状态走：检查中禁用并显示「检查中」。</summary>
+    Private Sub ApplyTerracottaCheckState()
+        Try
+            Dim Busy As Boolean = ModTools.IsCheckingTerracotta
+            BtnLinkCheckUpdate.IsEnabled = Not Busy
+            BtnLinkCheckUpdate.Text = If(Busy, "检查中……", "检查模块更新")
+        Catch ex As Exception
+            Logger.Warn(ex, "刷新检查模块更新按钮状态失败")
+        End Try
     End Sub
     Public Sub Reload()
         SettingService.RefreshSettings(Me)

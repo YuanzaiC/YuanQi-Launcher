@@ -429,10 +429,14 @@ EndHint:
     ''' 等待显示的弹窗。
     ''' </summary>
     Public WaitingMyMsgBox As New ConcurrentQueue(Of MyMsgBoxConverter)
+    ''' <summary>MyMsgBoxTick 是否正在执行：主时钟每 50ms 会调一次，这里再防一手重入。</summary>
+    Private MyMsgBoxTicking As Boolean = False
     Public Sub MyMsgBoxTick()
+        If MyMsgBoxTicking Then Return
+        MyMsgBoxTicking = True
+        Dim TargetMsgBox As MyMsgBoxConverter = Nothing
         Try
             If FrmMain?.PanMsg Is Nothing OrElse FrmMain.WindowState = WindowState.Minimized Then Return
-            Dim TargetMsgBox As MyMsgBoxConverter = Nothing
             If FrmMain.PanMsg.Children.Count > 0 Then
                 '弹窗中
                 FrmMain.PanMsg.Visibility = Visibility.Visible
@@ -460,7 +464,20 @@ EndHint:
                 If FrmMain.PanMsg.Visibility <> Visibility.Collapsed Then FrmMain.PanMsg.Visibility = Visibility.Collapsed
             End If
         Catch ex As Exception
-            Logger.Error(ex, "处理等待中的弹窗失败")
+            '弹窗没建起来：把等待方放行，别让调用线程永远卡在 PushFrame 里
+            If TargetMsgBox IsNot Nothing Then
+                Try
+                    TargetMsgBox.IsExited = True
+                    TargetMsgBox.Result = 1
+                    TargetMsgBox.WaitFrame.Continue = False
+                Catch
+                End Try
+            End If
+            '这里必须用 None：用 Alert 会在 MyMsgBox 内部再触发一次弹窗，
+            '递归套下去就是「界面卡死」，这个坑已经踩过一次了
+            Logger.Error(ex, "处理等待中的弹窗失败", LogBehavior.None)
+        Finally
+            MyMsgBoxTicking = False
         End Try
     End Sub
 

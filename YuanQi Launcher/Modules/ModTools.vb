@@ -1,4 +1,4 @@
-﻿Imports Microsoft.Win32
+Imports Microsoft.Win32
 
 ''' <summary>
 ''' 杂项工具：更新检查、环境体检、空间体检。
@@ -33,12 +33,8 @@ Public Module ModTools
 
 #End Region
 
-#Region "启动器更新（预留入口）"
+#Region "启动器更新"
 
-    ''' <summary>
-    ''' 检查启动器更新。仓库尚未建立时只给出提示。
-    ''' </summary>
-    ''' <param name="Silent">自动检测时为 True：没有更新就静默，不做任何弹窗。</param>
     ''' <summary>临时开关：检测期间关掉启动器更新检查。恢复时改成 False 即可。</summary>
     Friend Const UpdateCheckPaused As Boolean = False
     ''' <summary>
@@ -47,6 +43,50 @@ Public Module ModTools
     ''' </summary>
     Friend Const UpdateCheckIgnoreVersion As Boolean = False
 
+    ''' <summary>自动检查时用户点过「跳过此版本」的版本号，记在设置里，跨启动有效。</summary>
+    Public Const SkipVersionKey As String = "UpdateSkipVersion"
+    ''' <summary>已经下载好、但用户选了「稍后」的安装包路径。</summary>
+    Public Const PendingInstallerKey As String = "UpdatePendingInstaller"
+    ''' <summary>下载完成后是否直接安装（设置项）。</summary>
+    Public Const AutoInstallKey As String = "UpdateAutoInstall"
+
+    ''' <summary>本次运行里已经弹过提示的版本，避免自动检查重复打扰。</summary>
+    Private PromptedVersion As String = ""
+    ''' <summary>是否正在检查更新，防止连点「立即检查更新」并发起多次请求。</summary>
+    Private Checking As Boolean = False
+    Private ReadOnly CheckLock As New Object
+
+    ''' <summary>是否正在检查更新：界面据此把按钮切成「检查中」。</summary>
+    Public ReadOnly Property IsCheckingUpdate As Boolean
+        Get
+            Return Checking
+        End Get
+    End Property
+    ''' <summary>开始检查更新（手动、自动都会触发）。</summary>
+    Public Event UpdateCheckStarted As Action
+    ''' <summary>检查结束，无论成功还是失败。</summary>
+    Public Event UpdateCheckFinished As Action
+
+    ''' <summary>
+    ''' 一次更新检查的结果：版本、发布时间、发布说明与安装包信息。
+    ''' </summary>
+    Public Class LauncherRelease
+        Public Version As String = ""
+        Public Tag As String = ""
+        Public Title As String = ""
+        Public PublishedAt As Date
+        Public Body As String = ""
+        Public PageUrl As String = ""
+        Public AssetName As String = ""
+        Public AssetUrl As String = ""
+        Public AssetSize As Long = -1
+        Public AssetHash As String = ""
+    End Class
+
+    ''' <summary>
+    ''' 检查启动器更新。
+    ''' </summary>
+    ''' <param name="Silent">自动检测时为 True：没有更新就静默，有新版本才弹窗。</param>
     Public Sub CheckLauncherUpdate(Optional Silent As Boolean = False)
         If UpdateCheckPaused Then
             Logger.Info("启动器更新检查已临时关闭（UpdateCheckPaused = True）")
@@ -59,6 +99,12 @@ Public Module ModTools
             Return
         End If
         '网络请求不能在 UI 线程执行，统一放到后台线程，界面操作再切回 UI 线程
+        SyncLock CheckLock
+            '已经在检查了就直接返回：按钮这会儿本来就是「检查中」，不再弹提示
+            If Checking Then Return
+            Checking = True
+        End SyncLock
+        RaiseEvent UpdateCheckStarted()
         RunInNewThread(
         Sub()
             Try
@@ -75,6 +121,9 @@ Public Module ModTools
                         End If
                     End Sub)
                 End If
+            Finally
+                Checking = False
+                RaiseEvent UpdateCheckFinished()
             End Try
         End Sub, "Check Launcher Update", ThreadPriority.BelowNormal)
     End Sub
@@ -88,93 +137,221 @@ Public Module ModTools
 
     ''' <summary>在后台线程执行真正的更新检查，弹窗统一切回 UI 线程。</summary>
     Private Sub DoCheckLauncherUpdate(Silent As Boolean)
+        Dim Release As LauncherRelease = FetchLatestRelease()
+        If Release Is Nothing Then
+            If Not Silent Then RunInUiWait(Sub() Hint("无法解析更新信息。", HintType.Red))
+            Return
+        End If
+        '按版本号大小比较，不能只看字符串是否相等：
+        '本地版本比仓库里的发布还新（比如刚打包还没发布）时必须按「已是最新」处理，
+        '否则点「立即更新」会把启动器装回旧版本。
+        Dim CompareResult As Integer = CompareVersion(Release.Version, VersionBaseName)
+        Logger.Info($"启动器最新版本：{Release.Version}（tag：{Release.Tag}），当前版本：{VersionBaseName}，比较结果：{CompareResult}")
+        If CompareResult <= 0 AndAlso Not UpdateCheckIgnoreVersion Then
+            If CompareResult < 0 Then Logger.Info($"仓库里的最新发布（{Release.Version}）比当前版本旧，按已是最新处理")
+            If Not Silent Then RunInUiWait(Sub() MyMsgBox($"当前已是最新版本（{VersionBaseName}）。", "检查更新"))
+            Return
+        End If
+        '自动检查：用户主动跳过过的版本不再打扰
+        If Silent AndAlso Settings.Get(Of String)(SkipVersionKey) = Release.Version Then
+            Logger.Info($"用户已跳过版本 {Release.Version}，本次不再提示")
+            Return
+        End If
+        '先把发布说明存下来：装完之后新版本要拿它弹更新日志
+        SaveUpdateNotes(Release)
+        RunInUiWait(Sub() PromptUpdate(Release, Silent))
+    End Sub
+
+    ''' <summary>读取仓库里最新的 Release（版本、发布时间、发布说明与安装包资产）。</summary>
+    Private Function FetchLatestRelease() As LauncherRelease
         Dim Raw As String = NetRequestByClient($"https://api.github.com/repos/{RepoUrl.Replace("https://github.com/", "")}/releases/latest",
                                                RequireJson:=True, Timeout:=10000)
         Dim ReleaseJson = CType(Raw.DeserializeJson(), JObject)
         Dim Tag = ReleaseJson?("tag_name")
-        If Tag Is Nothing Then
-            If Not Silent Then RunInUiWait(Sub() Hint("无法解析更新信息。", HintType.Red))
-            Return
-        End If
-        Dim TagRaw As String = Tag.ToString.Trim()
-        Dim Latest As String = NormalizeVersion(TagRaw)
-        Logger.Info($"启动器最新版本：{Latest}（tag：{TagRaw}），当前版本：{VersionBaseName}")
-        '按版本号大小比较，不能只看字符串是否相等：
-        '本地版本比仓库里的发布还新（比如刚打包还没发布）时必须按「已是最新」处理，
-        '否则点「立即更新」会把启动器装回旧版本。
-        Dim CompareResult As Integer = CompareVersion(Latest, VersionBaseName)
-        If CompareResult <= 0 Then
-            If Not UpdateCheckIgnoreVersion Then
-                If CompareResult < 0 Then Logger.Info($"仓库里的最新发布（{Latest}）比当前版本旧，按已是最新处理")
-                If Not Silent Then RunInUiWait(Sub() MyMsgBox($"当前已是最新版本（{VersionBaseName}）。", "检查更新"))
-                Return
-            End If
-            Logger.Info("已跳过版本号比较（UpdateCheckIgnoreVersion = True），按可更新处理")
-        End If
-        If Silent Then
-            '自动检测：只提示，不打扰
-            RunInUiWait(Sub() Hint($"缘启有新版本 {Latest} 可用，可在设置中检查更新。", HintType.Green))
-            Return
-        End If
+        If Tag Is Nothing Then Return Nothing
+        Dim Result As New LauncherRelease With {
+            .Tag = Tag.ToString.Trim(),
+            .Version = NormalizeVersion(Tag.ToString),
+            .Title = If(ReleaseJson?("name")?.ToString(), "").Trim(),
+            .Body = If(ReleaseJson?("body")?.ToString(), "").Trim(),
+            .PageUrl = If(ReleaseJson?("html_url")?.ToString(), "").Trim()
+        }
+        If String.IsNullOrWhiteSpace(Result.Version) Then Return Nothing
+        If String.IsNullOrWhiteSpace(Result.PageUrl) Then Result.PageUrl = RepoUrl & "/releases/latest"
+        Try
+            Dim Published As String = ReleaseJson?("published_at")?.ToString()
+            If Not String.IsNullOrWhiteSpace(Published) Then Result.PublishedAt = Date.Parse(Published).ToLocalTime()
+        Catch ex As Exception
+            Logger.Warn(ex, "解析发布发布时间失败")
+        End Try
         '直接从 release 的资产里取安装包，不依赖固定命名（tag 大小写、资产名都能对上）
-        Dim AssetName As String = Nothing
-        Dim AssetUrl As String = Nothing
-        Dim AssetSize As Long = -1
-        Dim AssetHash As String = Nothing
         Dim Assets = TryCast(ReleaseJson?("assets"), JArray)
         If Assets IsNot Nothing Then
             For Each Item In Assets
                 Dim Name As String = If(Item?("name")?.ToString(), "").Trim()
                 If Not Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) Then Continue For
-                AssetName = Name
-                AssetUrl = Item?("browser_download_url")?.ToString()
+                '已经挑到带 Setup 的资产就不再换
+                If Result.AssetUrl <> "" AndAlso Name.IndexOf("Setup", StringComparison.OrdinalIgnoreCase) < 0 Then Continue For
+                Result.AssetName = Name
+                Result.AssetUrl = If(Item?("browser_download_url")?.ToString(), "").Trim()
                 '顺手取大小和官方给的 sha256：有了这两个，下载引擎才能分段多线程并做完整性校验
                 Try
-                    If Item?("size") IsNot Nothing Then AssetSize = Item("size").ToObject(Of Long)()
+                    If Item?("size") IsNot Nothing Then Result.AssetSize = Item("size").ToObject(Of Long)()
                 Catch ex As Exception
                 End Try
                 Try
                     Dim Digest As String = If(Item?("digest")?.ToString(), "")
-                    If Digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase) Then AssetHash = Digest.Substring(7)
+                    If Digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase) Then Result.AssetHash = Digest.Substring(7)
                 Catch ex As Exception
                 End Try
                 If Name.IndexOf("Setup", StringComparison.OrdinalIgnoreCase) >= 0 Then Exit For
             Next
         End If
-        If String.IsNullOrWhiteSpace(AssetUrl) Then
+        If String.IsNullOrWhiteSpace(Result.AssetUrl) Then
             '没有可用的资产：退回按约定命名拼地址
-            AssetName = InstallerAssetName(Latest)
-            AssetUrl = $"{RepoUrl}/releases/download/{TagRaw}/{AssetName}"
+            Result.AssetName = InstallerAssetName(Result.Version)
+            Result.AssetUrl = $"{RepoUrl}/releases/download/{Result.Tag}/{Result.AssetName}"
         End If
-        RunInUiWait(
-        Sub()
-            If MyMsgBox($"发现新版本：{Latest}{vbCrLf}当前版本：{VersionBaseName}{vbCrLf}{vbCrLf}是否立即下载安装包并更新？{vbCrLf}更新只替换程序文件，设置、游戏与存档都会保留。",
-                        "检查更新", "立即更新", "稍后") = 1 Then
-                DownloadInstaller(AssetUrl, AssetName, AssetSize, AssetHash)
+        Return Result
+    End Function
+
+    ''' <summary>
+    ''' 弹出更新提示。自动检查时第三个按钮是「跳过此版本」，手动检查时第三个按钮打开完整更新日志。
+    ''' </summary>
+    Private Sub PromptUpdate(Release As LauncherRelease, Silent As Boolean)
+        Try
+            '同一次运行里，自动检查对同一版本只弹一次
+            If Silent Then
+                If PromptedVersion = Release.Version Then Return
+                PromptedVersion = Release.Version
             End If
-        End Sub)
+            Dim Notes As String = FormatReleaseNotes(Release.Body, 6)
+            Dim Content As New StringBuilder
+            Content.AppendLine($"发现新版本：{Release.Version}")
+            Content.Append($"当前版本：{VersionBaseName}")
+            If Release.PublishedAt > Date.MinValue Then Content.Append($"　·　{Release.PublishedAt:yyyy-MM-dd}")
+            Content.AppendLine()
+            If Notes <> "" Then
+                Content.AppendLine()
+                Content.AppendLine("更新内容：")
+                Content.AppendLine(Notes)
+            End If
+            Content.AppendLine()
+            Content.Append("更新只替换程序文件，设置、游戏与存档都会保留。")
+            Dim Choice As Integer
+            If Silent Then
+                Choice = MyMsgBox(Content.ToString, $"发现新版本 {Release.Version}", "立即更新", "稍后", "跳过此版本")
+            Else
+                Choice = MyMsgBox(Content.ToString, $"发现新版本 {Release.Version}", "立即更新", "稍后", "完整更新日志",
+                                  Button3Action:=Sub() OpenWebsite(Release.PageUrl))
+            End If
+            Select Case Choice
+                Case 1
+                    DownloadInstaller(Release)
+                Case 3
+                    If Silent Then
+                        Settings.Set(SkipVersionKey, Release.Version)
+                        Logger.Info($"用户跳过版本 {Release.Version}")
+                    End If
+            End Select
+        Catch ex As Exception
+            Logger.Warn(ex, "显示更新提示失败")
+        End Try
     End Sub
+
+    ''' <summary>
+    ''' 把 GitHub 上的发布说明整理成弹窗里能看的几行：去掉 Markdown 记号、空行与代码块。
+    ''' </summary>
+    Public Function FormatReleaseNotes(Body As String, Optional MaxLines As Integer = 8) As String
+        Dim Result As New List(Of String)
+        If String.IsNullOrWhiteSpace(Body) Then Return ""
+        For Each RawLine In Body.Replace(vbCrLf, vbLf).Split(ControlChars.Lf)
+            Dim Line As String = RawLine.Trim()
+            If Line = "" Then Continue For
+            If Line.StartsWith("<!--") OrElse Line.StartsWith("```") OrElse Line.StartsWith("|") Then Continue For
+            If Line.StartsWith("---") Then Continue For
+            Line = Line.TrimStart("#"c).Trim()
+            Line = Line.Replace("**", "").Replace("`", "").Replace("~~", "")
+            If Line.StartsWith("- ") OrElse Line.StartsWith("* ") Then Line = "· " & Line.Substring(2).Trim()
+            If Line.Length > 140 Then Line = Line.Substring(0, 140) & "…"
+            Result.Add(Line)
+            If Result.Count >= MaxLines Then Exit For
+        Next
+        Return Result.Join(vbCrLf)
+    End Function
+
+    ''' <summary>更新说明存在 YQL\Cache\Update 下，按版本号命名。</summary>
+    Private Function UpdateNotesPath(Version As String) As String
+        Return PathCache & "Update\" & Version & ".json"
+    End Function
+
+    ''' <summary>
+    ''' 把这次更新的说明存一份。安装包替换程序文件时不会动 YQL，所以更新完成后新版本还能读到它。
+    ''' </summary>
+    Public Sub SaveUpdateNotes(Release As LauncherRelease)
+        Try
+            If Release Is Nothing OrElse String.IsNullOrWhiteSpace(Release.Version) Then Return
+            Dim Dir As String = PathCache & "Update\"
+            If Not IO.Directory.Exists(Dir) Then IO.Directory.CreateDirectory(Dir)
+            Dim Json As New JObject
+            Json("version") = Release.Version
+            Json("title") = Release.Title
+            Json("published") = If(Release.PublishedAt > Date.MinValue, Release.PublishedAt.ToString("yyyy-MM-dd"), "")
+            Json("url") = Release.PageUrl
+            Json("body") = Release.Body
+            IO.File.WriteAllText(UpdateNotesPath(Release.Version), Json.ToString(), New Text.UTF8Encoding(False))
+            Logger.Info($"已保存 {Release.Version} 的更新说明，更新后用于弹出更新日志")
+        Catch ex As Exception
+            Logger.Warn(ex, "保存更新说明失败")
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' 取出当前版本对应的更新说明（取完即删，只弹一次），顺手清掉旧版本留下的。
+    ''' 没有说明时返回 Nothing，调用方退回内置的更新日志。
+    ''' </summary>
+    Public Function ConsumeUpdateNotes() As JObject
+        Try
+            Dim Dir As String = PathCache & "Update\"
+            If Not IO.Directory.Exists(Dir) Then Return Nothing
+            For Each NotesFile In IO.Directory.GetFiles(Dir, "*.json")
+                If IO.Path.GetFileNameWithoutExtension(NotesFile) <> VersionBaseName Then
+                    Try : FileUtils.Delete(NotesFile) : Catch : End Try
+                End If
+            Next
+            Dim NotesPath As String = UpdateNotesPath(VersionBaseName)
+            If Not IO.File.Exists(NotesPath) Then Return Nothing
+            Dim NotesText As String = IO.File.ReadAllText(NotesPath)
+            FileUtils.Delete(NotesPath)
+            Return CType(NotesText.DeserializeJson(), JObject)
+        Catch ex As Exception
+            Logger.Warn(ex, "读取更新说明失败")
+            Return Nothing
+        End Try
+    End Function
 
     ''' <summary>
     ''' 走启动器自己的下载器下载安装包：任务列表里能看到进度，支持多源切换与分段下载。
     ''' </summary>
-    Private Sub DownloadInstaller(Url As String, FileName As String, Optional Size As Long = -1, Optional Hash As String = Nothing)
+    Private Sub DownloadInstaller(Release As LauncherRelease)
         Try
-            If String.IsNullOrWhiteSpace(FileName) Then FileName = "YuanQi-Setup.exe"
+            Dim FileName As String = If(String.IsNullOrWhiteSpace(Release.AssetName), "YuanQi-Setup.exe", Release.AssetName)
             Dim SavePath As String = IO.Path.Combine(PathTemp, FileName)
             '上一次剩下的半截文件会让下载器以为已经下完，先清掉
             Try
                 If FileUtils.Exists(SavePath) Then FileUtils.Delete(SavePath)
             Catch ex As Exception
             End Try
-            Dim Urls As New List(Of String) From {Url}
+            Dim Urls As New List(Of String) From {Release.AssetUrl}
             'GitHub 直链在国内经常连不上，再挂一个镜像，下载器会自己挑能用的
-            If Url.Contains("https://github.com/") Then Urls.Add(Url.Replace("https://github.com/", "https://ghfast.top/https://github.com/"))
+            If Release.AssetUrl.Contains("https://github.com/") Then
+                Urls.Add(Release.AssetUrl.Replace("https://github.com/", "https://ghfast.top/https://github.com/"))
+            End If
             Dim Checker As FileChecker = Nothing
-            If Size > 0 Then Checker = New FileChecker With {.ActualSize = Size}
-            If Not String.IsNullOrWhiteSpace(Hash) Then
+            If Release.AssetSize > 0 Then Checker = New FileChecker With {.ActualSize = Release.AssetSize}
+            If Not String.IsNullOrWhiteSpace(Release.AssetHash) Then
                 If Checker Is Nothing Then Checker = New FileChecker
-                Checker.Hash = Hash
+                Checker.Hash = Release.AssetHash
             End If
             Dim Files As New List(Of NetFile) From {New NetFile(Urls, SavePath, Checker)}
             Dim Tasks As New List(Of LoaderBase) From {New LoaderDownload("下载安装包", Files) With {.Block = True}}
@@ -184,10 +361,16 @@ Public Module ModTools
                     LoaderStateChangedHintOnly(MyLoader)
                     Select Case MyLoader.State
                         Case LoadState.Finished
-                            PromptInstallInstaller(SavePath, FileName)
+                            '下载前已经存过一份，这里再兜一次，确保装完能弹更新日志
+                            SaveUpdateNotes(Release)
+                            If Settings.Get(Of Boolean)(AutoInstallKey) Then
+                                ApplyUpdate(SavePath)
+                            Else
+                                PromptInstallInstaller(SavePath, FileName, Release)
+                            End If
                         Case LoadState.Failed
                             Hint("下载安装包失败，已为你打开下载页面。", HintType.Red)
-                            OpenWebsite(RepoUrl & "/releases/latest")
+                            OpenWebsite(Release.PageUrl)
                     End Select
                 End Sub
             }
@@ -198,35 +381,124 @@ Public Module ModTools
         Catch ex As Exception
             Logger.Warn(ex, "启动安装包下载失败")
             Hint("下载安装包失败，已为你打开下载页面。", HintType.Red)
-            OpenWebsite(RepoUrl & "/releases/latest")
+            OpenWebsite(Release.PageUrl)
         End Try
     End Sub
 
     ''' <summary>下载完成后询问是否立即安装。</summary>
-    Private Sub PromptInstallInstaller(SavePath As String, FileName As String)
+    Private Sub PromptInstallInstaller(SavePath As String, FileName As String, Release As LauncherRelease)
         Try
             RunInUi(
             Sub()
-                If MyMsgBox($"安装包已下载完成：{FileName}{vbCrLf}{vbCrLf}立即启动安装程序吗？{vbCrLf}安装程序会自动关闭缘启并替换程序文件，设置与存档不会丢失。",
-                            "检查更新", "立即安装", "稍后") = 1 Then
-                    StartProcess(SavePath)
-                    FrmMain.Close()
+                Dim SizeText As String = ""
+                Try
+                    SizeText = $"（{New IO.FileInfo(SavePath).Length / 1024 / 1024:0.0} MB）"
+                Catch ex As Exception
+                End Try
+                If MyMsgBox($"安装包已下载完成：{FileName}{SizeText}{vbCrLf}{vbCrLf}" &
+                            "点「立即安装」后，缘启会自动关闭、替换程序文件并重新打开。" & vbCrLf &
+                            "设置、游戏与存档都会保留。",
+                            $"安装缘启 {Release.Version}", "立即安装", "稍后") = 1 Then
+                    ApplyUpdate(SavePath)
                 Else
-                    Hint($"安装包已保存到：{SavePath}", HintType.Blue)
+                    Settings.Set(PendingInstallerKey, SavePath)
+                    Hint("安装包已保存，下次启动会再问一次，也可以自己双击安装。", HintType.Blue)
                 End If
             End Sub)
         Catch ex As Exception
+            Logger.Warn(ex, "询问是否安装更新失败")
         End Try
     End Sub
+
+    ''' <summary>
+    ''' 静默安装已下载的更新包，然后关闭缘启（安装程序会重新拉起）。
+    ''' 参数说明：/s 静默、/d= 原地更新、/update 更新模式（安装失败时会弹窗说明原因）。
+    ''' 老版本安装程序不认识 /update 也没关系，/s /d= 已经能完成原地更新。
+    ''' </summary>
+    Public Sub ApplyUpdate(InstallerPath As String)
+        Try
+            If Not FileUtils.Exists(InstallerPath) Then
+                Hint("安装包不见了，请重新检查更新。", HintType.Red)
+                Settings.Set(PendingInstallerKey, "")
+                Return
+            End If
+            Dim Target As String = Paths.Base.TrimEnd("\"c, "/"c)
+            Dim Args As String = $"/s /d=""{Target}"" /update"
+            Logger.Info($"开始安装更新：{InstallerPath} {Args}")
+            Settings.Set(PendingInstallerKey, "")
+            StartProcess(InstallerPath, Args)
+            Hint("正在安装更新，缘启即将自动重启……", HintType.Blue, False)
+            '稍等一下再退出，确保安装程序已经起来
+            RunInNewThread(
+            Sub()
+                Thread.Sleep(600)
+                RunInUi(
+                Sub()
+                    Try
+                        '不用 Close()：那会走「还有下载任务未完成」的确认，更新时不该再拦一道
+                        FrmMain.EndProgram(False)
+                    Catch ex As Exception
+                        Logger.Warn(ex, "关闭缘启以完成更新失败")
+                    End Try
+                End Sub, True)
+            End Sub, "Apply Update")
+        Catch ex As Exception
+            Logger.Warn(ex, "启动更新安装失败")
+            Hint("无法自动安装更新，已为你打开安装包。", HintType.Red)
+            Try
+                StartProcess(InstallerPath)
+            Catch ex2 As Exception
+                Logger.Warn(ex2, "打开安装包失败")
+            End Try
+        End Try
+    End Sub
+
+    ''' <summary>上次下载好但没装的更新包：启动时问一次要不要装。</summary>
+    Public Sub PromptPendingInstaller()
+        Try
+            Dim PendingPath As String = Settings.Get(Of String)(PendingInstallerKey)
+            If String.IsNullOrWhiteSpace(PendingPath) Then Return
+            If Not FileUtils.Exists(PendingPath) Then
+                Settings.Set(PendingInstallerKey, "")
+                Return
+            End If
+            RunInNewThread(
+            Sub()
+                Thread.Sleep(2500) '等窗口和开屏动画起来
+                If ModGuide.IsRunning Then Return
+                RunInUiWait(
+                Sub()
+                    If MyMsgBox($"上次下载的安装包还在：{IO.Path.GetFileName(PendingPath)}{vbCrLf}{vbCrLf}" &
+                                "现在安装吗？安装后缘启会自动重启，设置与存档都会保留。",
+                                "安装已下载的更新", "立即安装", "忽略") = 1 Then
+                        ApplyUpdate(PendingPath)
+                    Else
+                        Settings.Set(PendingInstallerKey, "")
+                    End If
+                End Sub)
+            End Sub, "Pending Update Install", ThreadPriority.BelowNormal)
+        Catch ex As Exception
+            Logger.Warn(ex, "提示待安装更新失败")
+        End Try
+    End Sub
+
     ''' <summary>启动时按设置自动检测更新（默认关闭）。</summary>
     Public Sub AutoCheckLauncherUpdate()
         Try
             If UpdateCheckPaused Then Return
             If Not Settings.Get(Of Boolean)("UiAutoCheckUpdate") Then Return
-            RunInNewThread(Sub()
-                               Thread.Sleep(8000) '错开启动高峰
-                               CheckLauncherUpdate(True)
-                           End Sub, "Auto Update Check", ThreadPriority.BelowNormal)
+            RunInNewThread(
+            Sub()
+                Thread.Sleep(8000) '错开启动高峰
+                '教程、开屏动画期间不弹更新提示，免得抢镜
+                Dim Waited As Integer = 0
+                Do While ModGuide.IsRunning AndAlso Waited < 60000
+                    Thread.Sleep(500)
+                    Waited += 500
+                Loop
+                If ModGuide.IsRunning Then Return
+                CheckLauncherUpdate(True)
+            End Sub, "Auto Update Check", ThreadPriority.BelowNormal)
         Catch ex As Exception
             Logger.Warn(ex, "自动更新检测启动失败")
         End Try
@@ -236,12 +508,30 @@ Public Module ModTools
 
 #Region "陶瓦联机模块更新"
 
+    ''' <summary>联机模块检查是否正在进行（界面据此把按钮切成「检查中」）。</summary>
+    Public ReadOnly Property IsCheckingTerracotta As Boolean
+        Get
+            Return CheckingTerracotta
+        End Get
+    End Property
+    ''' <summary>开始检查联机模块更新。</summary>
+    Public Event TerracottaCheckStarted As Action
+    ''' <summary>联机模块检查结束，无论成功还是失败。</summary>
+    Public Event TerracottaCheckFinished As Action
+    Private CheckingTerracotta As Boolean = False
+    Private ReadOnly TerracottaCheckLock As New Object
+
     ''' <summary>
     ''' 检查陶瓦联机模块是否有新版本（对比本地模块与 GitHub 最新 Release）。
     ''' </summary>
     Public Sub CheckTerracottaUpdate()
+        SyncLock TerracottaCheckLock
+            '已经在查了就直接返回：按钮这会儿本来就是「检查中」，不再弹提示气泡
+            If CheckingTerracotta Then Return
+            CheckingTerracotta = True
+        End SyncLock
+        RaiseEvent TerracottaCheckStarted()
         Dim LocalVersion As String = GetLocalTerracottaVersion()
-        Hint("正在检查联机模块更新……", HintType.Blue, False)
         '网络请求不能在 UI 线程执行
         RunInNewThread(
         Sub()
@@ -268,6 +558,9 @@ Public Module ModTools
             Catch ex As Exception
                 Logger.Warn(ex, "检查联机模块更新失败")
                 RunInUiWait(Sub() MyMsgBox("检查失败：" & vbCrLf & ex.Message, "联机模块更新", IsWarn:=True))
+            Finally
+                CheckingTerracotta = False
+                RaiseEvent TerracottaCheckFinished()
             End Try
         End Sub, "Check Terracotta Update", ThreadPriority.BelowNormal)
     End Sub
@@ -289,13 +582,16 @@ Public Module ModTools
         Return ""
     End Function
 
-    ''' <summary>比较形如 0.4.2 的版本号，返回 -1/0/1。</summary>
+    ''' <summary>比较形如 0.4.2 / 2.15.3.0 的版本号，返回 -1/0/1。</summary>
     Private Function CompareVersion(A As String, B As String) As Integer
         Try
             Dim PA = A.Split("."c), PB = B.Split("."c)
             For i = 0 To Math.Max(PA.Length, PB.Length) - 1
-                Dim VA As Integer = If(i < PA.Length AndAlso Integer.TryParse(PA(i), VA), 0, 0)
+                '注意：不能写成 If(i < PA.Length AndAlso Integer.TryParse(PA(i), VA), 0, 0)
+                '那样两边分支都是 0，A 的每一段都会被当成 0，任何版本比较都恒等于「A 更旧」
+                Dim VA As Integer = 0
                 Dim VB As Integer = 0
+                If i < PA.Length Then Integer.TryParse(PA(i), VA)
                 If i < PB.Length Then Integer.TryParse(PB(i), VB)
                 If VA <> VB Then Return Math.Sign(VA - VB)
             Next
@@ -377,9 +673,16 @@ Public Module ModTools
         Return Result
     End Function
 
-    ''' <summary>显示环境体检结果。</summary>
-    ''' <summary>下载并安装联机模块（体检发现缺失时用）。</summary>
+    ''' <summary>联机模块是否正在下载，防止连点重复建任务。</summary>
+    Private TerracottaDownloading As Boolean = False
+
+    ''' <summary>下载并安装联机模块（体检发现缺失时用）。走启动器自己的下载器，进度显示在右下角任务列表。</summary>
     Public Sub DownloadTerracottaCore()
+        If TerracottaDownloading Then
+            Hint("联机模块正在下载中，进度在右下角任务列表里", HintType.Blue, False)
+            Return
+        End If
+        TerracottaDownloading = True
         Hint("正在获取联机模块版本……", HintType.Blue, False)
         RunInNewThread(
         Sub()
@@ -400,18 +703,50 @@ Public Module ModTools
                 If Urls Is Nothing OrElse Urls.Count = 0 Then Throw New Exception("没有找到可用的下载地址")
                 Dim Local As String = PathTemp & "TerracottaCore.tar.gz"
                 DirectoryUtils.Create(PathTemp)
-                Dim Loader As New LoaderDownload("下载联机模块", New List(Of NetFile) From {New NetFile(Urls, Local)})
-                Loader.Start()
-                Loader.WaitForExit()
-                If Not FileUtils.Exists(Local) Then Throw New Exception("下载没有完成")
-                ModTerracotta.ExtractPackage(Local)
-                ModTerracotta.MarkCoreVersion(Latest)
-                RunInUi(Sub() Hint($"联机模块 {Latest} 已就绪", HintType.Green))
+                '上一次剩下的半截文件会让下载器以为已经下完，先清掉
+                Try
+                    If FileUtils.Exists(Local) Then FileUtils.Delete(Local)
+                Catch ex As Exception
+                End Try
+                RunInUi(Sub() StartTerracottaInstallLoader(Urls, Local, Latest))
             Catch ex As Exception
+                TerracottaDownloading = False
                 Logger.Warn(ex, "下载联机模块失败")
                 RunInUi(Sub() Hint("联机模块下载失败：" & ex.Message, HintType.Red))
             End Try
-        End Sub, "Download Terracotta Core", ThreadPriority.BelowNormal)
+        End Sub, "Prepare Terracotta Download", ThreadPriority.BelowNormal)
+    End Sub
+
+    ''' <summary>把联机模块的下载与解压挂到任务列表上，用户能在右下角看到进度。</summary>
+    Private Sub StartTerracottaInstallLoader(Urls As List(Of String), Local As String, Latest As String)
+        Dim Tasks As New List(Of LoaderBase) From {
+            New LoaderDownload("下载联机模块", New List(Of NetFile) From {
+                New NetFile(Urls, Local, New FileChecker With {.MinSize = 1024 * 1024})}) With {.ProgressWeight = 80},
+            New LoaderTask(Of Integer, Integer)("解压联机模块", Sub(InstallTask)
+                                                                    InstallTask.Progress = 0.1
+                                                                    ModTerracotta.ExtractPackage(Local)
+                                                                    InstallTask.Progress = 0.85
+                                                                    ModTerracotta.MarkCoreVersion(Latest)
+                                                                End Sub) With {.ProgressWeight = 20}
+        }
+        Dim Loader As New LoaderCombo(Of Integer)("安装联机模块", Tasks) With {
+            .OnStateChanged =
+            Sub(MyLoader)
+                LoaderStateChangedHintOnly(MyLoader)
+                Select Case MyLoader.State
+                    Case LoadState.Finished
+                        TerracottaDownloading = False
+                        Hint($"联机模块 {Latest} 已就绪", HintType.Green)
+                    Case LoadState.Failed
+                        TerracottaDownloading = False
+                        Hint("联机模块下载失败，可稍后重试", HintType.Red)
+                End Select
+            End Sub
+        }
+        Loader.Start(1)
+        LoaderTaskbarAdd(Loader)
+        FrmMain.BtnExtraDownload.ShowRefresh()
+        Hint("已开始下载联机模块，进度在右下角任务列表里", HintType.Blue, False)
     End Sub
     Public Sub ShowEnvCheck()
         Try

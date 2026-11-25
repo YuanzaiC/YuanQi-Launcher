@@ -3,6 +3,13 @@ Public Class PageOtherAbout
     Private Shadows IsLoaded As Boolean = False
     Private Sub PageOtherAbout_Loaded(sender As Object, e As RoutedEventArgs) Handles Me.Loaded
 
+        '更新检查：按钮跟着「检查中」状态走，不弹提示气泡
+        RemoveHandler ModTools.UpdateCheckStarted, AddressOf OnUpdateCheckStarted
+        RemoveHandler ModTools.UpdateCheckFinished, AddressOf OnUpdateCheckFinished
+        AddHandler ModTools.UpdateCheckStarted, AddressOf OnUpdateCheckStarted
+        AddHandler ModTools.UpdateCheckFinished, AddressOf OnUpdateCheckFinished
+        ApplyUpdateCheckState()
+
         '重复加载部分
         PanBack.ScrollToHome()
 
@@ -48,6 +55,27 @@ Public Class PageOtherAbout
     '检查更新
     Private Sub BtnAboutCheckUpdate_Click() Handles BtnAboutCheckUpdate.Click
         ModTools.CheckLauncherUpdate()
+    End Sub
+
+    Private Sub PageOtherAbout_Unloaded(sender As Object, e As RoutedEventArgs) Handles Me.Unloaded
+        RemoveHandler ModTools.UpdateCheckStarted, AddressOf OnUpdateCheckStarted
+        RemoveHandler ModTools.UpdateCheckFinished, AddressOf OnUpdateCheckFinished
+    End Sub
+    Private Sub OnUpdateCheckStarted()
+        RunInUi(Sub() ApplyUpdateCheckState())
+    End Sub
+    Private Sub OnUpdateCheckFinished()
+        RunInUi(Sub() ApplyUpdateCheckState())
+    End Sub
+    ''' <summary>检查更新按钮跟着检查状态走：检查中禁用并显示「检查中」。</summary>
+    Private Sub ApplyUpdateCheckState()
+        Try
+            Dim Busy As Boolean = ModTools.IsCheckingUpdate
+            BtnAboutCheckUpdate.IsEnabled = Not Busy
+            BtnAboutCheckUpdate.Text = If(Busy, "检查中……", "检查更新")
+        Catch ex As Exception
+            Logger.Warn(ex, "刷新检查更新按钮状态失败")
+        End Try
     End Sub
 
 End Class

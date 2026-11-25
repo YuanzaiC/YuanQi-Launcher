@@ -1,4 +1,4 @@
-﻿Public Module ModLaunch
+Public Module ModLaunch
 
 #Region "开始"
 

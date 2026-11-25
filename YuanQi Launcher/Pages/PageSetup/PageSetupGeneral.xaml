@@ -15,7 +15,9 @@
             <local:MyCard Margin="0,15" Title="启动器更新">
                 <StackPanel Margin="25,40,25,20">
                     <local:MyCheckBox Text="启动时自动检测启动器更新" Height="22" x:Name="CheckAutoCheckUpdate" local:SettingService.Key="UiAutoCheckUpdate"
-                                      ToolTip="每次打开启动器时检查新版本，有新版本将在左下角提示。" />
+                                      ToolTip="每次打开启动器时检查新版本，有新版本会弹窗提示。" />
+                    <local:MyCheckBox Text="下载完成后自动安装并重启" Height="22" Margin="0,6,0,0" x:Name="CheckAutoInstallUpdate" local:SettingService.Key="UpdateAutoInstall"
+                                      ToolTip="下载完安装包后直接静默安装，装好自动重新打开缘启，不再询问。" />
 
                     <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                         <local:MyButton Height="35" x:Name="BtnSystemCheckUpdate" MinWidth="140" Text="立即检查更新" Padding="13,0" HorizontalAlignment="Left" />

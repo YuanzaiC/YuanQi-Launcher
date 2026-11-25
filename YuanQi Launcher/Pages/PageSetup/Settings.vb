@@ -1,11 +1,11 @@
-﻿Imports System.Security.Cryptography
+Imports System.Security.Cryptography
 
 Public Class Settings
 
     Public Shared ReadOnly Entries As Dictionary(Of String, Setting) = (New List(Of Setting) From {
         New Setting("Identify", "", Source:=Sources.Registry),
-        New Setting("WindowHeight", 840),
-        New Setting("WindowWidth", 1360),
+        New Setting("WindowHeight", 793),
+        New Setting("WindowWidth", 1250),
         New Setting("AprilYear", 0, Source:=Sources.Registry, Encrypted:=True),
         New Setting("HintDownloadThread", False, Source:=Sources.Registry),
         New Setting("HintNotice", 0, Source:=Sources.Registry),
@@ -24,6 +24,7 @@ Public Class Settings
         New Setting("SystemGuideVersion", 0, Source:=Sources.Registry),
         New Setting("GuideFinished", False, Source:=Sources.Registry),
         New Setting("GuideTourFinished", False, Source:=Sources.Registry),
+        New Setting("GuideTourStarted", False, Source:=Sources.Registry), '教程是否真的开始过：只有开始过又被打断才在下次启动续上
         New Setting("SystemMultiInstance", True, Source:=Sources.Registry),
         New Setting("SystemCount", 0, Source:=Sources.Registry, Encrypted:=True),
         New Setting("SystemLaunchCount", 0, Source:=Sources.Registry, Encrypted:=True),
@@ -162,6 +163,9 @@ Public Class Settings
         New Setting("UiMusicRandom", True),
         New Setting("UiMusicAuto", True),
         New Setting("UiAutoCheckUpdate", False), '启动时自动检查更新（默认关；仓库建立后生效）
+        New Setting("UpdateSkipVersion", "", Source:=Sources.Registry), '自动检查时用户点过「跳过此版本」的版本号
+        New Setting("UpdatePendingInstaller", "", Source:=Sources.Registry), '已下载但还没安装的安装包路径
+        New Setting("UpdateAutoInstall", False, Source:=Sources.Registry), '下载完成后直接安装并重启，不再询问
         New Setting("UiSwapWebClick", False), '网页入口是否交换鼠标左右键（默认左键在启动器内打开、右键用系统浏览器）
         New Setting("UiWebClickGesture", -1), '网页打开手势：0 = 左键启动器内/右键浏览器，1 = 相反；-1 表示还没迁移，跟旧的 UiSwapWebClick 走
         New Setting("UiUiScale", 100), '界面缩放百分比

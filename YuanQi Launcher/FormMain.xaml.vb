@@ -1,4 +1,4 @@
-﻿Imports System.ComponentModel
+Imports System.ComponentModel
 Imports System.Windows.Interop
 Imports System.Runtime.InteropServices
 
@@ -8,10 +8,31 @@ Public Class FormMain
 
     '更新日志
     Private Sub ShowUpdateLog(LastVersion As Integer)
+        '优先用这次更新时存下来的发布说明：更新完成后的第一次启动会读到它
+        If ShowReleaseNotesLog() Then Return
         Dim FeatureCount As Integer = 0, BugCount As Integer = 0
         Dim FeatureList As New List(Of KeyValuePair(Of Integer, String))
         '统计更新日志条目
         If BuildType = BuildTypes.Release Then
+            If LastVersion < 414 Then 'Release 2.15.3.0
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(4, "新增：检查到新版本改为弹窗提示，可直接下载并静默安装，装完自动重启"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(3, "新增：更新完成后第一次启动会弹出本次的更新日志"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(2, "修复：检查更新会把相同版本判断成「比当前版本旧」，导致发现不了真正的新版本"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(1, "修复：启动时偶尔弹出「已更新至」提示，内容却是「没有更新日志」"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(1, "修复：已经用过启动器的用户，启动时仍会被自动带进首次使用教程"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(1, "修复：联机模块已经是最新版时仍提示可以更新"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(2, "优化：默认窗口尺寸改为 1250 × 793"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(1, "优化：未选择版本时的启动器图标改为圆角，账号下拉箭头改为从中心旋转"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(2, "修复：关于页许可声明里最后几项的文字与按钮重叠"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(2, "修复：报错时可能连界面一起卡死，错误弹窗改为后台弹出且同时只弹一个"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(1, "优化：体检里下载联机模块改走启动器下载器，进度显示在任务列表"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(2, "修复：窗口的缩放热区比可见边框偏外 8px，贴着边框拖不动"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(1, "优化：默认窗口尺寸对齐 1250 × 793"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(1, "优化：检查联机模块更新时按钮显示「检查中」，不再弹提示气泡"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(1, "优化：重新查看引导时，「返回主页」这一步只能退出、不能跳过"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(4, "新增：首次引导可以导入 PCL / HMCL / 官方启动器的游戏文件，可选导入哪些版本，复制后可把原文件夹移入回收站"))
+                BugCount += 4
+            End If
             If LastVersion < 411 Then 'Release 2.14.0.0
                 FeatureList.Add(New KeyValuePair(Of Integer, String)(5, "新增：允许修改、添加、移除、更新已安装版本的 MC 版本以及各个组件，可从版本设置中进入"))
                 FeatureList.Add(New KeyValuePair(Of Integer, String)(2, "优化：启动游戏时允许按 Esc 取消"))
@@ -101,6 +122,25 @@ Public Class FormMain
             '3：BUG+ IMP* FEAT-
             '2：BUG* IMP-
             '1：BUG-
+            If LastVersion < 415 Then 'Snapshot 2.15.3.0
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(4, "新增：检查到新版本改为弹窗提示，可直接下载并静默安装，装完自动重启"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(3, "新增：更新完成后第一次启动会弹出本次的更新日志"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(2, "修复：检查更新会把相同版本判断成「比当前版本旧」，导致发现不了真正的新版本"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(1, "修复：启动时偶尔弹出「已更新至」提示，内容却是「没有更新日志」"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(1, "修复：已经用过启动器的用户，启动时仍会被自动带进首次使用教程"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(1, "修复：联机模块已经是最新版时仍提示可以更新"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(2, "优化：默认窗口尺寸改为 1250 × 793"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(1, "优化：未选择版本时的启动器图标改为圆角，账号下拉箭头改为从中心旋转"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(2, "修复：关于页许可声明里最后几项的文字与按钮重叠"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(2, "修复：报错时可能连界面一起卡死，错误弹窗改为后台弹出且同时只弹一个"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(1, "优化：体检里下载联机模块改走启动器下载器，进度显示在任务列表"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(2, "修复：窗口的缩放热区比可见边框偏外 8px，贴着边框拖不动"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(1, "优化：默认窗口尺寸对齐 1250 × 793"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(1, "优化：检查联机模块更新时按钮显示「检查中」，不再弹提示气泡"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(1, "优化：重新查看引导时，「返回主页」这一步只能退出、不能跳过"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(4, "新增：首次引导可以导入 PCL / HMCL / 官方启动器的游戏文件，可选导入哪些版本，复制后可把原文件夹移入回收站"))
+                BugCount += 4
+            End If
             If LastVersion < 412 Then 'Snapshot 2.14.0.0
                 FeatureList.Add(New KeyValuePair(Of Integer, String)(5, "新增：允许修改、添加、移除、更新已安装版本的 MC 版本以及各个组件，可从版本设置中进入"))
                 FeatureList.Add(New KeyValuePair(Of Integer, String)(2, "优化：启动游戏时允许按 Esc 取消"))
@@ -253,7 +293,11 @@ Public Class FormMain
         '整理更新日志文本
         Dim ContentList As New List(Of String)
         Dim SortedFeatures = FeatureList.OrderByDescending(Function(f) f.Key).ToList
-        If Not SortedFeatures.Any() AndAlso FeatureCount = 0 AndAlso BugCount = 0 Then ContentList.Add("没有更新日志……")
+        '这次升级没有可展示的条目：直接不弹，避免出现「已更新至 xxx / · 没有更新日志……」这种空提示
+        If Not SortedFeatures.Any() AndAlso FeatureCount = 0 AndAlso BugCount = 0 Then
+            Logger.Info($"版本号从 {LastVersion} 升到 {VersionCode}，但没有需要展示的更新日志，跳过弹窗")
+            Return
+        End If
         For i = 0 To Math.Min(9, SortedFeatures.Count - 1) '最多取 10 项
             ContentList.Add(SortedFeatures(i).Value)
         Next
@@ -269,10 +313,43 @@ Public Class FormMain
         RunInNewThread(
         Sub()
             If MyMsgBox(Content, "缘启已更新至" & VersionDisplay, "确定", "完整更新日志") = 2 Then
-                OpenWebsite("https://meloong.com/afd/a/LTCat?tab=feed")
+                OpenWebsite(ModTools.RepoUrl & "/releases")
             End If
         End Sub, "UpdateLog Output")
     End Sub
+
+    ''' <summary>
+    ''' 更新完成后弹更新日志：优先用下载更新时存下的发布说明（来自 GitHub Release）。
+    ''' 没有说明时返回 False，让调用方退回内置的更新日志摘要。
+    ''' </summary>
+    Private Function ShowReleaseNotesLog() As Boolean
+        Try
+            Dim Notes = ModTools.ConsumeUpdateNotes()
+            If Notes Is Nothing Then Return False
+            Dim NotesVersion As String = If(Notes?("version")?.ToString(), VersionBaseName).Trim()
+            Dim PageUrl As String = If(Notes?("url")?.ToString(), ModTools.RepoUrl & "/releases/latest").Trim()
+            Dim Published As String = If(Notes?("published")?.ToString(), "").Trim()
+            Dim Body As String = ModTools.FormatReleaseNotes(If(Notes?("body")?.ToString(), ""), 14)
+            If String.IsNullOrWhiteSpace(Body) Then Return False
+            Dim Content As New StringBuilder
+            Content.Append($"版本：{NotesVersion}")
+            If Published <> "" Then Content.Append($"　·　{Published}")
+            Content.AppendLine()
+            Content.AppendLine()
+            Content.Append(Body)
+            Dim Text As String = Content.ToString
+            RunInNewThread(
+            Sub()
+                If MyMsgBox(Text, "缘启已更新至" & VersionDisplay, "确定", "完整更新日志") = 2 Then
+                    OpenWebsite(PageUrl)
+                End If
+            End Sub, "UpdateLog Output")
+            Return True
+        Catch ex As Exception
+            Logger.Warn(ex, "显示更新说明失败")
+            Return False
+        End Try
+    End Function
 
     '窗口加载
     Private IsWindowLoadFinished As Boolean = False
@@ -521,27 +598,25 @@ Public Class FormMain
                 Grid.SetRowSpan(PanSplash, Math.Max(2, PanForm.RowDefinitions.Count))
             End If
             '四周那圈深色渐变原本是缩放热区的"阴影"，铺在透明边缘上看不出来；
-            '窗口不透明后它就变成一圈黑边，这里把它们的填充清掉（仍然保留拖拽缩放）
-            '这些矩形本来是给"圆角透明窗口"画的边缘投影：四条边各一条渐变，四个角各一块径向渐变，
-            '每条两端还内缩 13px。窗口不透明后它们就是一圈黑边，其中右下角那两块（右边 + 下边）
-            '在这块区域拼出一条直角阴影——只清填充还会留下 1px 描边，所以整个隐藏掉。
-            '缩放不靠它们：WindowChrome.ResizeBorderThickness = 6 已经接管了拖边改大小。
-            For Each Elem In New FrameworkElement() {ResizerT, ResizerB, ResizerL, ResizerR, ResizerLT, ResizerLB, ResizerRB, ResizerRT, RectLeftShadow}
+            '窗口不透明后它就变成一圈黑边，所以填充一律清掉。
+            '注意：热区本身不能跟着隐藏——加速模式把 WS_THICKFRAME 摘掉了，系统不再提供缩放边框，
+            '拖边改大小全靠这 8 条热区；它们被藏起来的话窗口就完全没法缩放了。
+            For Each Elem In New FrameworkElement() {ResizerT, ResizerB, ResizerL, ResizerR, ResizerLT, ResizerLB, ResizerRB, ResizerRT}
                 Dim Rc = TryCast(Elem, Shapes.Rectangle)
-                If Rc IsNot Nothing Then
-                    Rc.Fill = Brushes.Transparent
-                    Rc.Visibility = Visibility.Collapsed
-                ElseIf Elem IsNot Nothing Then
-                    Elem.Visibility = Visibility.Collapsed
-                End If
+                If Rc IsNot Nothing Then Rc.Fill = Brushes.Transparent
             Next
+            If RectLeftShadow IsNot Nothing Then RectLeftShadow.Visibility = Visibility.Collapsed
+            '加速模式卡片铺满窗口，热区贴窗口边（普通模式是内缩 8px，见 FormMain_SizeChanged）
+            SetResizerInset(0)
+            SetResizers(True)
             '---- 核心：去掉 Windows 绘制的非客户区边框（黑边就在这层，客户区背景盖不住）----
             '1) 整窗玻璃化：GlassFrameThickness=-1 让 DWM 不再画那圈黑色边框
             '2) 同时把 WS_THICKFRAME / WS_CAPTION 从窗口样式里摘掉
-            '   缩放仍交给 WindowChrome 的 ResizeBorderThickness 处理，所以不会失去拖边改大小
+            '3) ResizeBorderThickness 设为 0：系统缩放边框已经不在了，留着它只会把边缘 6px 内的点击
+            '   先吞掉、再交给一个无效的系统缩放循环，表现就是"贴着边拖不动"。缩放全部交给上面那 8 条热区
             Dim Chrome As New System.Windows.Shell.WindowChrome With {
                 .CaptionHeight = 0,
-                .ResizeBorderThickness = New Thickness(6),
+                .ResizeBorderThickness = New Thickness(0),
                 .GlassFrameThickness = New Thickness(-1),
                 .CornerRadius = New CornerRadius(0),
                 .UseAeroCaptionButtons = False}
@@ -816,6 +891,7 @@ Public Class FormMain
                 ModTerracotta.CleanupStaleInstances() '兜底清理上次被强杀时遗留的联机模块
                 '不再自动做环境体检：改由首次使用的介绍弹窗，或「设置 → 通用 → 环境体检」手动触发 '首次使用改由教程引导用户手动体检，不再自动跑
                 AutoCheckLauncherUpdate() '按设置自动检查更新（默认关闭）
+                PromptPendingInstaller() '上次下载好但没安装的更新包，问一次要不要装
                 DlClientListMojangLoader.Start(1) '缘启会同时根据这里的加载结果决定是否使用官方源进行下载
                 RunCountSub()
                 ServerLoader.Start()
@@ -1941,6 +2017,12 @@ Public Class FormMain
         RunInUiWait(
         Sub()
             Try
+                '教程还没走完就关启动器：当作用户主动结束，下次启动不再自动续上
+                If ModGuide.IsRunning Then ModGuide.[Stop]()
+            Catch ex As Exception
+                Logger.Warn(ex, "关闭引导失败")
+            End Try
+            Try
                 PageWeb.SaveCookiesAny() '退出前尽力保存网页登录状态（正常保存由导航与定时器完成）
             Catch
             End Try
@@ -2218,7 +2300,9 @@ Public Class FormMain
                 BorderForm.BorderBrush = Nothing
             End If
             ResizeMode = System.Windows.ResizeMode.CanResize
-            '摘掉 WS_THICKFRAME 后系统不再提供缩放边框，只能靠这 8 条自定义热区
+            '摘掉 WS_THICKFRAME 后系统不再提供缩放边框，只能靠这 8 条自定义热区；
+            '加速模式卡片铺满窗口，热区贴窗口边
+            SetResizerInset(0)
             SetResizers(True)
             Return
         End If
@@ -2236,14 +2320,15 @@ Public Class FormMain
         Else
             RectForm.RadiusX = 8
             RectForm.RadiusY = 8
-            '保留 8px 透明边缘，让边缘的 Resizer* 矩形可被点到，从而恢复窗口拖拽改大小
+            '保留 8px 透明边缘：热区要内缩到卡片可见边缘上，否则鼠标得飘到窗口外才有反应
             BorderForm.Margin = New Thickness(8)
             ResizeMode = System.Windows.ResizeMode.CanResize
+            SetResizerInset(8)
             SetResizers(True)
         End If
     End Sub
 
-    ''' <summary>显示或隐藏窗口边缘的 8 个自定义缩放条。</summary>
+    ''' <summary>显示或隐藏窗口边缘的 8 个自定义缩放热区。</summary>
     Private Sub SetResizers(Visible As Boolean)
         Dim V = If(Visible, Visibility.Visible, Visibility.Collapsed)
         ResizerT.Visibility = V
@@ -2254,6 +2339,27 @@ Public Class FormMain
         ResizerLB.Visibility = V
         ResizerRB.Visibility = V
         ResizerRT.Visibility = V
+    End Sub
+
+    ''' <summary>
+    ''' 缩放热区离窗口边缘的内缩量。
+    ''' 普通模式：卡片在窗口里内缩 8px（外面那圈是投影留白），热区要跟着卡片走，
+    ''' 否则鼠标要飘到窗口外面、离可见边框 8px 远的地方才有反应。
+    ''' 加速模式：卡片铺满窗口，热区贴窗口边（内缩 0）。
+    ''' </summary>
+    Private Sub SetResizerInset(Inset As Double)
+        Try
+            ResizerT.Margin = New Thickness(Inset, Inset, Inset, 0)
+            ResizerB.Margin = New Thickness(Inset, 0, Inset, Inset)
+            ResizerL.Margin = New Thickness(Inset, Inset, 0, Inset)
+            ResizerR.Margin = New Thickness(0, Inset, Inset, Inset)
+            ResizerLT.Margin = New Thickness(Inset, Inset, 0, 0)
+            ResizerLB.Margin = New Thickness(Inset, 0, 0, Inset)
+            ResizerRB.Margin = New Thickness(0, 0, Inset, Inset)
+            ResizerRT.Margin = New Thickness(0, Inset, Inset, 0)
+        Catch ex As Exception
+            Logger.Warn(ex, "设置缩放热区内缩失败")
+        End Try
     End Sub
 
     '左侧导航栏展开 / 收起

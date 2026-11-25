@@ -1,4 +1,4 @@
-﻿Imports System.Windows.Shapes
+Imports System.Windows.Shapes
 Imports System.Windows.Threading
 Imports System.Windows.Media.Animation
 Imports System.Windows.Controls.Primitives
@@ -38,6 +38,8 @@ Public Module ModGuide
     Public Const SettingsKey As String = "GuideFinished"
     '' <summary>教程（分步演示）是否走完过；与介绍弹窗分开记，介绍看过但教程被打断时下次直接续教程。</summary>
     Public Const TourKey As String = "GuideTourFinished"
+    '' <summary>教程是否真的开始过。只有开始过又被打断，才在下次启动续上；老用户升级后不会平白被带进教程。</summary>
+    Public Const TourStartedKey As String = "GuideTourStarted"
 
     Private Steps As New List(Of GuideStep)
     Private CurrentIndex As Integer = -1
@@ -95,14 +97,26 @@ Public Module ModGuide
         End Try
     End Function
 
-    ''' <summary>教程（分步演示）是否该开始：介绍看过但教程被打断时下次直接续上。</summary>
+    ''' <summary>
+    ''' 教程（分步演示）是否该开始：介绍看过但教程被打断时下次直接续上。
+    ''' 必须「确实开始过」才算打断——否则升级上来的老用户（教程标记是新增的，默认 False）
+    ''' 会在启动时被平白带进教程，看起来就像"不是第一次用却弹出首次引导"。
+    ''' </summary>
     Public Function ShouldStartTour() As Boolean
         Try
+            If Not Settings.Get(Of Boolean)(TourStartedKey) Then Return False
             Return Not Settings.Get(Of Boolean)(TourKey)
         Catch
             Return False
         End Try
     End Function
+
+    Public Sub MarkTourStarted()
+        Try
+            Settings.Set(TourStartedKey, True)
+        Catch
+        End Try
+    End Sub
 
     Public Sub MarkTourFinished()
         Try
@@ -331,6 +345,7 @@ Public Module ModGuide
             CurrentIndex = -1
             DrawnRect = Rect.Empty
             Running = True
+            MarkTourStarted() '从这里开始算"教程开始过"，之后被打断才续上
             '等窗口首帧与页面构建完再开始，否则高亮框算不出位置
             RunInUi(
             Sub()
@@ -351,6 +366,7 @@ Public Module ModGuide
         If FrmMain.PageCurrent <> FormMain.PageType.Launch Then
             Steps.Add(New GuideStep With {
                 .Target = Function() FindByName("BtnTitleSelect0"),
+                .NoSkip = True,
                 .Title = "返回主页",
                 .Text = "点击左上角「启动」返回主页，教程自主页开始。"})
         End If
