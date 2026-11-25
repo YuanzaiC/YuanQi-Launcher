@@ -171,89 +171,96 @@
   <div class="container daily">
     <div class="daily__intro">
       <p class="kicker reveal"><i>01</i>日常</p>
-      <h2 class="reveal" style="--d:.05s">平时会用到的，<br>其实就三件事</h2>
+      <h2 class="reveal" style="--d:.05s">安装、游玩、维护</h2>
       <p class="daily__lede reveal" style="--d:.1s">
-        装好、开玩、收拾。中间那些要记路径、要翻文件夹、要手改配置的活，启动器替你办了。
+        日常会用到的功能大致分这三类。要记路径、翻文件夹、手改配置文件的部分，启动器都替你做了。
       </p>
       <ul class="daily__toc reveal" style="--d:.16s">
-        <li><b>装好</b><span>开游戏之前</span></li>
-        <li><b>开玩</b><span>玩的过程中</span></li>
-        <li><b>收拾</b><span>玩完之后</span></li>
+        <li><b>安装与配置</b><span>版本、加载器、Java、Mod</span></li>
+        <li><b>游玩与记录</b><span>存档、种子地图、账号、联机</span></li>
+        <li><b>维护与更新</b><span>崩溃排查、空间收纳、版本升级</span></li>
       </ul>
     </div>
 
     <div class="daily__list">
       <section class="daily__group reveal">
-        <h3>装好</h3>
+        <h3>安装与配置</h3>
         <div class="daily__row">
           <span class="daily__no">01</span>
           <div>
-            <h4>开游戏前，该设的都摆在你眼前</h4>
-            <p>版本、加载器、Java 与分到的内存写在同一张卡上，看清楚直接点「启动游戏」。</p>
+            <h4>版本、加载器、Java 写在同一处</h4>
+            <p>原版与 Forge、NeoForge、Fabric、Quilt、LiteLoader、OptiFine 并列成清单，选完版本再分配内存，不用来回切页。</p>
           </div>
         </div>
         <div class="daily__row">
           <span class="daily__no">02</span>
           <div>
-            <h4>整合包丢进来，缺的自己补</h4>
-            <p>包里要的 Forge、NeoForge、Fabric、OptiFine 一起装好；装 Mod 前先看前置缺不缺。</p>
+            <h4>整合包缺什么，装的时候一起补</h4>
+            <p>导入时会读出包要求的加载器与 Java 版本，缺的当场补上，不用装完再猜是哪一步漏了。</p>
           </div>
         </div>
         <div class="daily__row">
           <span class="daily__no">03</span>
           <div>
-            <h4>从别的启动器搬过来</h4>
-            <p>PCL、HMCL、官方启动器里玩过的版本、存档、Mod 都能接过来，想只搬几个版本也行。</p>
+            <h4>从其他启动器接手已有版本</h4>
+            <p>PCL、HMCL、官方启动器里的版本、存档与资源都能识别并复制过来，也可以只挑几个需要的。</p>
           </div>
         </div>
       </section>
 
       <section class="daily__group reveal" style="--d:.06s">
-        <h3>开玩</h3>
+        <h3>游玩与记录</h3>
         <div class="daily__row">
           <span class="daily__no">04</span>
           <div>
-            <h4>存档能看，也能改</h4>
-            <p>种子、版本、大小、玩家一读就有；规则、坐标、经验能改，动手前自动备份。</p>
+            <h4>存档信息读得出来，也能改</h4>
+            <p>种子、游戏版本、占用大小、存档内玩家、最后游玩时间一并列出；规则、坐标、经验可直接修改，改动前自动备份。</p>
           </div>
         </div>
         <div class="daily__row">
           <span class="daily__no">05</span>
           <div>
-            <h4>崩了，它会告诉你怎么改</h4>
-            <p>读崩溃原因，指出是哪个加载器、哪个 Mod 或哪个 Java 版本对不上，再给下一步。</p>
+            <h4>种子地图内置</h4>
+            <p>输入种子即可查看生物群系与结构分布，可缩放、切换维度，不必另外打开网页查。</p>
           </div>
         </div>
         <div class="daily__row">
           <span class="daily__no">06</span>
           <div>
-            <h4>几个账号，各玩各的</h4>
-            <p>正版、离线、外置登录放在一个账号池里，点一下切换，头像各自缓存。</p>
+            <h4>账号放在同一个池子里</h4>
+            <p>微软正版、外置登录与离线账号并存，切换只点一下，头像与皮肤各自缓存。</p>
+          </div>
+        </div>
+        <div class="daily__row">
+          <span class="daily__no">07</span>
+          <div>
+            <h4>房间建好，地址发出去就能联机</h4>
+            <p>内置 Terracotta，不用另外装服务端；对方用同样的启动器输入地址即可加入。</p>
           </div>
         </div>
       </section>
 
       <section class="daily__group reveal" style="--d:.12s">
-        <h3>收拾</h3>
-        <div class="daily__row">
-          <span class="daily__no">07</span>
-          <div>
-            <h4>不常玩的版本，收起来</h4>
-            <p>每个版本占多少一眼能看到；很久没开的打包收起来，点一下自动解压还原。</p>
-          </div>
-        </div>
+        <h3>维护与更新</h3>
         <div class="daily__row">
           <span class="daily__no">08</span>
           <div>
-            <h4>出问题先体检，多开也不打架</h4>
-            <p>缺什么运行库、少了哪个组件会直接写出来；想同时开两个客户端也行。</p>
+            <h4>崩溃后指到具体位置</h4>
+            <p>解析崩溃日志，指出问题出在加载器版本、某个 Mod 还是 Java 不匹配，并给出对应的处理建议。</p>
           </div>
         </div>
         <div class="daily__row">
           <span class="daily__no">09</span>
           <div>
-            <h4>今天更新了什么，顺手就能看到</h4>
-            <p>首页顶部汇总当天的版本动态，下面一排常用站点，内容缓存在本地。</p>
+            <h4>不常玩的版本可以收起来</h4>
+            <p>每个版本的磁盘占用单独列出；长期不用的能打包压缩，需要时一键还原。</p>
+          </div>
+        </div>
+        <div class="daily__row">
+          <span class="daily__no">10</span>
+          <div>
+            <h4>启动器与联机组件分别更新</h4>
+            <p>检查到新版本会写明改了什么，确认后自动下载安装；历次更新日志随时能在设置里翻看。</p>
           </div>
         </div>
       </section>
